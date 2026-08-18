@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SignageMadeEasy Player</title>
+<link rel="stylesheet" href="/player.css" />
+</head>
+<body>
+  <section id="unpaired-screen" class="screen" hidden>
+    <div class="unpaired-card">
+      <h1>SignageMadeEasy</h1>
+      <p class="unpaired-lead">This display isn't paired yet.</p>
+      <img id="qr" alt="QR code encoding this display's IP address" />
+      <p class="ip-label">Or enter this IP in the app:</p>
+      <p id="ip" class="ip-value">—</p>
+    </div>
+  </section>
+
+  <section id="connecting-screen" class="screen" hidden>
+    <div class="unpaired-card">
+      <h1>SignageMadeEasy</h1>
+      <p class="unpaired-lead">Paired, waiting for the hub&hellip;</p>
+      <p id="connecting-detail" class="ip-label"></p>
+    </div>
+  </section>
+
+  <section id="player-screen" class="screen" hidden>
+    <div id="stage"></div>
+    <div id="ticker" class="ticker" hidden><div id="ticker-text" class="ticker-text"></div></div>
+  </section>
+
+  <script type="module" src="/player.js"></script>
+</body>
+</html>

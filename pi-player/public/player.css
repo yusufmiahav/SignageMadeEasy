@@ -1,0 +1,22 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; background: #000; overflow: hidden; cursor: none; }
+body { font-family: system-ui, sans-serif; color: #fff; }
+
+.screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+.screen[hidden] { display: none; }
+
+.unpaired-card { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.unpaired-card h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.01em; }
+.unpaired-lead { font-size: 18px; opacity: 0.85; }
+.unpaired-card img { width: 260px; height: 260px; background: #fff; padding: 12px; border-radius: 4px; }
+.ip-label { font-size: 13px; opacity: 0.6; margin-top: 6px; }
+.ip-value { font-size: 32px; font-weight: 800; letter-spacing: 0.02em; }
+
+#stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+#stage img, #stage video, #stage canvas { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; }
+#stage .empty { font-size: 20px; opacity: 0.4; }
+
+.ticker { position: absolute; left: 0; right: 0; bottom: 0; height: 56px; background: rgba(0, 0, 0, 0.8); overflow: hidden; display: flex; align-items: center; }
+.ticker[hidden] { display: none; }
+.ticker-text { white-space: nowrap; font-size: 22px; font-weight: 600; padding-left: 100%; animation: ticker-scroll 18s linear infinite; }
+@keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }

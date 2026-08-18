@@ -1,0 +1,35 @@
+[Unit]
+Description=SignageMadeEasy kiosk display (cage + Chromium)
+After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service
+Wants=signage-player.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=signage
+PAMName=login
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+
+# --kiosk: fullscreen, no chrome. --noerrdialogs/--disable-session-crashed-bubble:
+# no "restore pages?" prompts after a power-cut reboot. --check-for-update-interval
+# set absurdly high since there's no reason a kiosk display should ever prompt to
+# update itself. cage itself is what removes the cursor and any window chrome.
+ExecStart=/usr/bin/cage -- /usr/bin/chromium \
+  --kiosk http://localhost:8088 \
+  --noerrdialogs \
+  --disable-infobars \
+  --disable-session-crashed-bubble \
+  --disable-translate \
+  --no-first-run \
+  --check-for-update-interval=31536000 \
+  --overscroll-history-navigation=0 \
+  --autoplay-policy=no-user-gesture-required
+
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical.target
