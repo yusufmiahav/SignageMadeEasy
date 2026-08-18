@@ -101,7 +101,11 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
       <div className="card" style={{ gap: 6 }}>
         <div className="card-kicker">About</div>
         <div className="card-title">SignageMadeEasy 1.0.0</div>
-        <p className="card-body">Prototype build.</p>
+        <p className="card-body">
+          {import.meta.env.VITE_API_BASE_URL !== undefined
+            ? 'Connected to your SignageMadeEasy hub.'
+            : 'Standalone mode — content is saved in this browser only. Deploy the hub to manage screens from any device on your network.'}
+        </p>
       </div>
     </div>
   );

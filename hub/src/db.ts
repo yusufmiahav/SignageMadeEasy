@@ -52,21 +52,5 @@ db.exec(`
     lastSeenAt INTEGER
   );
 `);
-
-// Seed data on first run only (empty DB), matching the frontend's localStore seed
-// so a fresh hub + a fresh browser show the same starting point.
-const seeded = db.prepare('SELECT COUNT(*) as n FROM groups_').get() as { n: number };
-if (seeded.n === 0) {
-  const now = Date.now();
-  const insertLib = db.prepare(
-    'INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@createdAt)'
-  );
-  insertLib.run({ id: 'l1', name: 'welcome-banner.jpg', type: 'image', size: '1.2 MB', duration: null, thumb: null, text: null, pageCount: null, createdAt: now });
-  insertLib.run({ id: 'l2', name: 'back-to-school.png', type: 'image', size: '2.1 MB', duration: null, thumb: null, text: null, pageCount: null, createdAt: now });
-  insertLib.run({ id: 'l3', name: 'promo-reel.mp4', type: 'video', size: '18.4 MB', duration: '0:42', thumb: null, text: null, pageCount: null, createdAt: now });
-  insertLib.run({ id: 'l4', name: 'menu-slides.pdf', type: 'pdf', size: '3.4 MB', duration: null, thumb: null, text: null, pageCount: 4, createdAt: now });
-  insertLib.run({ id: 'l5', name: 'Closing early Friday', type: 'announcement', size: null, duration: null, thumb: null, text: 'We close at 3pm this Friday for staff training.', pageCount: null, createdAt: now });
-
-  db.prepare('INSERT INTO groups_ (id, name, defaultPlaylist, forcedContentId) VALUES (?,?,?,?)').run('g1', 'Lobby', JSON.stringify(['l1', 'l3']), null);
-  db.prepare('INSERT INTO groups_ (id, name, defaultPlaylist, forcedContentId) VALUES (?,?,?,?)').run('g2', 'Cafeteria', JSON.stringify(['l4', 'l5']), null);
-}
+// No demo/seed data — a fresh hub starts with an empty library, no locations, and
+// no paired devices. Everything shown in the control app comes from real use.

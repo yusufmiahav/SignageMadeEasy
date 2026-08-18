@@ -20,47 +20,17 @@ function formatDuration(seconds: number): string {
   return `${m}:${String(rem).padStart(2, '0')}`;
 }
 
-function eventDateInDays(offset: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  const pad2 = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-function seedData(): AppData {
-  return {
-    library: [
-      { id: 'l1', name: 'welcome-banner.jpg', type: 'image', size: '1.2 MB' },
-      { id: 'l2', name: 'back-to-school.png', type: 'image', size: '2.1 MB' },
-      { id: 'l3', name: 'promo-reel.mp4', type: 'video', size: '18.4 MB', duration: '0:42' },
-      { id: 'l4', name: 'menu-slides.pdf', type: 'pdf', size: '3.4 MB' },
-      { id: 'l5', name: 'Closing early Friday', type: 'announcement', text: 'We close at 3pm this Friday for staff training.' },
-    ],
-    groups: [
-      {
-        id: 'g1',
-        name: 'Lobby',
-        defaultPlaylist: ['l1', 'l3'],
-        events: [{ id: 'e1', name: 'Back to School Promo', start: eventDateInDays(6), end: eventDateInDays(10), libIds: ['l2'] }],
-        forcedContentId: null,
-      },
-      { id: 'g2', name: 'Cafeteria', defaultPlaylist: ['l4', 'l5'], events: [], forcedContentId: null },
-    ],
-    devices: [
-      { id: 'd1', name: 'Lobby Display', ip: '192.168.1.42', status: 'online', groupId: 'g1', announcementId: null, announcementOn: false },
-      { id: 'd2', name: 'Menu Board', ip: '192.168.1.58', status: 'online', groupId: 'g2', announcementId: null, announcementOn: false },
-      { id: 'd3', name: 'Break Room TV', ip: '192.168.1.57', status: 'offline', groupId: 'g1', announcementId: null, announcementOn: false },
-    ],
-  };
+function emptyData(): AppData {
+  return { library: [], groups: [], devices: [] };
 }
 
 function load(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return seedData();
+    if (!raw) return emptyData();
     return JSON.parse(raw) as AppData;
   } catch {
-    return seedData();
+    return emptyData();
   }
 }
 
