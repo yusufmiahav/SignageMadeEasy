@@ -39,7 +39,21 @@ export function AddContentDialog({ app, groupId, onClose }: AddContentDialogProp
           {addable.map((item) => (
             <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
               <input type="checkbox" checked={checked.has(item.id)} onChange={() => toggle(item.id)} />
-              <span style={{ flex: 1, fontSize: 13 }}>{item.name}</span>
+              {item.type === 'image' && item.thumb && (
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    flexShrink: 0,
+                    borderRadius: 4,
+                    backgroundColor: 'var(--color-neutral-200)',
+                    backgroundImage: `url(${item.thumb})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                />
+              )}
+              <span style={{ flex: 1, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
               <span className="tag tag-neutral">{TYPE_LABEL[item.type]}</span>
             </label>
           ))}

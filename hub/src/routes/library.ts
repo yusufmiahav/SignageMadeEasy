@@ -73,6 +73,15 @@ libraryRouter.post('/announcement', (req, res) => {
   res.status(201).json(item);
 });
 
+libraryRouter.patch('/:id', (req, res) => {
+  const { durationSec } = req.body ?? {};
+  if (typeof durationSec !== 'number' || !Number.isFinite(durationSec) || durationSec < 1) {
+    return res.status(400).json({ error: 'durationSec must be a positive number' });
+  }
+  store.setImageDuration(req.params.id, Math.round(durationSec));
+  res.status(204).end();
+});
+
 libraryRouter.delete('/:id', (req, res) => {
   store.removeLibraryItem(req.params.id);
   res.status(204).end();

@@ -46,6 +46,65 @@ Full details (what the script installs, how the kiosk session works) are in
 → Scan network, Scan QR code, or Enter IP. The app also links to the setup guide
 above from Settings → "Setup".
 
+## Troubleshooting
+
+**Docker build fails on `COPY public ./public`.** Your checkout is missing the
+(otherwise-empty) `public/` folder — git doesn't track empty directories, and some
+download methods (zip exports of old commits, certain mirrors) can drop it. Run
+`mkdir -p public` in the repo root before building, or re-clone with `git clone`.
+
+**NAS has no `git` or `unzip`.** Many NAS shells (including Ugreen's) ship a minimal
+busybox userland. Download and extract with what's usually already there instead:
+```bash
+curl -L https://github.com/yusufmiahav/SignageMadeEasy/archive/refs/heads/main.zip -o signage.zip
+python3 -m zipfile -e signage.zip .
+```
+
+**The control app loads but nothing you add sticks / Settings says "Standalone
+mode".** The frontend fell back to browser-local storage instead of talking to the
+hub. This means the hub's Docker image was built without `VITE_API_BASE_URL` set —
+check you're on a current `hub/Dockerfile` (it sets this explicitly) and rebuild with
+`docker compose -f hub/docker-compose.yml up -d --build`. A hard-refresh
+(Ctrl/Cmd+Shift+R) clears any cached copy of the old, disconnected build.
+
+**A screen never comes online / pairing "succeeds" but the Pi still shows its QR
+code.** The hub must be able to reach the Pi's IP directly and vice versa — confirm
+`network_mode: host` is set in `hub/docker-compose.yml` (a default Docker bridge
+network puts the hub on a different subnet than your LAN) and that both devices are
+actually on the same network/VLAN.
+
+**The kiosk display never starts on its own after a reboot.** Raspberry Pi OS Lite
+boots to `multi-user.target`, not `graphical.target` — a `signage-kiosk.service`
+from before this was fixed (`WantedBy=graphical.target`) will sit inactive forever.
+Re-run `provision.sh` (idempotent — safe to run again) to pick up the current unit
+file, then reboot. You can check which target a unit is pulled in by with
+`systemctl status signage-kiosk.service`; `inactive (dead)` with zero log lines is
+the signature of this specific issue.
+
+**A visible mouse cursor sits in the middle of an otherwise-working kiosk display.**
+Fixed by disabling libinput device discovery in the kiosk's systemd unit
+(`WLR_LIBINPUT_NO_DEVICES=1`) — re-run `provision.sh` and reboot to pick it up.
+
+**Deleting a screen in the control app doesn't disconnect it / the Pi still shows
+"connected".** Fixed in the hub/Pi-player pairing logic — the hub now pushes an
+immediate unpair to the Pi, and the Pi's own poller self-unpairs within one cycle
+(~5s) even if it was offline at delete time. Re-run `provision.sh` and reboot the Pi,
+and make sure the hub is on a current build, to pick this up.
+
+**"Under-voltage detected" on a Pi 3B+.** The official 2.5A USB-C/micro-USB supply is
+worth using — HDMI + Wi-Fi + a browser under load draws more than many phone
+chargers reliably deliver, and brief undervoltage can cause visible glitches or
+throttling. A one-off warning right after boot is usually the SoC bootloader
+noticing a brief dip and is not itself something `provision.sh` can fix — swap the
+power supply/cable if it persists or you see repeated warnings in
+`dmesg | grep -i voltage`.
+
+**A fresh hub still shows old locations/screens/library items.** It isn't seeded
+with demo data — anything you see was added through the app itself. If you expected
+an empty install, double-check you're pointed at the hub you think you are (its data
+lives entirely in the `data/` volume you mounted) rather than an old container or a
+stale browser tab still caching a previous session.
+
 ## Local development
 
 **Frontend only, no hub** (the default — persists to `localStorage`):

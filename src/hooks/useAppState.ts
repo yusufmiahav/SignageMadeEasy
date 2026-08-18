@@ -53,6 +53,11 @@ export function useAppState() {
     return item;
   }, [refreshLibrary, showToast]);
 
+  const setImageDuration = useCallback(async (id: string, durationSec: number) => {
+    await api.setImageDuration(id, durationSec);
+    await refreshLibrary();
+  }, [refreshLibrary]);
+
   const removeLibraryItem = useCallback(async (id: string) => {
     await api.removeLibraryItem(id);
     await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices()]);
@@ -157,6 +162,7 @@ export function useAppState() {
     addVideo,
     addPdf,
     addAnnouncement,
+    setImageDuration,
     removeLibraryItem,
     addGroup,
     renameGroup,
