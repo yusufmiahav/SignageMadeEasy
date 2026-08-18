@@ -11,6 +11,8 @@ export interface LibraryItem {
   type: LibraryItemType;
   size?: string;
   duration?: string;
+  /** Seconds this image stays on screen before advancing. Images only; defaults to 8 when unset. */
+  durationSec?: number;
   /** URL path (e.g. "/uploads/<id>.jpg"), not a data URL — served statically by the hub. */
   thumb?: string;
   text?: string;

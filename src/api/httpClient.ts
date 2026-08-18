@@ -31,6 +31,7 @@ export const httpClient: SignageApiClient = {
   addPdf: (file) => uploadFile('/api/library/pdf', file),
   addAnnouncement: (name, text) => request<LibraryItem>('/api/library/announcement', { method: 'POST', ...json({ name, text }) }),
   removeLibraryItem: (id) => request<void>(`/api/library/${id}`, { method: 'DELETE' }),
+  setImageDuration: (id, durationSec) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ durationSec }) }),
 
   // Groups
   listGroups: () => request<Group[]>('/api/groups'),

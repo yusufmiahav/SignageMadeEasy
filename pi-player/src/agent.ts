@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import os from 'node:os';
-import { loadConfig, saveConfig } from './config.js';
-import { startPolling } from './poller.js';
+import { clearConfig, loadConfig, saveConfig } from './config.js';
+import { startPolling, stopPolling } from './poller.js';
 
 export const agentRouter = Router();
 
-// The three endpoints the hub calls directly (not polled) — see hub/src/piAgent.ts.
+// The endpoints the hub calls directly (not polled) — see hub/src/piAgent.ts.
 // These deliberately have no auth, matching the rest of this LAN-trusted design.
 
 agentRouter.get('/identify', (_req, res) => {
@@ -19,6 +19,12 @@ agentRouter.post('/configure', (req, res) => {
   }
   saveConfig({ deviceId, hubUrl });
   startPolling();
+  res.status(204).end();
+});
+
+agentRouter.post('/unpair', (_req, res) => {
+  clearConfig();
+  stopPolling();
   res.status(204).end();
 });
 

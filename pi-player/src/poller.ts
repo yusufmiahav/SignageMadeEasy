@@ -1,4 +1,4 @@
-import { loadConfig } from './config.js';
+import { clearConfig, loadConfig } from './config.js';
 import { getLocalIp } from './localIp.js';
 import type { PlayerState } from './types.js';
 
@@ -22,6 +22,15 @@ async function tick(): Promise<void> {
   const ip = getLocalIp();
   try {
     const res = await fetch(`${config.hubUrl}/api/player/${config.deviceId}/state`, { signal: AbortSignal.timeout(4000) });
+    if (res.status === 404) {
+      // Authoritative: the hub no longer knows this device, most likely because it
+      // was deleted from the control app. Unlike a network blip or a hub restart —
+      // where we deliberately keep playing the last-known content — this can never
+      // resolve itself, so unpair and drop back to the first-boot IP/QR screen.
+      clearConfig();
+      stopPolling();
+      return;
+    }
     if (!res.ok) throw new Error(`hub responded ${res.status}`);
     lastState = (await res.json()) as PlayerState;
     lastError = null;

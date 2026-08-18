@@ -1,8 +1,11 @@
-// Talks directly to a Pi's tiny local agent (see pi-player/src/agent.ts) for the two
+// Talks directly to a Pi's tiny local agent (see pi-player/src/agent.ts) for the
 // operations that need a hub-initiated push rather than the Pi's own poll loop:
-// completing a pairing handshake, and restarting the player on demand. Both assume
-// the hub can reach the Pi's IP directly on the LAN — the same assumption the control
-// app's "Enter IP" / "Scan QR" pairing flows already make.
+// completing a pairing handshake, restarting the player on demand, and unpairing
+// immediately on delete (the Pi's poller also self-detects this within one poll
+// cycle via a 404 from /api/player/:id/state, so this push is purely for snappier
+// feedback — deleting an unreachable/offline Pi still unpairs it, just not instantly).
+// All three assume the hub can reach the Pi's IP directly on the LAN — the same
+// assumption the control app's "Enter IP" / "Scan QR" pairing flows already make.
 
 const AGENT_PORT = 8088;
 const TIMEOUT_MS = 4000;
@@ -40,4 +43,9 @@ export async function configure(ip: string, deviceId: string, hubUrl: string): P
 export async function restart(ip: string): Promise<void> {
   const res = await agentFetch(ip, '/restart', { method: 'POST' });
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected restart: ${res.status}`);
+}
+
+export async function unpair(ip: string): Promise<void> {
+  const res = await agentFetch(ip, '/unpair', { method: 'POST' });
+  if (!res.ok) throw new Error(`Pi agent at ${ip} rejected unpair: ${res.status}`);
 }

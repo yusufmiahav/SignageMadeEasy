@@ -21,6 +21,7 @@ export interface SignageApiClient {
   addPdf(file: File): Promise<LibraryItem>;
   addAnnouncement(name: string, text: string): Promise<LibraryItem>;
   removeLibraryItem(id: string): Promise<void>;
+  setImageDuration(id: string, durationSec: number): Promise<void>;
 
   // Locations (groups)
   listGroups(): Promise<Group[]>;

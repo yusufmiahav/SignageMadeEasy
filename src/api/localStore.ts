@@ -113,6 +113,12 @@ class LocalStoreClient implements SignageApiClient {
     return item;
   }
 
+  async setImageDuration(id: string, durationSec: number): Promise<void> {
+    const item = this.data.library.find((i) => i.id === id && i.type === 'image');
+    if (item && Number.isFinite(durationSec) && durationSec >= 1) item.durationSec = Math.round(durationSec);
+    this.persist();
+  }
+
   async removeLibraryItem(id: string): Promise<void> {
     this.data.library = this.data.library.filter((i) => i.id !== id);
     for (const g of this.data.groups) {

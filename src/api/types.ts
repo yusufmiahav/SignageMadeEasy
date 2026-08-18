@@ -8,6 +8,8 @@ export interface LibraryItem {
   size?: string;
   /** Human-readable duration, e.g. "0:42". Videos only. */
   duration?: string;
+  /** Seconds this image stays on screen before advancing. Images only; defaults to 8 when unset. */
+  durationSec?: number;
   /** Data URL thumbnail. Images only. */
   thumb?: string;
   /** Message body. Announcements only. */
