@@ -1,0 +1,31 @@
+import { Router } from 'express';
+import os from 'node:os';
+import { loadConfig, saveConfig } from './config.js';
+import { startPolling } from './poller.js';
+
+export const agentRouter = Router();
+
+// The three endpoints the hub calls directly (not polled) — see hub/src/piAgent.ts.
+// These deliberately have no auth, matching the rest of this LAN-trusted design.
+
+agentRouter.get('/identify', (_req, res) => {
+  res.json({ hostname: os.hostname(), paired: loadConfig() != null });
+});
+
+agentRouter.post('/configure', (req, res) => {
+  const { deviceId, hubUrl } = req.body ?? {};
+  if (typeof deviceId !== 'string' || typeof hubUrl !== 'string') {
+    return res.status(400).json({ error: 'deviceId and hubUrl are required' });
+  }
+  saveConfig({ deviceId, hubUrl });
+  startPolling();
+  res.status(204).end();
+});
+
+agentRouter.post('/restart', (_req, res) => {
+  res.status(204).end();
+  // Give the response a moment to flush, then exit — systemd's Restart=always
+  // (see pi-player/systemd/signage-player.service) brings the process straight
+  // back up. There's no separate "restart" concept to build; exit-and-respawn is it.
+  setTimeout(() => process.exit(0), 200);
+});

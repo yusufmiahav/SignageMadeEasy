@@ -7,7 +7,7 @@ interface SettingsScreenProps {
 }
 
 export function SettingsScreen({ app }: SettingsScreenProps) {
-  const { groups, devices, renameGroup, deleteGroup, showToast } = app;
+  const { groups, devices, renameGroup, deleteGroup } = app;
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
@@ -83,13 +83,19 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
         <div className="card-kicker">Setup</div>
         <div className="card-title">Flash your Raspberry Pi</div>
         <p className="card-body">
-          Download the SignageMadeEasy OS image, flash it to a microSD card with Raspberry Pi Imager, then insert it
-          into your Pi 3B+ and connect power and HDMI. It boots straight into signage mode at 1920×1080 and shows
-          its IP address on screen — pair it from here.
+          Flash Raspberry Pi OS Lite with Raspberry Pi Imager (its gear-icon setup covers hostname, SSH, and your
+          Wi-Fi SSID/password), then run the SignageMadeEasy provisioning script over SSH once. It boots straight
+          into signage mode at 1920×1080 and shows its IP address and a pairing QR code on screen — pair it from here.
         </p>
-        <button type="button" className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={() => showToast('The OS image ships with the full release.')}>
-          Download OS image (.img)
-        </button>
+        <a
+          href="https://github.com/yusufmiahav/SignageMadeEasy/blob/main/pi-player/README.md"
+          target="_blank"
+          rel="noreferrer"
+          className="btn btn-primary"
+          style={{ alignSelf: 'flex-start' }}
+        >
+          Setup guide
+        </a>
       </div>
 
       <div className="card" style={{ gap: 6 }}>

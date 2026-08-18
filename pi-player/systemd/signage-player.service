@@ -1,0 +1,19 @@
+[Unit]
+Description=SignageMadeEasy player agent (local API + hub poller)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=signage
+WorkingDirectory=/opt/signage/app
+Environment=PORT=8088
+Environment=SIGNAGE_CONFIG_PATH=/opt/signage/config.json
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=2
+# Also how "restart this device" from the control app takes effect — the agent's
+# POST /restart handler just exits; this unit brings it straight back up.
+
+[Install]
+WantedBy=multi-user.target

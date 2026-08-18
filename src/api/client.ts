@@ -1,5 +1,6 @@
 import type { Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
 import { localStoreClient } from './localStore';
+import { httpClient } from './httpClient';
 
 export interface DiscoveredDevice {
   id: string;
@@ -49,4 +50,8 @@ export interface SignageApiClient {
   scanNetwork(): Promise<DiscoveredDevice[]>;
 }
 
-export const api: SignageApiClient = localStoreClient;
+// A hub URL in VITE_API_BASE_URL switches the whole app from its standalone,
+// localStorage-only mode onto a real hub over HTTP — nothing else needs to know
+// which one is active, since both implement the same SignageApiClient contract.
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined;
+export const api: SignageApiClient = apiBaseUrl ? httpClient : localStoreClient;

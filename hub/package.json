@@ -1,0 +1,31 @@
+{
+  "name": "signagemadeeasy-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SignageMadeEasy central hub — REST API + static control-app host, Docker-deployable",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "multer": "^2.2.0",
+    "uuid": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.10.10",
+    "oxlint": "^1.75.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

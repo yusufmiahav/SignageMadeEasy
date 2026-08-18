@@ -1,0 +1,20 @@
+# Run from the repo root: docker compose -f hub/docker-compose.yml up -d --build
+services:
+  hub:
+    build:
+      context: ..
+      dockerfile: hub/Dockerfile
+    container_name: signagemadeeasy-hub
+    restart: unless-stopped
+    # REQUIRED: the hub calls Pi IPs directly (pairing handshake, restart) and scans
+    # its own /24 for unpaired displays. A default bridge network puts the container
+    # on a different subnet than your physical LAN, so neither works — host
+    # networking is what makes this a "central hub on the NAS" instead of an isolated
+    # container. If your Docker setup can't do host networking (e.g. Docker Desktop
+    # on macOS/Windows), use a macvlan network attached to your LAN interface instead.
+    network_mode: host
+    environment:
+      - PORT=4000
+      - SIGNAGE_DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data
