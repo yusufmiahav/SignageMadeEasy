@@ -13,10 +13,17 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
+# A signage display takes no user input at runtime, so tell wlroots (which cage is
+# built on) not to initialize any libinput devices at all — this is also what stops
+# cage from drawing its default pointer cursor: with no seat pointer capability,
+# there's nothing to draw. CSS `cursor: none` in the page itself can't do this; that
+# only affects Chromium's own content, not the compositor layer underneath it.
+Environment=WLR_LIBINPUT_NO_DEVICES=1
+
 # --kiosk: fullscreen, no chrome. --noerrdialogs/--disable-session-crashed-bubble:
 # no "restore pages?" prompts after a power-cut reboot. --check-for-update-interval
 # set absurdly high since there's no reason a kiosk display should ever prompt to
-# update itself. cage itself is what removes the cursor and any window chrome.
+# update itself.
 ExecStart=/usr/bin/cage -- /usr/bin/chromium \
   --kiosk http://localhost:8088 \
   --noerrdialogs \
@@ -32,4 +39,8 @@ Restart=always
 RestartSec=2
 
 [Install]
-WantedBy=graphical.target
+# Raspberry Pi OS Lite has no desktop stack and boots to multi-user.target, never
+# graphical.target — a unit only WantedBy=graphical.target would never be pulled in
+# at boot on this image (confirmed on real hardware: it stayed inactive/dead with
+# zero log entries until started manually).
+WantedBy=multi-user.target
