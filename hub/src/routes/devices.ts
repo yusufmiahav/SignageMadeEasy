@@ -51,8 +51,14 @@ devicesRouter.patch('/:id', (req, res) => {
 });
 
 devicesRouter.delete('/:id', (req, res) => {
+  const device = store.getDevice(req.params.id);
   store.removeDevice(req.params.id);
   res.status(204).end();
+
+  // Best-effort and fire-and-forget: don't make "delete" feel slow waiting on a Pi
+  // that might be offline. If this doesn't land, the Pi's own poller notices within
+  // one cycle anyway (its next /api/player/:id/state call 404s and it self-unpairs).
+  if (device) piAgent.unpair(device.ip).catch(() => {});
 });
 
 devicesRouter.post('/:id/restart', async (req, res) => {
