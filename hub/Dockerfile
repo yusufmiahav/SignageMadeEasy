@@ -9,6 +9,9 @@ RUN npm ci
 COPY index.html vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json ./
 COPY public ./public
 COPY src ./src
+# Empty (not unset) on purpose: the hub serves this build from its own origin, so
+# relative /api/... paths are correct — see src/api/client.ts's undefined check.
+ENV VITE_API_BASE_URL=""
 RUN npm run build
 
 FROM node:20-slim AS hub-build

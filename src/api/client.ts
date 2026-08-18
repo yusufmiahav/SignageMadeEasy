@@ -50,8 +50,9 @@ export interface SignageApiClient {
   scanNetwork(): Promise<DiscoveredDevice[]>;
 }
 
-// A hub URL in VITE_API_BASE_URL switches the whole app from its standalone,
-// localStorage-only mode onto a real hub over HTTP — nothing else needs to know
-// which one is active, since both implement the same SignageApiClient contract.
+// Setting VITE_API_BASE_URL at build time (even to an empty string, for a same-origin
+// deployment like the hub's own bundled build — see hub/Dockerfile) switches the whole
+// app from its standalone, localStorage-only mode onto a real hub over HTTP. Checked
+// against undefined rather than truthiness so an empty string still counts as "set".
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined;
-export const api: SignageApiClient = apiBaseUrl ? httpClient : localStoreClient;
+export const api: SignageApiClient = apiBaseUrl !== undefined ? httpClient : localStoreClient;

@@ -44,40 +44,41 @@ export function DeviceCard({
         <span className="preview-box-label">{nowPlaying}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span className={`status-dot ${device.status}`} />
+        <span className={`status-dot ${device.status}`} style={{ marginTop: editing ? 0 : 3, alignSelf: 'flex-start' }} />
         {editing ? (
-          <input
-            className="input"
-            style={{ flex: 1 }}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && save()}
-            autoFocus
-          />
+          <>
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              autoFocus
+            />
+            <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
+              <Icon name="check" size={14} />
+            </button>
+          </>
         ) : (
           <span className="card-title" style={{ flex: 1, minWidth: 0 }}>{device.name}</span>
         )}
-        {editing ? (
-          <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
-            <Icon name="check" size={14} />
-          </button>
-        ) : (
-          <>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" onClick={() => onRestart(device)}>
-              <Icon name="restart" size={14} />
-            </button>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={startEdit}>
-              <Icon name="pencil" size={14} />
-            </button>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="Move to another location" onClick={() => onMove(device)}>
-              <Icon name="mapPin" size={14} />
-            </button>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => onRemove(device.id)}>
-              <Icon name="trash" size={14} />
-            </button>
-          </>
-        )}
       </div>
+      {!editing && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" onClick={() => onRestart(device)}>
+            <Icon name="restart" size={14} />
+          </button>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={startEdit}>
+            <Icon name="pencil" size={14} />
+          </button>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Move to another location" onClick={() => onMove(device)}>
+            <Icon name="mapPin" size={14} />
+          </button>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => onRemove(device.id)}>
+            <Icon name="trash" size={14} />
+          </button>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <span className="tag tag-neutral">{device.ip}</span>
         <span className="tag tag-neutral">{device.status === 'online' ? 'Online' : 'Offline'}</span>
