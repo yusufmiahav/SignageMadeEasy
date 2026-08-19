@@ -31,7 +31,7 @@ log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  cage curl ca-certificates git rsync
+  cage curl ca-certificates git rsync ydotool ydotoold
 
 # Package name for Chromium differs across Raspberry Pi OS releases.
 if apt-cache show chromium >/dev/null 2>&1; then
@@ -91,15 +91,18 @@ chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$APP_DIR"
 
 # ---------------------------------------------------------------------------
 log "Installing a blank cursor theme"
-# cage always draws *a* cursor — its own maintainers have said hiding it outright
-# isn't something they intend to support (github.com/cage-kiosk/cage/issues/299,
-# /issues/422). What cage does document and actually honor is XCURSOR_THEME (see
-# its man page): the cursor it draws is just a normal Xcursor theme lookup, so
-# pointing that at a fully transparent one makes it invisible without needing
-# cage to cooperate on hiding anything. This replaced two earlier, wrong theories
-# tried on real hardware: disabling libinput devices entirely (didn't stop the
-# cursor being drawn — that's not what governs it) and forcing native Wayland via
-# --ozone-platform=wayland (a real, separate fix worth keeping, but not this one).
+# One of three independent, stacked attempts at cage's visible-cursor problem —
+# see pi-player/systemd/signage-kiosk.service for the other two (XCURSOR_SIZE=0,
+# and warping the cursor off-screen via ydotool). cage always draws *a* cursor —
+# its own maintainers have said hiding it outright isn't something they intend to
+# support (github.com/cage-kiosk/cage/issues/299, /issues/422) — but it does
+# document and (per /proc/<pid>/environ on real hardware) actually receive
+# XCURSOR_THEME: the cursor it draws is just a normal Xcursor theme lookup, so
+# pointing that at a fully transparent one is worth doing regardless of whether it
+# alone is sufficient. Two earlier, disproven theories aren't part of this
+# anymore: disabling libinput devices entirely (didn't stop the cursor being
+# drawn) and relying on --ozone-platform=wayland to fix it (a real, separate
+# rendering-correctness fix worth keeping, but never actually about the cursor).
 SIGNAGE_HOME="$(getent passwd "$SIGNAGE_USER" | cut -d: -f6)"
 CURSOR_DIR="$SIGNAGE_HOME/.icons/blank/cursors"
 mkdir -p "$CURSOR_DIR"
@@ -114,10 +117,12 @@ chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$SIGNAGE_HOME/.icons"
 # ---------------------------------------------------------------------------
 log "Installing systemd units"
 cp "$APP_DIR/systemd/signage-player.service" /etc/systemd/system/
+cp "$APP_DIR/systemd/ydotoold.service" /etc/systemd/system/
 sed "s#/usr/bin/chromium#${CHROMIUM_BIN}#" "$APP_DIR/systemd/signage-kiosk.service" \
   > /etc/systemd/system/signage-kiosk.service
 systemctl daemon-reload
 systemctl enable --now signage-player.service
+systemctl enable --now ydotoold.service
 systemctl enable signage-kiosk.service
 
 # ---------------------------------------------------------------------------
