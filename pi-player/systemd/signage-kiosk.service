@@ -13,19 +13,20 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
-# A signage display takes no user input at runtime, so tell wlroots (which cage is
-# built on) not to initialize any libinput devices at all — this is also what stops
-# cage from drawing its default pointer cursor: with no seat pointer capability,
-# there's nothing to draw. CSS `cursor: none` in the page itself can't do this; that
-# only affects Chromium's own content, not the compositor layer underneath it.
-Environment=WLR_LIBINPUT_NO_DEVICES=1
-
 # --kiosk: fullscreen, no chrome. --noerrdialogs/--disable-session-crashed-bubble:
 # no "restore pages?" prompts after a power-cut reboot. --check-for-update-interval
 # set absurdly high since there's no reason a kiosk display should ever prompt to
-# update itself.
+# update itself. --ozone-platform=wayland matters more than it looks: without it,
+# Chromium doesn't reliably pick native Wayland and can end up drawing through
+# cage's built-in XWayland compatibility layer instead — which is why the page's
+# own `cursor: none` (pi-player/public/player.css) wasn't taking effect (confirmed
+# on real hardware: a visible cursor remained even with input devices disabled
+# entirely). Forcing real Wayland makes Chromium a proper client of cage's
+# compositor, so its own cursor-visibility requests are honored like any other
+# Wayland app's.
 ExecStart=/usr/bin/cage -- /usr/bin/chromium \
   --kiosk http://localhost:8088 \
+  --ozone-platform=wayland \
   --noerrdialogs \
   --disable-infobars \
   --disable-session-crashed-bubble \
