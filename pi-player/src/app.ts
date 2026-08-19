@@ -6,6 +6,7 @@ import { agentRouter } from './agent.js';
 import { getCachedState } from './poller.js';
 import { getLocalIp } from './localIp.js';
 import { loadConfig } from './config.js';
+import * as mediaCache from './mediaCache.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +21,19 @@ export function createApp() {
   app.get('/state', (_req, res) => {
     const config = loadConfig();
     const { state, error } = getCachedState();
-    res.json({ paired: config != null, ip: getLocalIp(), state, error });
+    // Points the page at locally cached media where available (see mediaCache.ts) —
+    // falls back to the hub's own URL for anything not downloaded yet, so playback
+    // never blocks waiting on a cache warm-up.
+    const resolved = state && { ...state, items: state.items.map((item) => ({ ...item, url: mediaCache.resolveUrl(item) })) };
+    res.json({ paired: config != null, ip: getLocalIp(), state: resolved, error });
+  });
+
+  // Locally cached media (see mediaCache.ts) — served alongside the hub's own URL,
+  // which /state falls back to for anything not cached yet.
+  app.get('/media/:id', (req, res) => {
+    const file = mediaCache.filePathFor(req.params.id);
+    if (!file) return res.status(404).end();
+    res.sendFile(file);
   });
 
   // Encodes this Pi's bare IP address — what the control app's "Scan QR code" pairing

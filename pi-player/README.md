@@ -44,13 +44,24 @@ IP — any of those has the hub reach the Pi directly to finish pairing.
   every ~5s once paired, keeping the last-known-good state so playback keeps
   looping through a brief network/hub outage. Exposes `/identify`, `/configure`,
   `/restart` for the hub to call directly, and a local `/state` the player page polls.
+- **Media caching** (`src/mediaCache.ts`) — every playlist item gets downloaded once
+  to `/opt/signage/cache` and served from there afterward, so steady-state playback
+  reads off the SD card instead of re-fetching from the hub over the LAN on every
+  rotation — smoother video in particular, since it's no longer subject to WiFi
+  jitter mid-playback. Downloads happen in the background after each poll; playback
+  falls back to the hub's own URL for anything not cached yet, so it never blocks.
 - **`signage-kiosk.service`** — `cage` launching Chromium in kiosk mode pointed at
   `http://localhost:8088`.
 - **The player page** (`public/`) — hard-cuts between playlist items (no crossfade):
-  images for 8s, video to its natural end, PDF pages 8s each (rendered client-side
-  with a vendored copy of `pdf.js`, not a CDN — the Pi only needs the LAN to reach
-  the hub, nothing here should require internet access). An announcement, if one's
-  turned on for this device, overlays as a ticker regardless of what's in rotation.
+  images for their configured duration (8s by default, editable per-image from the
+  control app's Schedule screen), video to its natural end, PDF pages 8s each
+  (rendered client-side with a vendored copy of `pdf.js`, not a CDN — the Pi only
+  needs the LAN to reach the hub, nothing here should require internet access). A
+  video that's the sole item in the active playlist (forced content, or a
+  playlist/event with just one video) loops natively instead of restarting via the
+  rotation logic, so it plays seamlessly with no reload between passes. An
+  announcement, if one's turned on for this device, overlays as a ticker regardless
+  of what's in rotation.
 
 ## Local development / testing (not on real Pi hardware)
 

@@ -1,5 +1,6 @@
 import { clearConfig, loadConfig } from './config.js';
 import { getLocalIp } from './localIp.js';
+import * as mediaCache from './mediaCache.js';
 import type { PlayerState } from './types.js';
 
 const POLL_INTERVAL_MS = 5000;
@@ -34,6 +35,7 @@ async function tick(): Promise<void> {
     if (!res.ok) throw new Error(`hub responded ${res.status}`);
     lastState = (await res.json()) as PlayerState;
     lastError = null;
+    mediaCache.warm(lastState.items);
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err);
     // Deliberately don't clear lastState here — keep playing the last thing we knew.
