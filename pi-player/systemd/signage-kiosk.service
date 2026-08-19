@@ -31,9 +31,20 @@ Environment=XCURSOR_PATH=/home/signage/.icons
 # Wayland client of cage instead of possibly falling back to cage's built-in
 # XWayland compatibility layer — confirmed via real hardware ps/journalctl output
 # to be honored. Doesn't affect the cursor.
+#
+# --remote-debugging-port/--remote-debugging-address: three real-hardware
+# failures in a row on video looping (native `loop` froze, an explicit
+# currentTime+play() restart paused instead of resuming, a play()-rejection
+# retry+fallback still froze) with every hypothesis so far unreproducible in
+# this project's sandbox — opens real DevTools at http://<pi-ip>:9222 from any
+# device on the LAN instead of guessing a fourth theory blind. Same LAN-trust
+# model as everything else here (no auth anywhere in this project); bound to
+# 0.0.0.0 on purpose so it's reachable from another device, not just localhost.
 ExecStart=/usr/bin/cage -- /usr/bin/chromium \
   --kiosk http://localhost:8088 \
   --ozone-platform=wayland \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=0.0.0.0 \
   --noerrdialogs \
   --disable-infobars \
   --disable-session-crashed-bubble \

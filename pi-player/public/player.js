@@ -111,35 +111,68 @@ function playItem(index) {
     video.autoplay = true;
     video.muted = true;
     video.playsInline = true;
+
+    // Diagnostics for the DevTools console (--remote-debugging-port=9222, see
+    // signage-kiosk.service) — three real-hardware fixes for video looping have
+    // failed in a row (native `loop` froze, an explicit restart paused instead
+    // of resuming, a play()-rejection retry+fallback still froze) and none of
+    // them reproduce in this project's sandbox, so surfacing exactly what the
+    // video element itself reports beats guessing a fourth theory blind.
+    const log = (msg) => console.log(`[signage video ${item.id}]`, msg, {
+      readyState: video.readyState, networkState: video.networkState,
+      paused: video.paused, currentTime: video.currentTime,
+      error: video.error && { code: video.error.code, message: video.error.message },
+    });
+    video.onerror = () => log('error event');
+    video.onstalled = () => log('stalled event');
+    video.onwaiting = () => log('waiting event');
+
     if (activeItems.length === 1) {
       // Sole item in the active list — always true for forced content, and also
       // true for any playlist/event that just happens to contain one video.
       // Restart in place instead of tearing the stage down and remounting a fresh
       // <video> on every pass via the onended->playItem path below (that's what
       // makes multi-item rotation flicker every loop on a single-video screen).
-      // Deliberately NOT the native `loop` attribute: confirmed on real hardware
-      // (Pi 3B+) that it can freeze on the last frame instead of restarting —
-      // likely a hardware-video-decode interaction, not something fixable from
-      // here — so this drives the restart explicitly instead of trusting it.
+      // Deliberately NOT the native `loop` attribute — froze on the last frame
+      // instead of restarting on real hardware.
       //
-      // play() returns a promise that can reject (also confirmed as a real
-      // failure mode on this hardware — the video going silent/paused instead of
-      // restarting) — retry a few times with a short delay, and if it still
-      // won't come back, fall back to the same full teardown+remount path
-      // multi-item rotation already uses below. That path has never been
-      // reported broken, even though it means a visible reload here instead of
-      // a seamless restart.
+      // Two layers of recovery, since a rejected play() promise turned out not
+      // to be the only real-hardware failure mode: (1) retry a rejected play()
+      // a few times with a short delay: (2) a watchdog that checks — regardless
+      // of whether play() ever rejected — that currentTime actually advanced
+      // shortly after restarting, since play() can resolve successfully while
+      // the video still doesn't visually progress. Either layer failing enough
+      // times falls back to the same full teardown+remount path multi-item
+      // rotation already uses, which has never been reported broken, even
+      // though it means a visible reload instead of a seamless restart.
+      // Bumped on every restartVideo call so a stale watchdog from an earlier
+      // attempt can tell it's been superseded and no-op instead of misreading a
+      // legitimate newer restart's fresh currentTime=0 as its own attempt having
+      // stalled — a real false positive this hit in testing with a short clip
+      // that naturally loops again before the previous watchdog's timer fires.
+      let restartToken = 0;
       const restartVideo = (attempt) => {
         if (myGeneration !== generation) return;
+        const myToken = ++restartToken;
+        log(`restarting, attempt ${attempt}`);
         video.currentTime = 0;
         const played = video.play();
         if (played && typeof played.catch === 'function') {
           played.catch(() => {
-            if (myGeneration !== generation) return;
+            if (myGeneration !== generation || myToken !== restartToken) return;
+            log(`play() rejected, attempt ${attempt}`);
             if (attempt < 3) setTimeout(() => restartVideo(attempt + 1), 300);
-            else playItem(currentIndex);
+            else { log('giving up after 3 rejected play() attempts, falling back to remount'); playItem(currentIndex); }
           });
         }
+        setTimeout(() => {
+          if (myGeneration !== generation || myToken !== restartToken) return;
+          if (video.paused || video.currentTime < 0.1) {
+            log(`stalled after restart (attempt ${attempt}) despite play() not rejecting`);
+            if (attempt < 3) restartVideo(attempt + 1);
+            else { log('giving up after 3 stalled attempts, falling back to remount'); playItem(currentIndex); }
+          }
+        }, 2000);
       };
       video.onended = () => restartVideo(0);
     } else {
