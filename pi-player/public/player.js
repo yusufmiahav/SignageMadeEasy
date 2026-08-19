@@ -121,11 +121,27 @@ function playItem(index) {
       // (Pi 3B+) that it can freeze on the last frame instead of restarting —
       // likely a hardware-video-decode interaction, not something fixable from
       // here — so this drives the restart explicitly instead of trusting it.
-      video.onended = () => {
+      //
+      // play() returns a promise that can reject (also confirmed as a real
+      // failure mode on this hardware — the video going silent/paused instead of
+      // restarting) — retry a few times with a short delay, and if it still
+      // won't come back, fall back to the same full teardown+remount path
+      // multi-item rotation already uses below. That path has never been
+      // reported broken, even though it means a visible reload here instead of
+      // a seamless restart.
+      const restartVideo = (attempt) => {
         if (myGeneration !== generation) return;
         video.currentTime = 0;
-        void video.play();
+        const played = video.play();
+        if (played && typeof played.catch === 'function') {
+          played.catch(() => {
+            if (myGeneration !== generation) return;
+            if (attempt < 3) setTimeout(() => restartVideo(attempt + 1), 300);
+            else playItem(currentIndex);
+          });
+        }
       };
+      video.onended = () => restartVideo(0);
     } else {
       video.onended = () => {
         if (myGeneration !== generation) return;
