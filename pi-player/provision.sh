@@ -80,7 +80,14 @@ rsync -a --delete \
 cd "$APP_DIR"
 npm install
 npm run build
-chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$INSTALL_DIR"
+# Non-recursive on $INSTALL_DIR: it also contains src/, the git checkout used to
+# pull updates on every re-run (see "Fetching SignageMadeEasy" above). Recursively
+# chowning it away from root broke that pull on the second run onward — root
+# running `git pull` on a repo it no longer owns trips git's dubious-ownership
+# check and the whole script (set -euo pipefail) died right there, silently
+# skipping every step after it, including reinstalling the systemd units.
+chown "$SIGNAGE_USER:$SIGNAGE_USER" "$INSTALL_DIR"
+chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$APP_DIR"
 
 # ---------------------------------------------------------------------------
 log "Installing systemd units"
