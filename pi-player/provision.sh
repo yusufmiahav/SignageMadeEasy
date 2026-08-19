@@ -31,7 +31,34 @@ log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  cage curl ca-certificates git rsync ydotool ydotoold
+  cage curl ca-certificates git rsync
+
+# ydotool/ydotoold (used to warp the cursor off-screen — see signage-kiosk.service)
+# aren't in every release's default repo — e.g. Raspberry Pi OS Trixie only has
+# them in trixie-backports. Best-effort and isolated from the required packages
+# above on purpose: this failing must never take the rest of provisioning down
+# with it (that's exactly what happened before this was split out — one missing
+# package killed the whole script via set -euo pipefail before it ever reached
+# anything else, the same failure mode as the earlier git-ownership bug).
+HAVE_YDOTOOL=0
+if apt-get install -y --no-install-recommends ydotool ydotoold 2>/dev/null; then
+  HAVE_YDOTOOL=1
+elif [[ -f /etc/os-release ]] && grep -q '^VERSION_CODENAME=trixie' /etc/os-release; then
+  BACKPORTS_LIST=/etc/apt/sources.list.d/trixie-backports.list
+  if [[ ! -f "$BACKPORTS_LIST" ]]; then
+    echo "deb http://deb.debian.org/debian trixie-backports main" > "$BACKPORTS_LIST"
+  fi
+  # Pinned to trixie-backports specifically (-t) so this doesn't pull anything
+  # else up from backports as a side effect — only touches these two packages.
+  if apt-get update 2>/dev/null && \
+     apt-get install -y --no-install-recommends -t trixie-backports ydotool ydotoold 2>/dev/null; then
+    HAVE_YDOTOOL=1
+  fi
+fi
+if [[ "$HAVE_YDOTOOL" -eq 0 ]]; then
+  echo "ydotool/ydotoold not available — skipping the cursor off-screen warp (the" >&2
+  echo "other cursor attempts, XCURSOR_THEME/XCURSOR_SIZE, still apply)." >&2
+fi
 
 # Package name for Chromium differs across Raspberry Pi OS releases.
 if apt-cache show chromium >/dev/null 2>&1; then
@@ -117,12 +144,15 @@ chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$SIGNAGE_HOME/.icons"
 # ---------------------------------------------------------------------------
 log "Installing systemd units"
 cp "$APP_DIR/systemd/signage-player.service" /etc/systemd/system/
-cp "$APP_DIR/systemd/ydotoold.service" /etc/systemd/system/
 sed "s#/usr/bin/chromium#${CHROMIUM_BIN}#" "$APP_DIR/systemd/signage-kiosk.service" \
   > /etc/systemd/system/signage-kiosk.service
 systemctl daemon-reload
 systemctl enable --now signage-player.service
-systemctl enable --now ydotoold.service
+if [[ "$HAVE_YDOTOOL" -eq 1 ]]; then
+  cp "$APP_DIR/systemd/ydotoold.service" /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable --now ydotoold.service
+fi
 systemctl enable signage-kiosk.service
 
 # ---------------------------------------------------------------------------
