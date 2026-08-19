@@ -113,12 +113,19 @@ function playItem(index) {
     video.playsInline = true;
     if (activeItems.length === 1) {
       // Sole item in the active list — always true for forced content, and also
-      // true for any playlist/event that just happens to contain one video. Loop
-      // natively instead of tearing the stage down and remounting a fresh <video>
-      // on every pass via the onended->playItem path below: native looping just
-      // seeks back to 0 with no reload, which is what actually makes a single-video
-      // screen play smoothly instead of flickering every loop.
-      video.loop = true;
+      // true for any playlist/event that just happens to contain one video.
+      // Restart in place instead of tearing the stage down and remounting a fresh
+      // <video> on every pass via the onended->playItem path below (that's what
+      // makes multi-item rotation flicker every loop on a single-video screen).
+      // Deliberately NOT the native `loop` attribute: confirmed on real hardware
+      // (Pi 3B+) that it can freeze on the last frame instead of restarting —
+      // likely a hardware-video-decode interaction, not something fixable from
+      // here — so this drives the restart explicitly instead of trusting it.
+      video.onended = () => {
+        if (myGeneration !== generation) return;
+        video.currentTime = 0;
+        void video.play();
+      };
     } else {
       video.onended = () => {
         if (myGeneration !== generation) return;
