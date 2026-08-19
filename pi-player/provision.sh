@@ -90,6 +90,28 @@ chown "$SIGNAGE_USER:$SIGNAGE_USER" "$INSTALL_DIR"
 chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$APP_DIR"
 
 # ---------------------------------------------------------------------------
+log "Installing a blank cursor theme"
+# cage always draws *a* cursor — its own maintainers have said hiding it outright
+# isn't something they intend to support (github.com/cage-kiosk/cage/issues/299,
+# /issues/422). What cage does document and actually honor is XCURSOR_THEME (see
+# its man page): the cursor it draws is just a normal Xcursor theme lookup, so
+# pointing that at a fully transparent one makes it invisible without needing
+# cage to cooperate on hiding anything. This replaced two earlier, wrong theories
+# tried on real hardware: disabling libinput devices entirely (didn't stop the
+# cursor being drawn — that's not what governs it) and forcing native Wayland via
+# --ozone-platform=wayland (a real, separate fix worth keeping, but not this one).
+SIGNAGE_HOME="$(getent passwd "$SIGNAGE_USER" | cut -d: -f6)"
+CURSOR_DIR="$SIGNAGE_HOME/.icons/blank/cursors"
+mkdir -p "$CURSOR_DIR"
+cp "$APP_DIR/assets/blank-cursor" "$CURSOR_DIR/left_ptr"
+ln -sf left_ptr "$CURSOR_DIR/default"
+cat > "$SIGNAGE_HOME/.icons/blank/index.theme" <<'EOF'
+[Icon Theme]
+Name=blank
+EOF
+chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$SIGNAGE_HOME/.icons"
+
+# ---------------------------------------------------------------------------
 log "Installing systemd units"
 cp "$APP_DIR/systemd/signage-player.service" /etc/systemd/system/
 sed "s#/usr/bin/chromium#${CHROMIUM_BIN}#" "$APP_DIR/systemd/signage-kiosk.service" \
