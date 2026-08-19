@@ -111,11 +111,21 @@ function playItem(index) {
     video.autoplay = true;
     video.muted = true;
     video.playsInline = true;
-    video.onended = () => {
-      if (myGeneration !== generation) return;
-      currentIndex = (currentIndex + 1) % activeItems.length;
-      playItem(currentIndex);
-    };
+    if (activeItems.length === 1) {
+      // Sole item in the active list — always true for forced content, and also
+      // true for any playlist/event that just happens to contain one video. Loop
+      // natively instead of tearing the stage down and remounting a fresh <video>
+      // on every pass via the onended->playItem path below: native looping just
+      // seeks back to 0 with no reload, which is what actually makes a single-video
+      // screen play smoothly instead of flickering every loop.
+      video.loop = true;
+    } else {
+      video.onended = () => {
+        if (myGeneration !== generation) return;
+        currentIndex = (currentIndex + 1) % activeItems.length;
+        playItem(currentIndex);
+      };
+    }
     stage.appendChild(video);
   } else if (item.type === 'pdf') {
     void playPdf(item, myGeneration);
