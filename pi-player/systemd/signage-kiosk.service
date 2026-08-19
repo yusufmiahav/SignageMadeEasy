@@ -57,7 +57,12 @@ ExecStart=/usr/bin/cage -- /usr/bin/chromium \
 # position to the output's bounds, landing it in the bottom-right corner
 # regardless of actual resolution. Not verified end-to-end — this project's
 # sandbox has no /dev/uinput to test synthetic input against.
-ExecStartPost=/bin/sh -c 'sleep 3; YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool mousemove -- 10000 10000'
+# `|| true`: this must never be able to fail the unit. A failed ExecStartPost
+# marks Type=simple services as failed too, and with Restart=always that would
+# crash-loop the whole kiosk — killing a working cage/Chromium — over nothing
+# worse than ydotool being unavailable (provision.sh installs it best-effort;
+# not every release has it in its default repo).
+ExecStartPost=/bin/sh -c 'sleep 3; YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool mousemove -- 10000 10000 || true'
 
 Restart=always
 RestartSec=2
