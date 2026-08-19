@@ -11,13 +11,14 @@ function uid(prefix: string): string {
 // ---- Library ----
 
 interface LibraryRow {
-  id: string; name: string; type: LibraryItem['type']; size: string | null; duration: string | null; thumb: string | null; text: string | null; pageCount: number | null;
+  id: string; name: string; type: LibraryItem['type']; size: string | null; duration: string | null; durationSec: number | null; thumb: string | null; text: string | null; pageCount: number | null;
 }
 
 function rowToLibraryItem(r: LibraryRow): LibraryItem {
   const item: LibraryItem = { id: r.id, name: r.name, type: r.type };
   if (r.size != null) item.size = r.size;
   if (r.duration != null) item.duration = r.duration;
+  if (r.durationSec != null) item.durationSec = r.durationSec;
   if (r.thumb != null) item.thumb = r.thumb;
   if (r.text != null) item.text = r.text;
   if (r.pageCount != null) item.pageCount = r.pageCount;
@@ -25,7 +26,7 @@ function rowToLibraryItem(r: LibraryRow): LibraryItem {
 }
 
 export function listLibrary(): LibraryItem[] {
-  const rows = db.prepare('SELECT id, name, type, size, duration, thumb, text, pageCount FROM library ORDER BY createdAt ASC').all() as LibraryRow[];
+  const rows = db.prepare('SELECT id, name, type, size, duration, durationSec, thumb, text, pageCount FROM library ORDER BY createdAt ASC').all() as LibraryRow[];
   return rows.map(rowToLibraryItem);
 }
 
@@ -60,6 +61,10 @@ export function removeLibraryItem(id: string): void {
   }
   db.prepare('UPDATE devices SET announcementId = NULL, announcementOn = 0 WHERE announcementId = ?').run(id);
   db.prepare('DELETE FROM library WHERE id = ?').run(id);
+}
+
+export function setImageDuration(id: string, durationSec: number): void {
+  db.prepare("UPDATE library SET durationSec = ? WHERE id = ? AND type = 'image'").run(durationSec, id);
 }
 
 // ---- Groups ----
@@ -247,7 +252,7 @@ export function getPlayerState(deviceId: string): PlayerState | null {
       id: item.id,
       type: item.type,
       url: item.thumb ?? '',
-      duration: item.type === 'video' ? null : 8,
+      duration: item.type === 'video' ? null : item.type === 'image' ? (item.durationSec ?? 8) : 8,
       ...(item.type === 'pdf' && { pageCount: item.pageCount ?? 1 }),
     }));
 

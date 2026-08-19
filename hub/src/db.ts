@@ -20,6 +20,7 @@ db.exec(`
     type TEXT NOT NULL,
     size TEXT,
     duration TEXT,
+    durationSec INTEGER,
     thumb TEXT,
     text TEXT,
     pageCount INTEGER,
@@ -52,5 +53,11 @@ db.exec(`
     lastSeenAt INTEGER
   );
 `);
+
+// Migration for hubs deployed before durationSec existed: CREATE TABLE IF NOT EXISTS
+// above is a no-op on an existing database, so the column has to be added separately.
+const hasDurationSec = (db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some((c) => c.name === 'durationSec');
+if (!hasDurationSec) db.exec('ALTER TABLE library ADD COLUMN durationSec INTEGER');
+
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.
