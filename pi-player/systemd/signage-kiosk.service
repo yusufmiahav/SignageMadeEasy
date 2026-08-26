@@ -1,5 +1,5 @@
 [Unit]
-Description=SignageMadeEasy kiosk display (cage + Chromium)
+Description=SignageMadeEasy kiosk display (labwc + Chromium)
 After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service ydotoold.service
 Wants=signage-player.service ydotoold.service
 Conflicts=getty@tty1.service
@@ -13,81 +13,34 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
-# Two independent, stackable attempts at the visible-cursor problem (see the
-# ExecStartPost comment below for a third). XCURSOR_SIZE=0 on its own is
-# untested — it might render nothing, or it might just get clamped to some
-# default size — cheap enough to try alongside everything else regardless.
-# XCURSOR_THEME=blank was already confirmed (via /proc/<pid>/environ) to
-# actually reach cage's process; the theme itself is a genuinely transparent
-# cursor built by provision.sh, not a hidden/removed one.
-Environment=XCURSOR_THEME=blank
+# Cheap, zero-cost defensive layer stacked alongside labwc's own HideCursor action
+# (see ~/.config/labwc/rc.xml) — if the F13 keybind that triggers HideCursor ever
+# fails to fire (ydotool/ydotoold unavailable, a labwc version too old to support
+# the action — see rc.xml's comment), this at least clamps whatever cursor labwc
+# falls back to drawing down to zero size, instead of the fully-untreated default.
 Environment=XCURSOR_SIZE=0
-Environment=XCURSOR_PATH=/home/signage/.icons
 
-# --kiosk: fullscreen, no chrome. --noerrdialogs/--disable-session-crashed-bubble:
-# no "restore pages?" prompts after a power-cut reboot. --check-for-update-interval
-# set absurdly high since there's no reason a kiosk display should ever prompt to
-# update itself. --ozone-platform=wayland forces Chromium to run as a genuine
-# Wayland client of cage instead of possibly falling back to cage's built-in
-# XWayland compatibility layer — confirmed via real hardware ps/journalctl output
-# to be honored. Doesn't affect the cursor.
+# Fifth attempt at the visible-cursor problem cage never solved: five independent,
+# real-hardware-tested approaches on cage all failed (disabling input devices,
+# forcing native Wayland, a transparent Xcursor theme confirmed reaching cage's
+# process via /proc/<pid>/environ, XCURSOR_SIZE=0 alone, and a synthetic
+# off-screen ydotool warp confirmed actually executing) — cage's own maintainers
+# have said hiding its cursor outright isn't something they intend to support.
+# labwc is a different wlroots-based compositor with a real, documented
+# HideCursor action (see rc.xml) — genuinely hides the pointer, not a theme/size
+# trick. NOT verified on real hardware yet; the version-compatibility risk is
+# real too (HideCursor needs labwc >=0.8.4 — the exact version this Pi's
+# Raspberry Pi OS Trixie/armhf repo ships hasn't been confirmed from this
+# sandbox) — see ~/.config/labwc/rc.xml and ~/.config/labwc/autostart for how
+# it's actually triggered.
 #
-# --remote-debugging-port/--remote-debugging-address: three real-hardware
-# failures in a row on video looping (native `loop` froze, an explicit
-# currentTime+play() restart paused instead of resuming, a play()-rejection
-# retry+fallback still froze) with every hypothesis so far unreproducible in
-# this project's sandbox — opens real DevTools at http://<pi-ip>:9222 from any
-# device on the LAN instead of guessing a fourth theory blind. Same LAN-trust
-# model as everything else here (no auth anywhere in this project); bound to
-# 0.0.0.0 on purpose so it's reachable from another device, not just localhost.
-#
-# --disable-accelerated-video-decode: diagnosed via the remote DevTools console
-# above on real hardware — a long (2min+) video reliably stalls with
-# networkState idle and readyState stuck at "have current data", at the exact
-# same point every time, with the fully-intact cached file confirmed
-# byte-identical to the original (ruling out a truncated download) and zero
-# new kernel dmesg entries at the moment of the freeze (ruling out an OOM
-# kill or a kernel-level GPU driver reset). That combination points at
-# Chromium's own hardware video decode pipeline (VideoCore GPU via V4L2)
-# silently hanging partway through, which is a known rough edge on this
-# platform — not something fixable from the page's JavaScript. Forcing
-# software decode trades CPU load for using Chromium's far more mature,
-# battle-tested decode path instead.
-ExecStart=/usr/bin/cage -- /usr/bin/chromium \
-  --kiosk http://localhost:8088 \
-  --ozone-platform=wayland \
-  --disable-accelerated-video-decode \
-  --remote-debugging-port=9222 \
-  --remote-debugging-address=0.0.0.0 \
-  --noerrdialogs \
-  --disable-infobars \
-  --disable-session-crashed-bubble \
-  --disable-translate \
-  --no-first-run \
-  --check-for-update-interval=31536000 \
-  --overscroll-history-navigation=0 \
-  --autoplay-policy=no-user-gesture-required
-
-# Third, independent attempt at the visible-cursor problem: cage always draws a
-# cursor with no way to suppress it, and its own maintainers have said outright
-# hiding isn't something they intend to support — disabling input devices entirely
-# and a fully transparent XCURSOR_THEME (env-var-confirmed reaching cage's process)
-# both failed on real hardware anyway, for reasons not diagnosable further from
-# here. Sidestepping "make it invisible" entirely: warp it off-screen instead, via
-# a synthetic input device (ydotoold/ydotool — see provision.sh) that's
-# indistinguishable from a real mouse at the kernel level, so it works regardless
-# of what cage's own cursor-rendering does or doesn't honor. The sleep gives cage a
-# moment to finish initializing its seat/backend before a synthetic pointer event
-# can reach it; the large relative delta relies on wlroots clamping cursor
-# position to the output's bounds, landing it in the bottom-right corner
-# regardless of actual resolution. Not verified end-to-end — this project's
-# sandbox has no /dev/uinput to test synthetic input against.
-# `|| true`: this must never be able to fail the unit. A failed ExecStartPost
-# marks Type=simple services as failed too, and with Restart=always that would
-# crash-loop the whole kiosk — killing a working cage/Chromium — over nothing
-# worse than ydotool being unavailable (provision.sh installs it best-effort;
-# not every release has it in its default repo).
-ExecStartPost=/bin/sh -c 'sleep 3; YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool mousemove -- 10000 10000 || true'
+# Unlike cage (which exits the moment its one child app exits), labwc is a
+# general-purpose compositor that keeps running with no windows if Chromium
+# crashes — so ~/.config/labwc/autostart kills labwc itself once Chromium exits,
+# which brings this whole ExecStart process down and lets Restart=always below
+# relaunch the entire labwc+Chromium session together, matching cage's original
+# crash-recovery behavior.
+ExecStart=/usr/bin/labwc
 
 Restart=always
 RestartSec=2

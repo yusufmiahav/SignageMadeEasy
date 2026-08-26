@@ -31,11 +31,12 @@ log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  cage curl ca-certificates git rsync
+  labwc curl ca-certificates git rsync
 
-# ydotool/ydotoold (used to warp the cursor off-screen — see signage-kiosk.service)
-# aren't in every release's default repo — e.g. Raspberry Pi OS Trixie only has
-# them in trixie-backports. Best-effort and isolated from the required packages
+# ydotool/ydotoold (used to trigger labwc's HideCursor keybind at startup — see
+# pi-player/labwc/autostart and rc.xml) aren't in every release's default repo —
+# e.g. Raspberry Pi OS Trixie only has them in trixie-backports. Best-effort and
+# isolated from the required packages
 # above on purpose: this failing must never take the rest of provisioning down
 # with it (that's exactly what happened before this was split out — one missing
 # package killed the whole script via set -euo pipefail before it ever reached
@@ -69,8 +70,9 @@ elif [[ -f /etc/os-release ]] && grep -q '^VERSION_CODENAME=trixie' /etc/os-rele
   fi
 fi
 if [[ "$HAVE_YDOTOOL" -eq 0 ]]; then
-  echo "ydotool/ydotoold not available — skipping the cursor off-screen warp (the" >&2
-  echo "other cursor attempts, XCURSOR_THEME/XCURSOR_SIZE, still apply)." >&2
+  echo "ydotool/ydotoold not available — labwc's HideCursor keybind won't be" >&2
+  echo "triggered, so the cursor will stay visible (XCURSOR_SIZE=0 still applies" >&2
+  echo "as a fallback — see signage-kiosk.service)." >&2
 fi
 
 # Package name for Chromium differs across Raspberry Pi OS releases.
@@ -130,35 +132,23 @@ chown "$SIGNAGE_USER:$SIGNAGE_USER" "$INSTALL_DIR"
 chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$APP_DIR"
 
 # ---------------------------------------------------------------------------
-log "Installing a blank cursor theme"
-# One of three independent, stacked attempts at cage's visible-cursor problem —
-# see pi-player/systemd/signage-kiosk.service for the other two (XCURSOR_SIZE=0,
-# and warping the cursor off-screen via ydotool). cage always draws *a* cursor —
-# its own maintainers have said hiding it outright isn't something they intend to
-# support (github.com/cage-kiosk/cage/issues/299, /issues/422) — but it does
-# document and (per /proc/<pid>/environ on real hardware) actually receive
-# XCURSOR_THEME: the cursor it draws is just a normal Xcursor theme lookup, so
-# pointing that at a fully transparent one is worth doing regardless of whether it
-# alone is sufficient. Two earlier, disproven theories aren't part of this
-# anymore: disabling libinput devices entirely (didn't stop the cursor being
-# drawn) and relying on --ozone-platform=wayland to fix it (a real, separate
-# rendering-correctness fix worth keeping, but never actually about the cursor).
+log "Installing labwc config (kiosk autostart + cursor-hide keybind)"
+# Replaces the old cage blank-cursor-theme workaround entirely — labwc has a
+# real HideCursor action (see pi-player/labwc/rc.xml for why it's wired the
+# way it is, and the real version-compatibility caveat).
 SIGNAGE_HOME="$(getent passwd "$SIGNAGE_USER" | cut -d: -f6)"
-CURSOR_DIR="$SIGNAGE_HOME/.icons/blank/cursors"
-mkdir -p "$CURSOR_DIR"
-cp "$APP_DIR/assets/blank-cursor" "$CURSOR_DIR/left_ptr"
-ln -sf left_ptr "$CURSOR_DIR/default"
-cat > "$SIGNAGE_HOME/.icons/blank/index.theme" <<'EOF'
-[Icon Theme]
-Name=blank
-EOF
-chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$SIGNAGE_HOME/.icons"
+LABWC_CONFIG_DIR="$SIGNAGE_HOME/.config/labwc"
+mkdir -p "$LABWC_CONFIG_DIR"
+cp "$APP_DIR/labwc/rc.xml" "$LABWC_CONFIG_DIR/rc.xml"
+sed "s#/usr/bin/chromium#${CHROMIUM_BIN}#" "$APP_DIR/labwc/autostart" \
+  > "$LABWC_CONFIG_DIR/autostart"
+chmod +x "$LABWC_CONFIG_DIR/autostart"
+chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$SIGNAGE_HOME/.config"
 
 # ---------------------------------------------------------------------------
 log "Installing systemd units"
 cp "$APP_DIR/systemd/signage-player.service" /etc/systemd/system/
-sed "s#/usr/bin/chromium#${CHROMIUM_BIN}#" "$APP_DIR/systemd/signage-kiosk.service" \
-  > /etc/systemd/system/signage-kiosk.service
+cp "$APP_DIR/systemd/signage-kiosk.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now signage-player.service
 if [[ "$HAVE_YDOTOOL" -eq 1 ]]; then

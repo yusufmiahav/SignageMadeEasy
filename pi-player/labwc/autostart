@@ -1,0 +1,69 @@
+#!/bin/sh
+# SignageMadeEasy kiosk labwc autostart — installed by provision.sh to
+# ~/.config/labwc/autostart (chmod +x'd there; /usr/bin/chromium below is
+# sed-patched to the real detected Chromium binary path — see provision.sh,
+# the package is named differently across Raspberry Pi OS releases).
+set -u
+
+# Trigger the F13 keybind (see rc.xml) that hides+warps the cursor, once labwc
+# has had a moment to finish initializing its seat/backend. Best-effort:
+# `|| true` because a missing ydotoold (provision.sh installs it best-effort —
+# not every release has ydotool/ydotoold in its default repo) must never break
+# kiosk startup — XCURSOR_SIZE=0 in signage-kiosk.service is the fallback if
+# this doesn't fire.
+(
+  sleep 2
+  YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool key 183:1 183:0 || true
+) &
+
+# --kiosk: fullscreen, no chrome. --noerrdialogs/--disable-session-crashed-bubble:
+# no "restore pages?" prompts after a power-cut reboot. --check-for-update-interval
+# set absurdly high since there's no reason a kiosk display should ever prompt to
+# update itself. --ozone-platform=wayland forces Chromium to run as a genuine
+# Wayland client instead of falling back to an XWayland compatibility layer.
+#
+# --remote-debugging-port/--remote-debugging-address: opens real DevTools at
+# http://<pi-ip>:9222 from any device on the LAN — used to diagnose real
+# on-device video playback issues that never reproduced in a sandbox. Same
+# LAN-trust model as everything else here (no auth anywhere in this project);
+# bound to 0.0.0.0 on purpose. Chromium itself still only binds the DevTools
+# socket to 127.0.0.1 regardless of this flag (a hardening behavior, confirmed
+# on real hardware) — reach it via `ssh -L 9222:localhost:9222 pi@<ip>` +
+# chrome://inspect, not this flag alone.
+#
+# --disable-accelerated-video-decode: diagnosed via that remote DevTools console
+# on real hardware — a long (2min+) video reliably stalled with networkState
+# idle and readyState stuck at "have current data", at the exact same point
+# every time, with the cached file confirmed byte-identical to the original
+# (ruling out a truncated download) and zero new kernel dmesg entries at the
+# moment of the freeze (ruling out an OOM kill or a kernel-level GPU driver
+# reset). That combination points at Chromium's own hardware video decode
+# pipeline (VideoCore GPU via V4L2) silently hanging partway through — a known
+# rough edge on this platform, not something fixable from the page's
+# JavaScript. Forcing software decode trades CPU load (confirmed choppier on
+# real hardware) for Chromium's far more mature, battle-tested decode path.
+#
+# Runs in the foreground on purpose: unlike cage (which exited the moment its
+# one child app closed), labwc is a general-purpose compositor that keeps
+# running with no windows if Chromium crashes. Falling through to `pkill -x
+# labwc` once Chromium exits (for any reason — crash, power-cut recovery)
+# brings labwc itself down, which brings the whole ExecStart process down and
+# lets systemd's Restart=always (see signage-kiosk.service) relaunch the
+# entire labwc+Chromium session together — the same crash-recovery behavior
+# cage had built in.
+/usr/bin/chromium \
+  --kiosk http://localhost:8088 \
+  --ozone-platform=wayland \
+  --disable-accelerated-video-decode \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=0.0.0.0 \
+  --noerrdialogs \
+  --disable-infobars \
+  --disable-session-crashed-bubble \
+  --disable-translate \
+  --no-first-run \
+  --check-for-update-interval=31536000 \
+  --overscroll-history-navigation=0 \
+  --autoplay-policy=no-user-gesture-required
+
+pkill -x labwc 2>/dev/null || true

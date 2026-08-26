@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<!--
+  SignageMadeEasy kiosk labwc config — installed by provision.sh to
+  ~/.config/labwc/rc.xml (the signage user's labwc config, not the system-wide
+  /etc/xdg/labwc/rc.xml default).
+
+  This exists for exactly one reason: labwc's HideCursor action, which cage (the
+  compositor this replaced) never had any working equivalent for after five
+  separate real-hardware-tested attempts — see signage-kiosk.service. There's no
+  "hide the cursor automatically on startup" config in labwc itself, so the
+  documented pattern (see labwc's own GitHub discussion #3190, "Automatically
+  hide cursor and fullscreen app on startup in Labwc") is to bind it to a
+  keybind and fire that keybind synthetically once at startup. F13 is used
+  because it's a key that doesn't exist on any real keyboard likely to be
+  attached to this kiosk device, so nothing else can ever trigger it by
+  accident. ~/.config/labwc/autostart fires it via `ydotool key 183:1 183:0`
+  (183 is F13's raw Linux input event keycode, KEY_F13 in input-event-codes.h —
+  ydotool takes raw keycodes, not key names).
+
+  WarpCursor is stacked with HideCursor per labwc's own docs: "Use together
+  with the WarpCursor action to not just hide the cursor but to additionally
+  move it away to prevent e.g. hover effects." Moving it doesn't matter much
+  here (this kiosk has no real pointer device — confirmed via `lsusb` showing
+  nothing attached — so nothing will make the cursor reappear per labwc's own
+  caveat that it "becomes visible again on following pointer/stylus/touchpad
+  actions"), but it's free to include.
+
+  UNVERIFIED: HideCursor was added in labwc 0.8.4. The exact labwc version
+  Raspberry Pi OS Trixie/armhf ships has not been confirmed from this sandbox
+  (this repo could only install/inspect labwc 0.7.1 on Ubuntu, which predates
+  HideCursor entirely). If the installed labwc is older, this action is
+  silently unknown to it and the cursor stays visible — XCURSOR_SIZE=0 in
+  signage-kiosk.service is the fallback for exactly that case.
+-->
+<labwc_config>
+  <keyboard>
+    <keybind key="F13">
+      <action name="HideCursor" />
+      <action name="WarpCursor" to="output" x="center" y="center" />
+    </keybind>
+  </keyboard>
+  <!-- Chromium runs kiosk-mode fullscreen (its own fullscreen request) as the
+       only app this device ever runs — no server-drawn title bar/borders
+       should ever be visible, but this closes the gap for whatever brief
+       moment exists before Chromium's fullscreen request takes effect. -->
+  <windowRules>
+    <windowRule identifier="*" serverDecoration="no" />
+  </windowRules>
+</labwc_config>

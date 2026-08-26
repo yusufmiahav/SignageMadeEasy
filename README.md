@@ -82,8 +82,14 @@ file, then reboot. You can check which target a unit is pulled in by with
 the signature of this specific issue.
 
 **A visible mouse cursor sits in the middle of an otherwise-working kiosk display.**
-Fixed by disabling libinput device discovery in the kiosk's systemd unit
-(`WLR_LIBINPUT_NO_DEVICES=1`) — re-run `provision.sh` and reboot to pick it up.
+The kiosk display session is `labwc` (a Wayland compositor), configured to hide and
+warp the cursor away at startup (`pi-player/labwc/rc.xml`/`autostart`) — an earlier
+compositor (`cage`) never had a working way to do this at all. Re-run `provision.sh`
+and reboot to pick it up. If it's still visible afterward, check `journalctl -u
+ydotoold.service` and `journalctl -u signage-kiosk.service` — the hide/warp is
+triggered via a synthetic keypress (`ydotool`), which needs `ydotoold` running; if
+that package wasn't available on your Pi's OS release, `provision.sh` logs a warning
+and skips it, in which case the cursor stays visible (a cosmetic issue only).
 
 **Deleting a screen in the control app doesn't disconnect it / the Pi still shows
 "connected".** Fixed in the hub/Pi-player pairing logic — the hub now pushes an
@@ -139,7 +145,7 @@ SIGNAGE_CONFIG_PATH=./dev-config.json PORT=8088 npm run dev
 - **Hub**: Node + Express + `better-sqlite3` + `multer`, single Docker image also
   serving the control app's static build.
 - **Pi player**: Node + Express agent/poller, plain HTML/CSS/JS kiosk page (no
-  bundler), `cage` + Chromium for the actual kiosk display session.
+  bundler), `labwc` + Chromium for the actual kiosk display session.
 
 ## Architecture
 
