@@ -40,9 +40,23 @@ Environment=XCURSOR_PATH=/home/signage/.icons
 # device on the LAN instead of guessing a fourth theory blind. Same LAN-trust
 # model as everything else here (no auth anywhere in this project); bound to
 # 0.0.0.0 on purpose so it's reachable from another device, not just localhost.
+#
+# --disable-accelerated-video-decode: diagnosed via the remote DevTools console
+# above on real hardware — a long (2min+) video reliably stalls with
+# networkState idle and readyState stuck at "have current data", at the exact
+# same point every time, with the fully-intact cached file confirmed
+# byte-identical to the original (ruling out a truncated download) and zero
+# new kernel dmesg entries at the moment of the freeze (ruling out an OOM
+# kill or a kernel-level GPU driver reset). That combination points at
+# Chromium's own hardware video decode pipeline (VideoCore GPU via V4L2)
+# silently hanging partway through, which is a known rough edge on this
+# platform — not something fixable from the page's JavaScript. Forcing
+# software decode trades CPU load for using Chromium's far more mature,
+# battle-tested decode path instead.
 ExecStart=/usr/bin/cage -- /usr/bin/chromium \
   --kiosk http://localhost:8088 \
   --ozone-platform=wayland \
+  --disable-accelerated-video-decode \
   --remote-debugging-port=9222 \
   --remote-debugging-address=0.0.0.0 \
   --noerrdialogs \
