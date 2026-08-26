@@ -40,8 +40,21 @@ apt-get install -y --no-install-recommends \
 # with it (that's exactly what happened before this was split out — one missing
 # package killed the whole script via set -euo pipefail before it ever reached
 # anything else, the same failure mode as the earlier git-ownership bug).
+#
+# Package name varies by architecture too, confirmed on real hardware: on
+# Raspberry Pi OS's 32-bit (armhf) build, `ydotoold` isn't an installable
+# package at all — `ydotool` alone bundles both the client and the daemon —
+# whereas other architectures split them into two separate packages. Try the
+# two-package form first, fall back to the single-package form, and verify
+# with the actual binary rather than trusting either apt-get call's exit code
+# alone, since apt-get can succeed while still not providing what we need.
+try_install_ydotool() {
+  apt-get install -y --no-install-recommends "$@" ydotool ydotoold 2>/dev/null || \
+  apt-get install -y --no-install-recommends "$@" ydotool 2>/dev/null
+}
+
 HAVE_YDOTOOL=0
-if apt-get install -y --no-install-recommends ydotool ydotoold 2>/dev/null; then
+if try_install_ydotool && command -v ydotoold >/dev/null 2>&1; then
   HAVE_YDOTOOL=1
 elif [[ -f /etc/os-release ]] && grep -q '^VERSION_CODENAME=trixie' /etc/os-release; then
   BACKPORTS_LIST=/etc/apt/sources.list.d/trixie-backports.list
@@ -51,7 +64,7 @@ elif [[ -f /etc/os-release ]] && grep -q '^VERSION_CODENAME=trixie' /etc/os-rele
   # Pinned to trixie-backports specifically (-t) so this doesn't pull anything
   # else up from backports as a side effect — only touches these two packages.
   if apt-get update 2>/dev/null && \
-     apt-get install -y --no-install-recommends -t trixie-backports ydotool ydotoold 2>/dev/null; then
+     try_install_ydotool -t trixie-backports && command -v ydotoold >/dev/null 2>&1; then
     HAVE_YDOTOOL=1
   fi
 fi
