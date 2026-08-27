@@ -82,11 +82,15 @@ file, then reboot. You can check which target a unit is pulled in by with
 the signature of this specific issue.
 
 **A visible mouse cursor sits in the middle of an otherwise-working kiosk display.**
-Fixed via a transparent Xcursor theme (`signage-kiosk.service`'s `XCURSOR_THEME`/
-`XCURSOR_SIZE`/`XCURSOR_PATH`, theme installed by `provision.sh`) — the key detail
-is that `XCURSOR_SIZE` must be a real size (24 is used) and not 0; a size of 0 stops
-the transparent theme from actually loading and cage falls back to drawing its
-normal default cursor instead. Re-run `provision.sh` and reboot to pick it up.
+Two stacked fixes, confirmed on real hardware: a transparent Xcursor theme
+(`signage-kiosk.service`'s `XCURSOR_THEME`/`XCURSOR_SIZE`/`XCURSOR_PATH` — `XCURSOR_SIZE`
+must be a real size like 24, not 0, or cage falls back to drawing its normal default
+cursor instead of loading the transparent theme), plus warping the cursor off-screen
+via a synthetic input device (`ydotoold`/`ydotool`, see the `ExecStartPost` in that same
+file) — the warp is the part actually confirmed necessary; the theme fix alone wasn't
+enough in testing. `provision.sh` installs `ydotool`/`ydotoold` best-effort (not every
+Raspberry Pi OS release has it in its default repo) — if it's missing, the warp is
+skipped and the cursor may stay visible. Re-run `provision.sh` and reboot to pick it up.
 
 **The kiosk service shows "Failed to start" once or twice right after boot, then
 recovers on its own within ~30s** (`journalctl -u signage-kiosk.service -b` shows

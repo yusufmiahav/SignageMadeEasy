@@ -33,6 +33,48 @@ apt-get update
 apt-get install -y --no-install-recommends \
   cage curl ca-certificates git rsync
 
+# ydotool/ydotoold (used to warp the cursor off-screen — see signage-kiosk.service,
+# the part actually confirmed on real hardware to hide it) aren't in every
+# release's default repo — e.g. Raspberry Pi OS Trixie only has them in
+# trixie-backports. Best-effort and isolated from the required packages above on
+# purpose: this failing must never take the rest of provisioning down with it
+# (that's exactly what happened before this was split out — one missing package
+# killed the whole script via set -euo pipefail before it ever reached anything
+# else, the same failure mode as the earlier git-ownership bug).
+#
+# Package name varies by architecture too, confirmed on real hardware: on
+# Raspberry Pi OS's 32-bit (armhf) build, `ydotoold` isn't an installable
+# package at all — `ydotool` alone bundles both the client and the daemon —
+# whereas other architectures split them into two separate packages. Try the
+# two-package form first, fall back to the single-package form, and verify
+# with the actual binary rather than trusting either apt-get call's exit code
+# alone, since apt-get can succeed while still not providing what we need.
+try_install_ydotool() {
+  apt-get install -y --no-install-recommends "$@" ydotool ydotoold 2>/dev/null || \
+  apt-get install -y --no-install-recommends "$@" ydotool 2>/dev/null
+}
+
+HAVE_YDOTOOL=0
+if try_install_ydotool && command -v ydotoold >/dev/null 2>&1; then
+  HAVE_YDOTOOL=1
+elif [[ -f /etc/os-release ]] && grep -q '^VERSION_CODENAME=trixie' /etc/os-release; then
+  BACKPORTS_LIST=/etc/apt/sources.list.d/trixie-backports.list
+  if [[ ! -f "$BACKPORTS_LIST" ]]; then
+    echo "deb http://deb.debian.org/debian trixie-backports main" > "$BACKPORTS_LIST"
+  fi
+  # Pinned to trixie-backports specifically (-t) so this doesn't pull anything
+  # else up from backports as a side effect — only touches these two packages.
+  if apt-get update 2>/dev/null && \
+     try_install_ydotool -t trixie-backports && command -v ydotoold >/dev/null 2>&1; then
+    HAVE_YDOTOOL=1
+  fi
+fi
+if [[ "$HAVE_YDOTOOL" -eq 0 ]]; then
+  echo "ydotool/ydotoold not available — skipping the cursor off-screen warp (the" >&2
+  echo "XCURSOR_THEME/XCURSOR_SIZE attempt still applies, but wasn't confirmed" >&2
+  echo "sufficient on its own — see signage-kiosk.service)." >&2
+fi
+
 # Package name for Chromium differs across Raspberry Pi OS releases.
 if apt-cache show chromium >/dev/null 2>&1; then
   CHROMIUM_PKG=chromium
@@ -115,6 +157,11 @@ sed "s#/usr/bin/chromium#${CHROMIUM_BIN}#" "$APP_DIR/systemd/signage-kiosk.servi
   > /etc/systemd/system/signage-kiosk.service
 systemctl daemon-reload
 systemctl enable --now signage-player.service
+if [[ "$HAVE_YDOTOOL" -eq 1 ]]; then
+  cp "$APP_DIR/systemd/ydotoold.service" /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable --now ydotoold.service
+fi
 systemctl enable signage-kiosk.service
 
 # ---------------------------------------------------------------------------

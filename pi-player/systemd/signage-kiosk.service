@@ -1,7 +1,7 @@
 [Unit]
 Description=SignageMadeEasy kiosk display (cage + Chromium)
-After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service
-Wants=signage-player.service
+After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service ydotoold.service
+Wants=signage-player.service ydotoold.service
 Conflicts=getty@tty1.service
 
 [Service]
@@ -13,16 +13,13 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
-# Root cause, confirmed on real hardware: XCURSOR_SIZE=0 was invalid enough
-# that cage/wlroots's cursor manager fell back to a default (visible) cursor
-# instead of loading the "blank" theme at all — the theme itself was correct
-# the whole time (confirmed transparent, confirmed reaching cage's process via
-# /proc/<pid>/environ), but the size value being 0 stopped it from actually
-# being applied. A real size (24, a normal cursor size) lets the transparent
-# "blank" theme load properly, which genuinely hides the cursor. This alone
-# was sufficient — cage's own maintainers' claim that hiding the cursor isn't
-# supported turned out to be about there being no direct API for it, not that
-# a correctly-loaded transparent theme can't achieve the same effect.
+# XCURSOR_SIZE=0 was confirmed invalid enough on real hardware that cage's
+# cursor manager fell back to its default (visible) cursor instead of loading
+# the "blank" theme at all — 24 (a normal cursor size) lets the theme actually
+# load. NOT confirmed sufficient on its own, though: a real-hardware test with
+# this exact value but without the ExecStartPost warp below still showed a
+# visible cursor. Left in regardless — it's free, and it may be doing some of
+# the work alongside the warp, which is the part actually confirmed to work.
 Environment=XCURSOR_THEME=blank
 Environment=XCURSOR_SIZE=24
 Environment=XCURSOR_PATH=/home/signage/.icons
@@ -83,6 +80,21 @@ ExecStart=/usr/bin/cage -- /usr/bin/chromium \
   --check-for-update-interval=31536000 \
   --overscroll-history-navigation=0 \
   --autoplay-policy=no-user-gesture-required
+
+# The part actually confirmed to hide the cursor on real hardware: warping it
+# off-screen via a synthetic input device (ydotoold/ydotool — see provision.sh)
+# indistinguishable from a real mouse at the kernel level, so it works
+# regardless of what cage's own cursor-rendering does or doesn't honor. The
+# sleep gives cage a moment to finish initializing its seat/backend before a
+# synthetic pointer event can reach it; the large relative delta relies on
+# wlroots clamping cursor position to the output's bounds, landing it in the
+# bottom-right corner regardless of actual resolution.
+# `|| true`: this must never be able to fail the unit. A failed ExecStartPost
+# marks Type=simple services as failed too, and with Restart=always that would
+# crash-loop the whole kiosk — killing a working cage/Chromium — over nothing
+# worse than ydotool being unavailable (provision.sh installs it best-effort;
+# not every release has it in its default repo).
+ExecStartPost=/bin/sh -c 'sleep 3; YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool mousemove -- 10000 10000 || true'
 
 Restart=always
 RestartSec=2

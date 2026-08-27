@@ -1,0 +1,17 @@
+[Unit]
+Description=ydotoold synthetic input daemon (used to warp the kiosk cursor off-screen)
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ydotoold
+# World-writable on purpose: this is a single-purpose, LAN-trusted kiosk device
+# with no untrusted local users, matching the no-auth trust model used elsewhere
+# in this project (see hub/src/piAgent.ts, pi-player/src/agent.ts). Simpler and
+# more version-proof than depending on ydotoold's own permission flags, whose
+# exact names vary across versions.
+ExecStartPost=/bin/sh -c 'sleep 1; chmod 666 /tmp/.ydotool_socket || true'
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
