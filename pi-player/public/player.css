@@ -1,5 +1,9 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; background: #000; overflow: hidden; cursor: none; }
+/* !important + the universal selector: cursor is inherited, but a video/canvas
+   element's own default can override the inherited value from html/body — this
+   makes sure nothing under #stage can ever request a visible cursor back. */
+* { cursor: none !important; }
+html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
 body { font-family: system-ui, sans-serif; color: #fff; }
 
 .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
