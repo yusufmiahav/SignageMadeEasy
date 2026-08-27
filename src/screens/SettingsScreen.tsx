@@ -106,6 +106,7 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
             ? 'Connected to your SignageMadeEasy hub.'
             : 'Standalone mode — content is saved in this browser only. Deploy the hub to manage screens from any device on your network.'}
         </p>
+        <p className="card-body text-muted" style={{ fontSize: 12 }}>Created by Yusuf Miah with Claude.</p>
       </div>
     </div>
   );
