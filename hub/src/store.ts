@@ -63,8 +63,8 @@ export function removeLibraryItem(id: string): void {
   db.prepare('DELETE FROM library WHERE id = ?').run(id);
 }
 
-export function setImageDuration(id: string, durationSec: number): void {
-  db.prepare("UPDATE library SET durationSec = ? WHERE id = ? AND type = 'image'").run(durationSec, id);
+export function setItemDuration(id: string, durationSec: number): void {
+  db.prepare("UPDATE library SET durationSec = ? WHERE id = ? AND type IN ('image', 'clock')").run(durationSec, id);
 }
 
 // ---- Groups ----
@@ -252,7 +252,7 @@ export function getPlayerState(deviceId: string): PlayerState | null {
       id: item.id,
       type: item.type,
       url: item.thumb ?? '',
-      duration: item.type === 'video' ? null : item.type === 'image' ? (item.durationSec ?? 8) : 8,
+      duration: item.type === 'video' ? null : item.type === 'image' || item.type === 'clock' ? (item.durationSec ?? 8) : 8,
       ...(item.type === 'pdf' && { pageCount: item.pageCount ?? 1 }),
     }));
 

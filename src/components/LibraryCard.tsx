@@ -6,6 +6,7 @@ const TYPE_ICON: Record<LibraryItem['type'], IconName> = {
   video: 'video',
   pdf: 'fileText',
   announcement: 'messageCircle',
+  clock: 'clock',
 };
 
 const TYPE_LABEL: Record<LibraryItem['type'], string> = {
@@ -13,6 +14,7 @@ const TYPE_LABEL: Record<LibraryItem['type'], string> = {
   video: 'Video',
   pdf: 'PDF',
   announcement: 'Announcement',
+  clock: 'Clock',
 };
 
 function metaText(item: LibraryItem): string {
@@ -25,6 +27,8 @@ function metaText(item: LibraryItem): string {
       return item.size ?? '';
     case 'announcement':
       return item.text ?? '';
+    case 'clock':
+      return 'Live time of day';
   }
 }
 

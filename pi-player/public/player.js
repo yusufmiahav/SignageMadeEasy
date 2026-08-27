@@ -29,11 +29,14 @@ let playlistKey = null;
 let activeItems = [];
 let currentIndex = 0;
 let advanceTimer = null;
+let clockTimer = null; // the 'clock' item's setInterval — not a <video>/<canvas>, so teardownStage's generic child.remove() wouldn't stop it on its own.
 let generation = 0; // bumped whenever rotation is torn down, so late async work (a PDF page render, a video's `ended`) from a previous item can no-op instead of racing the new one.
 
 function teardownStage() {
   clearTimeout(advanceTimer);
   advanceTimer = null;
+  clearInterval(clockTimer);
+  clockTimer = null;
   for (const child of [...stage.children]) {
     if (child instanceof HTMLVideoElement) {
       child.pause();
@@ -185,6 +188,21 @@ function playItem(index) {
     stage.appendChild(video);
   } else if (item.type === 'pdf') {
     void playPdf(item, myGeneration);
+  } else if (item.type === 'clock') {
+    // No file, no item.url — just the current time of day on the black #stage
+    // background, ticking every second until scheduleAdvance rotates it out like
+    // any other timed item (image/PDF page).
+    const el = document.createElement('div');
+    el.className = 'clock';
+    const tick = () => {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      el.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    };
+    tick();
+    clockTimer = setInterval(tick, 1000);
+    stage.appendChild(el);
+    scheduleAdvance(item.duration ?? 8, myGeneration);
   } else {
     // Announcements never appear in the main rotation (server-side filtered), but
     // skip defensively rather than getting stuck if one ever does.

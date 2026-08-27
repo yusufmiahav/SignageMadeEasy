@@ -73,12 +73,20 @@ libraryRouter.post('/announcement', (req, res) => {
   res.status(201).json(item);
 });
 
+// No file, no extra fields — just the current time of day on a black background,
+// rendered live on the Pi (see pi-player/public/player.js's 'clock' branch).
+libraryRouter.post('/clock', (req, res) => {
+  const { name } = req.body ?? {};
+  const item = store.addLibraryItem({ name: (name ?? '').trim() || 'Clock', type: 'clock' });
+  res.status(201).json(item);
+});
+
 libraryRouter.patch('/:id', (req, res) => {
   const { durationSec } = req.body ?? {};
   if (typeof durationSec !== 'number' || !Number.isFinite(durationSec) || durationSec < 1) {
     return res.status(400).json({ error: 'durationSec must be a positive number' });
   }
-  store.setImageDuration(req.params.id, Math.round(durationSec));
+  store.setItemDuration(req.params.id, Math.round(durationSec));
   res.status(204).end();
 });
 

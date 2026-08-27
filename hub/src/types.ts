@@ -3,7 +3,7 @@
 // too, so both are kept in sync by hand (small, stable shapes; not worth a shared
 // package for two consumers).
 
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock';
 
 export interface LibraryItem {
   id: string;
@@ -11,7 +11,7 @@ export interface LibraryItem {
   type: LibraryItemType;
   size?: string;
   duration?: string;
-  /** Seconds this image stays on screen before advancing. Images only; defaults to 8 when unset. */
+  /** Seconds this item stays on screen before advancing. Images and clocks only; defaults to 8 when unset. */
   durationSec?: number;
   /** URL path (e.g. "/uploads/<id>.jpg"), not a data URL — served statically by the hub. */
   thumb?: string;
@@ -61,7 +61,7 @@ export interface PlayerItem {
   id: string;
   type: LibraryItemType;
   url: string;
-  /** Seconds this item should stay on screen (images/PDF pages) or `null` for video (plays to `ended`). */
+  /** Seconds this item should stay on screen (images/clocks/PDF pages) or `null` for video (plays to `ended`). */
   duration: number | null;
   /** For PDFs: total page count, each shown for `duration` seconds. */
   pageCount?: number;

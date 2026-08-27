@@ -1,4 +1,4 @@
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock';
 
 export interface LibraryItem {
   id: string;
@@ -8,7 +8,7 @@ export interface LibraryItem {
   size?: string;
   /** Human-readable duration, e.g. "0:42". Videos only. */
   duration?: string;
-  /** Seconds this image stays on screen before advancing. Images only; defaults to 8 when unset. */
+  /** Seconds this item stays on screen before advancing. Images and clocks only; defaults to 8 when unset. */
   durationSec?: number;
   /** Data URL thumbnail. Images only. */
   thumb?: string;

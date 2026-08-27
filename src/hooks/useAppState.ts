@@ -53,8 +53,15 @@ export function useAppState() {
     return item;
   }, [refreshLibrary, showToast]);
 
-  const setImageDuration = useCallback(async (id: string, durationSec: number) => {
-    await api.setImageDuration(id, durationSec);
+  const addClock = useCallback(async (name: string) => {
+    const item = await api.addClock(name);
+    await refreshLibrary();
+    showToast('Clock added');
+    return item;
+  }, [refreshLibrary, showToast]);
+
+  const setItemDuration = useCallback(async (id: string, durationSec: number) => {
+    await api.setItemDuration(id, durationSec);
     await refreshLibrary();
   }, [refreshLibrary]);
 
@@ -162,7 +169,8 @@ export function useAppState() {
     addVideo,
     addPdf,
     addAnnouncement,
-    setImageDuration,
+    addClock,
+    setItemDuration,
     removeLibraryItem,
     addGroup,
     renameGroup,

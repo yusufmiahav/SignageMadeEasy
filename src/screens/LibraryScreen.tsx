@@ -9,7 +9,7 @@ interface LibraryScreenProps {
 }
 
 export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps) {
-  const { library, addImage, addVideo, addPdf, removeLibraryItem } = app;
+  const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem } = app;
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -18,6 +18,17 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
     if (!files) return;
     for (const file of Array.from(files)) {
       if (file.type.startsWith('image/')) await addImage(file);
+    }
+  };
+
+  // Dropzone accepts both images and videos, one per file by MIME type — the
+  // dedicated "Add video" button/input still exists for a deliberate single-file
+  // pick, this just covers the drag-and-drop path too.
+  const handleDropped = async (files: FileList | null) => {
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      if (file.type.startsWith('image/')) await addImage(file);
+      else if (file.type.startsWith('video/')) await addVideo(file);
     }
   };
 
@@ -69,9 +80,13 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
           <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add announcement" onClick={onOpenAnnounceDialog}>
             <Icon name="messageCircle" size={15} />
           </button>
+          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add clock" onClick={() => void addClock('Clock')}>
+            <Icon name="clock" size={15} />
+          </button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={() => videoInputRef.current?.click()}>Add video</button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={() => pdfInputRef.current?.click()}>Add PDF</button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={onOpenAnnounceDialog}>Add announcement</button>
+          <button type="button" className="btn btn-secondary desktop-only" onClick={() => void addClock('Clock')}>Add clock</button>
         </div>
       </div>
 
@@ -81,11 +96,11 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          void handleImages(e.dataTransfer.files);
+          void handleDropped(e.dataTransfer.files);
         }}
       >
         <Icon name="uploadCloud" size={20} />
-        <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>Drag and drop images here, or click to upload</p>
+        <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>Drag and drop images or videos here, or click to upload</p>
       </div>
 
       {library.length === 0 ? (

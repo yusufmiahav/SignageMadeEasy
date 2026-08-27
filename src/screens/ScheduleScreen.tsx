@@ -21,7 +21,7 @@ interface ScheduleScreenProps {
 }
 
 export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent }: ScheduleScreenProps) {
-  const { groups, devices, library, reorderDefaultPlaylist, removeFromDefaultPlaylist, removeEvent, setImageDuration } = app;
+  const { groups, devices, library, reorderDefaultPlaylist, removeFromDefaultPlaylist, removeEvent, setItemDuration } = app;
   const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id ?? '');
   const [calMonthOffset, setCalMonthOffset] = useState(0);
   const [selectedCalDate, setSelectedCalDate] = useState<string | null>(null);
@@ -90,7 +90,7 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent }: Schedu
                 onMoveUp={() => reorderDefaultPlaylist(selectedGroup.id, item.id, 'up')}
                 onMoveDown={() => reorderDefaultPlaylist(selectedGroup.id, item.id, 'down')}
                 onRemove={() => removeFromDefaultPlaylist(selectedGroup.id, item.id)}
-                onSetDuration={(durationSec) => setImageDuration(item.id, durationSec)}
+                onSetDuration={(durationSec) => setItemDuration(item.id, durationSec)}
               />
             ))}
           </div>

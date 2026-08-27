@@ -1,7 +1,7 @@
 // Mirrors ../../hub/src/types.ts's player-facing shapes — kept in sync by hand,
 // same reasoning as hub/src/types.ts's own header comment.
 
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock';
 
 export interface PlayerItem {
   id: string;

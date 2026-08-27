@@ -20,8 +20,11 @@ export interface SignageApiClient {
   addVideo(file: File): Promise<LibraryItem>;
   addPdf(file: File): Promise<LibraryItem>;
   addAnnouncement(name: string, text: string): Promise<LibraryItem>;
+  /** Current time of day on a black background, rendered live on the Pi — no file involved. */
+  addClock(name: string): Promise<LibraryItem>;
   removeLibraryItem(id: string): Promise<void>;
-  setImageDuration(id: string, durationSec: number): Promise<void>;
+  /** Images and clocks only — anything else is a server-side no-op. */
+  setItemDuration(id: string, durationSec: number): Promise<void>;
 
   // Locations (groups)
   listGroups(): Promise<Group[]>;
