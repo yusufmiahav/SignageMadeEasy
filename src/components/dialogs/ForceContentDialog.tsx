@@ -1,27 +1,29 @@
 import { useState } from 'react';
 import { DialogShell } from './DialogShell';
 import type { AppState } from '../../hooks/useAppState';
-import type { Group } from '../../api/types';
 
 interface ForceContentDialogProps {
   app: AppState;
-  group: Group;
+  /** e.g. "this location" or "every screen" — used in the dialog copy only. */
+  scopeLabel: string;
+  currentId: string | null;
+  onConfirm: (libId: string | null) => Promise<void>;
   onClose: () => void;
 }
 
-export function ForceContentDialog({ app, group, onClose }: ForceContentDialogProps) {
-  const { library, setForcedContent } = app;
-  const [choiceId, setChoiceId] = useState<string | null>(group.forcedContentId);
+export function ForceContentDialog({ app, scopeLabel, currentId, onConfirm, onClose }: ForceContentDialogProps) {
+  const { library } = app;
+  const [choiceId, setChoiceId] = useState<string | null>(currentId);
 
   const confirm = async () => {
-    await setForcedContent(group.id, choiceId);
+    await onConfirm(choiceId);
     onClose();
   };
 
   return (
     <DialogShell title="Force content" onClose={onClose}>
       <p className="dialog-body" style={{ margin: 0 }}>
-        Stops the rolling schedule on every screen at this location and shows one piece of content until you turn it off.
+        Stops the rolling schedule on {scopeLabel} and shows one piece of content until you turn it off.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 260, overflowY: 'auto' }}>
         <label className="radio">

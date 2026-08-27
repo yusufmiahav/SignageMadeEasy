@@ -43,6 +43,22 @@ export function LibraryCard({ item, onRemove }: LibraryCardProps) {
       <div className="thumb-box">
         {item.type === 'image' && item.thumb ? (
           <div className="thumb-img" style={{ backgroundImage: `url(${item.thumb})` }} />
+        ) : item.type === 'announcement' ? (
+          <div
+            style={{
+              width: '100%', height: '100%', background: '#000', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 12px',
+            }}
+          >
+            <span
+              style={{
+                fontSize: 12, fontWeight: 600, textAlign: 'center', overflow: 'hidden',
+                display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical',
+              }}
+            >
+              {item.text || 'Announcement'}
+            </span>
+          </div>
         ) : (
           <Icon name={TYPE_ICON[item.type]} size={24} style={{ opacity: 0.4 }} />
         )}

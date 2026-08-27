@@ -21,6 +21,21 @@ export function useAppState() {
     })();
   }, [refreshLibrary, refreshGroups, refreshDevices]);
 
+  // Device online/offline status (and group-level forced/scheduled announcement
+  // state) can change on their own with nobody touching the control app - a screen
+  // going offline, or a schedule's start/end time passing - so the one-time load
+  // above isn't enough; without this, the UI only ever catches up on those after
+  // some unrelated action happens to trigger its own refreshDevices()/refreshGroups()
+  // call, or the page is manually reloaded. 10s errs toward the hub's own 45s
+  // online/offline window (see ONLINE_WINDOW_MS) without polling too aggressively.
+  useEffect(() => {
+    const id = setInterval(() => {
+      void refreshDevices();
+      void refreshGroups();
+    }, 10_000);
+    return () => clearInterval(id);
+  }, [refreshDevices, refreshGroups]);
+
   const showToast = useCallback((message: string) => {
     clearTimeout(toastTimer.current);
     setToast(message);
@@ -119,6 +134,14 @@ export function useAppState() {
     await refreshGroups();
   }, [refreshGroups]);
 
+  // Mirrors forceAnnouncementAllScreens below: same per-location forcedContentId,
+  // just applied to every location at once via a client-side loop, no new endpoint.
+  const forceContentAllScreens = useCallback(async (libId: string | null) => {
+    await Promise.all(groups.map((g) => api.setForcedContent(g.id, libId)));
+    await refreshGroups();
+    showToast(libId ? 'Content forced on for every screen' : 'Forced content cleared on every screen');
+  }, [groups, refreshGroups, showToast]);
+
   const setForcedAnnouncement = useCallback(async (groupId: string, announcementId: string | null) => {
     await api.setForcedAnnouncement(groupId, announcementId);
     await refreshGroups();
@@ -207,6 +230,7 @@ export function useAppState() {
     addEvent,
     removeEvent,
     setForcedContent,
+    forceContentAllScreens,
     setForcedAnnouncement,
     forceAnnouncementAllScreens,
     addAnnouncementSchedule,

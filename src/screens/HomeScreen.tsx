@@ -2,19 +2,30 @@ import { Icon } from '../components/icons/Icon';
 import { DeviceCard } from '../components/DeviceCard';
 import type { AppState } from '../hooks/useAppState';
 import { activeAnnouncementId, activeContentIds, nowPlayingName } from '../api/resolve';
-import type { Device, Group } from '../api/types';
+import type { Device } from '../api/types';
 
 interface HomeScreenProps {
   app: AppState;
   onAddScreen: () => void;
-  onForceContent: (group: Group) => void;
+  onForceContent: (groupId: string) => void;
+  onForceContentAllScreens: () => void;
+  onForceAnnouncement: (groupId: string) => void;
   onForceAnnouncementAllScreens: () => void;
   onMoveDevice: (device: Device) => void;
   onPickAnnouncement: (device: Device) => void;
 }
 
-export function HomeScreen({ app, onAddScreen, onForceContent, onForceAnnouncementAllScreens, onMoveDevice, onPickAnnouncement }: HomeScreenProps) {
-  const { groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setForcedContent } = app;
+export function HomeScreen({
+  app,
+  onAddScreen,
+  onForceContent,
+  onForceContentAllScreens,
+  onForceAnnouncement,
+  onForceAnnouncementAllScreens,
+  onMoveDevice,
+  onPickAnnouncement,
+}: HomeScreenProps) {
+  const { groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setForcedContent, setForcedAnnouncement } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
   const groupsWithDevices = groups
     .map((group) => ({ group, devices: devices.filter((d) => d.groupId === group.id) }))
@@ -25,6 +36,10 @@ export function HomeScreen({ app, onAddScreen, onForceContent, onForceAnnounceme
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <h1 style={{ margin: 0 }}>Screens</h1>
         <div style={{ display: 'flex', gap: 6 }}>
+          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Force content" onClick={onForceContentAllScreens}>
+            <Icon name="monitor" size={16} />
+          </button>
+          <button type="button" className="btn btn-secondary desktop-only" onClick={onForceContentAllScreens}>Force content</button>
           <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Force announcement" onClick={onForceAnnouncementAllScreens}>
             <Icon name="messageCircle" size={16} />
           </button>
@@ -59,18 +74,32 @@ export function HomeScreen({ app, onAddScreen, onForceContent, onForceAnnounceme
                       each DeviceCard's own toggle looking "off" with no explanation here. */}
                   {activeAnnouncement && <span className="tag tag-accent">Announcement: {activeAnnouncement.name}</span>}
                 </div>
-                {active.kind === 'forced' ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span className="tag tag-accent">Forced: {forcedItem?.name ?? '—'}</span>
-                    <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => setForcedContent(group.id, null)}>
-                      Stop
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {active.kind === 'forced' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="tag tag-accent">Forced: {forcedItem?.name ?? '—'}</span>
+                      <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => setForcedContent(group.id, null)}>
+                        Stop
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => onForceContent(group.id)}>
+                      Force content
                     </button>
-                  </div>
-                ) : (
-                  <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => onForceContent(group)}>
-                    Force content
-                  </button>
-                )}
+                  )}
+                  {group.forcedAnnouncementId ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="tag tag-accent">Forced: {libraryById.get(group.forcedAnnouncementId)?.name ?? '—'}</span>
+                      <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => setForcedAnnouncement(group.id, null)}>
+                        Stop
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => onForceAnnouncement(group.id)}>
+                      Force announcement
+                    </button>
+                  )}
+                </div>
               </div>
               <hr className="hr" style={{ margin: 0 }} />
               <div className="device-grid">

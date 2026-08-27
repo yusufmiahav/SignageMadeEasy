@@ -16,7 +16,7 @@ import { AddAnnouncementScheduleDialog } from './components/dialogs/AddAnnouncem
 import { MoveDeviceDialog } from './components/dialogs/MoveDeviceDialog';
 import { ForceContentDialog } from './components/dialogs/ForceContentDialog';
 import { useAppState } from './hooks/useAppState';
-import type { Device, Group } from './api/types';
+import type { Device } from './api/types';
 
 type DialogState =
   | { type: 'pair' }
@@ -25,8 +25,8 @@ type DialogState =
   | { type: 'addAnnouncement' }
   | { type: 'announcementPicker'; device: Device }
   | { type: 'moveDevice'; device: Device }
-  | { type: 'forceContent'; group: Group }
   /** `groupId: null` means the global "force on every screen" action from the Home tab. */
+  | { type: 'forceContent'; groupId: string | null }
   | { type: 'forceAnnouncement'; groupId: string | null }
   | { type: 'addAnnouncementSchedule'; groupId: string }
   | null;
@@ -47,7 +47,9 @@ export default function App() {
           <HomeScreen
             app={app}
             onAddScreen={() => setDialog({ type: 'pair' })}
-            onForceContent={(group) => setDialog({ type: 'forceContent', group })}
+            onForceContent={(groupId) => setDialog({ type: 'forceContent', groupId })}
+            onForceContentAllScreens={() => setDialog({ type: 'forceContent', groupId: null })}
+            onForceAnnouncement={(groupId) => setDialog({ type: 'forceAnnouncement', groupId })}
             onForceAnnouncementAllScreens={() => setDialog({ type: 'forceAnnouncement', groupId: null })}
             onMoveDevice={(device) => setDialog({ type: 'moveDevice', device })}
             onPickAnnouncement={(device) => setDialog({ type: 'announcementPicker', device })}
@@ -79,7 +81,15 @@ export default function App() {
       {dialog?.type === 'addAnnouncement' && <AddAnnouncementDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'announcementPicker' && <AnnouncementPickerDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'moveDevice' && <MoveDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
-      {dialog?.type === 'forceContent' && <ForceContentDialog app={app} group={dialog.group} onClose={closeDialog} />}
+      {dialog?.type === 'forceContent' && (
+        <ForceContentDialog
+          app={app}
+          scopeLabel={dialog.groupId ? 'this location' : 'every screen'}
+          currentId={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.forcedContentId ?? null) : null}
+          onConfirm={(libId) => (dialog.groupId ? app.setForcedContent(dialog.groupId, libId) : app.forceContentAllScreens(libId))}
+          onClose={closeDialog}
+        />
+      )}
       {dialog?.type === 'forceAnnouncement' && (
         <ForceAnnouncementDialog
           app={app}
