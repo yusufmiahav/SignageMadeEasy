@@ -13,6 +13,9 @@ devicesRouter.post('/pair', async (req, res) => {
   if (typeof ip !== 'string' || typeof groupId !== 'string') {
     return res.status(400).json({ error: 'ip and groupId are required' });
   }
+  if (store.listDevices().some((d) => d.ip === ip)) {
+    return res.status(409).json({ error: `A screen is already paired at ${ip}` });
+  }
 
   let resolvedName = typeof name === 'string' && name.trim() ? name.trim() : 'Display';
   let status: 'online' | 'offline' = 'offline';

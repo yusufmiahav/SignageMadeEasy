@@ -44,9 +44,13 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
 
   const pairFound = async (found: { id: string; name: string; ip: string }) => {
     const gid = await resolveGroupId();
-    await pairDevice({ name: found.name, ip: found.ip, groupId: gid });
-    showToast(`Paired ${found.name}`);
-    onClose();
+    try {
+      await pairDevice({ name: found.name, ip: found.ip, groupId: gid });
+      showToast(`Paired ${found.name}`);
+      onClose();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not pair that display');
+    }
   };
 
   const simulateQrScan = () => {
@@ -57,9 +61,13 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   const connectManual = async () => {
     if (!manualIp) return;
     const gid = await resolveGroupId();
-    await pairDevice({ name: 'Display', ip: manualIp, groupId: gid });
-    showToast(`Connected to ${manualIp}`);
-    onClose();
+    try {
+      await pairDevice({ name: 'Display', ip: manualIp, groupId: gid });
+      showToast(`Connected to ${manualIp}`);
+      onClose();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not pair that display');
+    }
   };
 
   return (

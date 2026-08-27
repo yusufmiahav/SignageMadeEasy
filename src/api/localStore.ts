@@ -248,6 +248,9 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   async pairDevice(input: { name: string; ip: string; groupId: string; status?: DeviceStatus }): Promise<Device> {
+    if (this.data.devices.some((d) => d.ip === input.ip)) {
+      throw new Error(`A screen is already paired at ${input.ip}`);
+    }
     const device: Device = {
       id: uid('d'),
       name: input.name,

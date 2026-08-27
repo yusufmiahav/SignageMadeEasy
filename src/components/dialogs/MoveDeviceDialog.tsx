@@ -10,12 +10,20 @@ interface MoveDeviceDialogProps {
 }
 
 export function MoveDeviceDialog({ app, device, onClose }: MoveDeviceDialogProps) {
-  const { groups, moveDevice } = app;
-  const [choiceId, setChoiceId] = useState(device.groupId);
+  const { groups, addGroup, moveDevice } = app;
+  const [choiceId, setChoiceId] = useState<string>(device.groupId);
+  const [newGroupName, setNewGroupName] = useState('');
+
+  const isNewGroup = choiceId === '__new__';
 
   const confirm = async () => {
-    if (!choiceId) return;
-    await moveDevice(device.id, choiceId);
+    let targetId = choiceId;
+    if (isNewGroup) {
+      if (!newGroupName.trim()) return;
+      const group = await addGroup(newGroupName);
+      targetId = group.id;
+    }
+    await moveDevice(device.id, targetId);
     onClose();
   };
 
@@ -29,10 +37,28 @@ export function MoveDeviceDialog({ app, device, onClose }: MoveDeviceDialogProps
             {g.name}
           </label>
         ))}
+        <label className="radio">
+          <input type="radio" name="moveDevicePick" checked={isNewGroup} onChange={() => setChoiceId('__new__')} />
+          <span className="dot" />
+          + New location
+        </label>
       </div>
+      {isNewGroup && (
+        <div className="field">
+          <label htmlFor="move-new-loc-name">New location name</label>
+          <input
+            className="input"
+            id="move-new-loc-name"
+            placeholder="e.g. Reception"
+            value={newGroupName}
+            onChange={(e) => setNewGroupName(e.target.value)}
+            autoFocus
+          />
+        </div>
+      )}
       <div className="dialog-actions">
         <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button type="button" className="btn btn-primary" onClick={() => void confirm()}>Move</button>
+        <button type="button" className="btn btn-primary" disabled={isNewGroup && !newGroupName.trim()} onClick={() => void confirm()}>Move</button>
       </div>
     </DialogShell>
   );

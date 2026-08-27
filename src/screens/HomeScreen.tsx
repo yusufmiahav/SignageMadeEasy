@@ -7,6 +7,7 @@ import type { Device } from '../api/types';
 interface HomeScreenProps {
   app: AppState;
   onAddScreen: () => void;
+  onAddLocation: () => void;
   onForceContent: (groupId: string) => void;
   onForceContentAllScreens: () => void;
   onForceAnnouncement: (groupId: string) => void;
@@ -18,6 +19,7 @@ interface HomeScreenProps {
 export function HomeScreen({
   app,
   onAddScreen,
+  onAddLocation,
   onForceContent,
   onForceContentAllScreens,
   onForceAnnouncement,
@@ -27,9 +29,11 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const { groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setForcedContent, setForcedAnnouncement } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
-  const groupsWithDevices = groups
-    .map((group) => ({ group, devices: devices.filter((d) => d.groupId === group.id) }))
-    .filter((g) => g.devices.length > 0);
+  // Every location shows here, even with zero screens paired yet — a location is
+  // useful on its own (you can force content/announcements on it, or it's just
+  // waiting for a screen to be paired or moved in), and hiding it here while it
+  // still shows on Schedule/Settings was confusing.
+  const groupsWithDevices = groups.map((group) => ({ group, devices: devices.filter((d) => d.groupId === group.id) }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -44,6 +48,10 @@ export function HomeScreen({
             <Icon name="messageCircle" size={16} />
           </button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={onForceAnnouncementAllScreens}>Force announcement</button>
+          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add a location" onClick={onAddLocation}>
+            <Icon name="mapPin" size={16} />
+          </button>
+          <button type="button" className="btn btn-secondary desktop-only" onClick={onAddLocation}>Add location</button>
           <button type="button" className="btn btn-primary btn-icon mobile-only" aria-label="Add a screen" onClick={onAddScreen}>
             <Icon name="plus" size={16} />
           </button>
@@ -51,10 +59,10 @@ export function HomeScreen({
         </div>
       </div>
 
-      {groupsWithDevices.length === 0 ? (
+      {groups.length === 0 ? (
         <div className="empty-state">
           <Icon name="monitor" size={30} />
-          <p className="text-muted" style={{ margin: 0 }}>No screens paired yet.</p>
+          <p className="text-muted" style={{ margin: 0 }}>No screens or locations yet.</p>
           <button type="button" className="btn btn-primary" onClick={onAddScreen}>Add a screen</button>
         </div>
       ) : (
@@ -102,22 +110,26 @@ export function HomeScreen({
                 </div>
               </div>
               <hr className="hr" style={{ margin: 0 }} />
-              <div className="device-grid">
-                {groupDevices.map((device) => (
-                  <DeviceCard
-                    key={device.id}
-                    device={device}
-                    nowPlaying={nowPlayingName(group, libraryById)}
-                    announcement={device.announcementId ? libraryById.get(device.announcementId) : undefined}
-                    onRename={renameDevice}
-                    onRestart={restartDevice}
-                    onMove={onMoveDevice}
-                    onRemove={removeDevice}
-                    onPickAnnouncement={onPickAnnouncement}
-                    onToggleAnnouncement={toggleDeviceAnnouncement}
-                  />
-                ))}
-              </div>
+              {groupDevices.length === 0 ? (
+                <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>No screens at this location yet.</p>
+              ) : (
+                <div className="device-grid">
+                  {groupDevices.map((device) => (
+                    <DeviceCard
+                      key={device.id}
+                      device={device}
+                      nowPlaying={nowPlayingName(group, libraryById)}
+                      announcement={device.announcementId ? libraryById.get(device.announcementId) : undefined}
+                      onRename={renameDevice}
+                      onRestart={restartDevice}
+                      onMove={onMoveDevice}
+                      onRemove={removeDevice}
+                      onPickAnnouncement={onPickAnnouncement}
+                      onToggleAnnouncement={toggleDeviceAnnouncement}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           );
         })

@@ -8,7 +8,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: init?.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json', ...init.headers } : init?.headers,
   });
-  if (!res.ok) throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${res.status}`);
+  if (!res.ok) {
+    // Surfaces the hub's own { error: "..." } body (e.g. duplicate-IP pairing)
+    // where available, since "POST /api/devices/pair failed: 409" tells a user
+    // nothing actionable.
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error || `${init?.method ?? 'GET'} ${path} failed: ${res.status}`);
+  }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }

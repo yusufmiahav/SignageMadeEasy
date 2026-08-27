@@ -90,6 +90,15 @@ body {
   border-radius: var(--radius-md);
 }
 
+/* Without this, a long single-word label (e.g. "Announcements") with no room to
+   wrap forces the flex row to shrink something — since the label has a hard
+   min-content floor (an unbreakable word can't get any narrower) and the icon
+   doesn't, flexbox shrinks the icon to zero width instead, silently invisible with
+   no error state to make it obvious this isn't the label itself changing width. */
+.app-sidebar-btn svg {
+  flex-shrink: 0;
+}
+
 .app-sidebar-btn.is-active {
   color: var(--color-accent);
 }

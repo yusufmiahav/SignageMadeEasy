@@ -7,6 +7,8 @@ import { AnnouncementsScreen } from './screens/AnnouncementsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { Toast } from './components/Toast';
 import { PairDeviceDialog } from './components/dialogs/PairDeviceDialog';
+import { AddChooserDialog } from './components/dialogs/AddChooserDialog';
+import { AddLocationDialog } from './components/dialogs/AddLocationDialog';
 import { AddContentDialog } from './components/dialogs/AddContentDialog';
 import { AddEventDialog } from './components/dialogs/AddEventDialog';
 import { AddAnnouncementDialog } from './components/dialogs/AddAnnouncementDialog';
@@ -20,6 +22,8 @@ import type { Device } from './api/types';
 
 type DialogState =
   | { type: 'pair' }
+  | { type: 'addChooser' }
+  | { type: 'addLocation' }
   | { type: 'addContent'; groupId: string }
   | { type: 'addEvent'; groupId: string }
   | { type: 'addAnnouncement' }
@@ -42,11 +46,12 @@ export default function App() {
 
   return (
     <>
-      <AppShell tab={tab} onTabChange={setTab} deviceCount={app.devices.length} onAddScreen={() => setDialog({ type: 'pair' })}>
+      <AppShell tab={tab} onTabChange={setTab} deviceCount={app.devices.length} onAddScreen={() => setDialog({ type: 'addChooser' })}>
         {tab === 'home' && (
           <HomeScreen
             app={app}
             onAddScreen={() => setDialog({ type: 'pair' })}
+            onAddLocation={() => setDialog({ type: 'addLocation' })}
             onForceContent={(groupId) => setDialog({ type: 'forceContent', groupId })}
             onForceContentAllScreens={() => setDialog({ type: 'forceContent', groupId: null })}
             onForceAnnouncement={(groupId) => setDialog({ type: 'forceAnnouncement', groupId })}
@@ -76,6 +81,14 @@ export default function App() {
       </AppShell>
 
       {dialog?.type === 'pair' && <PairDeviceDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'addChooser' && (
+        <AddChooserDialog
+          onChooseScreen={() => setDialog({ type: 'pair' })}
+          onChooseLocation={() => setDialog({ type: 'addLocation' })}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'addLocation' && <AddLocationDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'addContent' && <AddContentDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
       {dialog?.type === 'addEvent' && <AddEventDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
       {dialog?.type === 'addAnnouncement' && <AddAnnouncementDialog app={app} onClose={closeDialog} />}
