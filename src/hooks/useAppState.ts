@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DiscoveredDevice } from '../api/client';
-import type { Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from '../api/types';
+import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from '../api/types';
 
 export function useAppState() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
@@ -119,6 +119,32 @@ export function useAppState() {
     await refreshGroups();
   }, [refreshGroups]);
 
+  const setForcedAnnouncement = useCallback(async (groupId: string, announcementId: string | null) => {
+    await api.setForcedAnnouncement(groupId, announcementId);
+    await refreshGroups();
+  }, [refreshGroups]);
+
+  // "Force on all screens" on the Home page: no dedicated backend endpoint for this —
+  // it's the exact same per-location forcedAnnouncementId, just applied to every
+  // location at once, so a client-side loop over the existing per-group call is all
+  // this needs rather than a new bulk-specific API surface.
+  const forceAnnouncementAllScreens = useCallback(async (announcementId: string | null) => {
+    await Promise.all(groups.map((g) => api.setForcedAnnouncement(g.id, announcementId)));
+    await refreshGroups();
+    showToast(announcementId ? 'Announcement forced on for every screen' : 'Announcement cleared on every screen');
+  }, [groups, refreshGroups, showToast]);
+
+  const addAnnouncementSchedule = useCallback(async (groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>) => {
+    const s = await api.addAnnouncementSchedule(groupId, schedule);
+    await refreshGroups();
+    return s;
+  }, [refreshGroups]);
+
+  const removeAnnouncementSchedule = useCallback(async (groupId: string, scheduleId: string) => {
+    await api.removeAnnouncementSchedule(groupId, scheduleId);
+    await refreshGroups();
+  }, [refreshGroups]);
+
   // ---- Devices ----
   const pairDevice = useCallback(async (input: { name: string; ip: string; groupId: string; status?: DeviceStatus }) => {
     const device = await api.pairDevice(input);
@@ -181,6 +207,10 @@ export function useAppState() {
     addEvent,
     removeEvent,
     setForcedContent,
+    setForcedAnnouncement,
+    forceAnnouncementAllScreens,
+    addAnnouncementSchedule,
+    removeAnnouncementSchedule,
     pairDevice,
     renameDevice,
     moveDevice,

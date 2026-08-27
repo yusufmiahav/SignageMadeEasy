@@ -1,18 +1,19 @@
 import { Icon } from '../components/icons/Icon';
 import { DeviceCard } from '../components/DeviceCard';
 import type { AppState } from '../hooks/useAppState';
-import { activeContentIds, nowPlayingName } from '../api/resolve';
+import { activeAnnouncementId, activeContentIds, nowPlayingName } from '../api/resolve';
 import type { Device, Group } from '../api/types';
 
 interface HomeScreenProps {
   app: AppState;
   onAddScreen: () => void;
   onForceContent: (group: Group) => void;
+  onForceAnnouncementAllScreens: () => void;
   onMoveDevice: (device: Device) => void;
   onPickAnnouncement: (device: Device) => void;
 }
 
-export function HomeScreen({ app, onAddScreen, onForceContent, onMoveDevice, onPickAnnouncement }: HomeScreenProps) {
+export function HomeScreen({ app, onAddScreen, onForceContent, onForceAnnouncementAllScreens, onMoveDevice, onPickAnnouncement }: HomeScreenProps) {
   const { groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setForcedContent } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
   const groupsWithDevices = groups
@@ -21,12 +22,18 @@ export function HomeScreen({ app, onAddScreen, onForceContent, onMoveDevice, onP
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <h1 style={{ margin: 0 }}>Screens</h1>
-        <button type="button" className="btn btn-primary btn-icon mobile-only" aria-label="Add a screen" onClick={onAddScreen}>
-          <Icon name="plus" size={16} />
-        </button>
-        <button type="button" className="btn btn-primary desktop-only" onClick={onAddScreen}>Add a screen</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Force announcement" onClick={onForceAnnouncementAllScreens}>
+            <Icon name="messageCircle" size={16} />
+          </button>
+          <button type="button" className="btn btn-secondary desktop-only" onClick={onForceAnnouncementAllScreens}>Force announcement</button>
+          <button type="button" className="btn btn-primary btn-icon mobile-only" aria-label="Add a screen" onClick={onAddScreen}>
+            <Icon name="plus" size={16} />
+          </button>
+          <button type="button" className="btn btn-primary desktop-only" onClick={onAddScreen}>Add a screen</button>
+        </div>
       </div>
 
       {groupsWithDevices.length === 0 ? (
@@ -39,12 +46,18 @@ export function HomeScreen({ app, onAddScreen, onForceContent, onMoveDevice, onP
         groupsWithDevices.map(({ group, devices: groupDevices }) => {
           const active = activeContentIds(group);
           const forcedItem = group.forcedContentId ? libraryById.get(group.forcedContentId) : undefined;
+          const activeAnnId = activeAnnouncementId(group);
+          const activeAnnouncement = activeAnnId ? libraryById.get(activeAnnId) : undefined;
           return (
             <div key={group.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <h2 style={{ margin: 0, fontSize: 15 }}>{group.name}</h2>
                   <span className="tag tag-neutral">{groupDevices.length} screen{groupDevices.length === 1 ? '' : 's'}</span>
+                  {/* Every screen here shows this regardless of its own manual toggle — see
+                      activeAnnouncementId's priority order — so it'd be misleading to leave
+                      each DeviceCard's own toggle looking "off" with no explanation here. */}
+                  {activeAnnouncement && <span className="tag tag-accent">Announcement: {activeAnnouncement.name}</span>}
                 </div>
                 {active.kind === 'forced' ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

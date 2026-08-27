@@ -14,7 +14,9 @@ export function AddContentDialog({ app, groupId, onClose }: AddContentDialogProp
   const { library, groups, addToDefaultPlaylist } = app;
   const group = groups.find((g) => g.id === groupId);
   const inDefault = new Set(group?.defaultPlaylist ?? []);
-  const addable = library.filter((l) => !inDefault.has(l.id));
+  // Announcements aren't playlist content — they run as their own overlay (see the
+  // Announcements tab), resolved entirely separately from a group's rotation.
+  const addable = library.filter((l) => l.type !== 'announcement' && !inDefault.has(l.id));
   const [checked, setChecked] = useState<Set<string>>(new Set());
 
   const toggle = (id: string) => {

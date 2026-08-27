@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
-import type { Device, DeviceStatus, DiscoveredDevice, Group, LibraryItem, PlayerState, ScheduleEvent } from './types.js';
+import type { AnnouncementSchedule, Device, DeviceStatus, DiscoveredDevice, Group, LibraryItem, PlayerState, ScheduleEvent } from './types.js';
 
 const ONLINE_WINDOW_MS = 45_000;
 
@@ -45,13 +45,15 @@ export function addLibraryItem(input: { name: string; type: LibraryItem['type'];
 }
 
 export function removeLibraryItem(id: string): void {
-  const groups = db.prepare('SELECT id, defaultPlaylist, forcedContentId FROM groups_').all() as { id: string; defaultPlaylist: string; forcedContentId: string | null }[];
+  const groups = db.prepare('SELECT id, defaultPlaylist, forcedContentId, forcedAnnouncementId FROM groups_').all() as { id: string; defaultPlaylist: string; forcedContentId: string | null; forcedAnnouncementId: string | null }[];
   const updatePlaylist = db.prepare('UPDATE groups_ SET defaultPlaylist = ? WHERE id = ?');
   const clearForced = db.prepare('UPDATE groups_ SET forcedContentId = NULL WHERE id = ?');
+  const clearForcedAnnouncement = db.prepare('UPDATE groups_ SET forcedAnnouncementId = NULL WHERE id = ?');
   for (const g of groups) {
     const playlist: string[] = JSON.parse(g.defaultPlaylist);
     if (playlist.includes(id)) updatePlaylist.run(JSON.stringify(playlist.filter((x) => x !== id)), g.id);
     if (g.forcedContentId === id) clearForced.run(g.id);
+    if (g.forcedAnnouncementId === id) clearForcedAnnouncement.run(g.id);
   }
   const events = db.prepare('SELECT id, libIds FROM events').all() as { id: string; libIds: string }[];
   const updateEvent = db.prepare('UPDATE events SET libIds = ? WHERE id = ?');
@@ -59,6 +61,7 @@ export function removeLibraryItem(id: string): void {
     const libIds: string[] = JSON.parse(e.libIds);
     if (libIds.includes(id)) updateEvent.run(JSON.stringify(libIds.filter((x) => x !== id)), e.id);
   }
+  db.prepare('DELETE FROM announcement_schedules WHERE announcementId = ?').run(id);
   db.prepare('UPDATE devices SET announcementId = NULL, announcementOn = 0 WHERE announcementId = ?').run(id);
   db.prepare('DELETE FROM library WHERE id = ?').run(id);
 }
@@ -69,33 +72,42 @@ export function setItemDuration(id: string, durationSec: number): void {
 
 // ---- Groups ----
 
-interface GroupRow { id: string; name: string; defaultPlaylist: string; forcedContentId: string | null }
+interface GroupRow { id: string; name: string; defaultPlaylist: string; forcedContentId: string | null; forcedAnnouncementId: string | null }
 interface EventRow { id: string; groupId: string; name: string; start: string; end: string; libIds: string }
+interface AnnouncementScheduleRow { id: string; groupId: string; announcementId: string; startDate: string; endDate: string; startTime: string; endTime: string }
 
 function eventsForGroup(groupId: string): ScheduleEvent[] {
   const rows = db.prepare('SELECT id, groupId, name, start, end, libIds FROM events WHERE groupId = ? ORDER BY start ASC').all(groupId) as EventRow[];
   return rows.map((r) => ({ id: r.id, name: r.name, start: r.start, end: r.end, libIds: JSON.parse(r.libIds) }));
 }
 
+function announcementSchedulesForGroup(groupId: string): AnnouncementSchedule[] {
+  const rows = db.prepare('SELECT id, groupId, announcementId, startDate, endDate, startTime, endTime FROM announcement_schedules WHERE groupId = ? ORDER BY startDate ASC').all(groupId) as AnnouncementScheduleRow[];
+  return rows.map((r) => ({ id: r.id, announcementId: r.announcementId, startDate: r.startDate, endDate: r.endDate, startTime: r.startTime, endTime: r.endTime }));
+}
+
 function rowToGroup(r: GroupRow): Group {
-  return { id: r.id, name: r.name, defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForGroup(r.id), forcedContentId: r.forcedContentId };
+  return {
+    id: r.id, name: r.name, defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForGroup(r.id),
+    forcedContentId: r.forcedContentId, forcedAnnouncementId: r.forcedAnnouncementId, announcementSchedules: announcementSchedulesForGroup(r.id),
+  };
 }
 
 export function listGroups(): Group[] {
-  const rows = db.prepare('SELECT id, name, defaultPlaylist, forcedContentId FROM groups_ ORDER BY rowid ASC').all() as GroupRow[];
+  const rows = db.prepare('SELECT id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId FROM groups_ ORDER BY rowid ASC').all() as GroupRow[];
   return rows.map(rowToGroup);
 }
 
 export function getGroup(id: string): Group | null {
-  const row = db.prepare('SELECT id, name, defaultPlaylist, forcedContentId FROM groups_ WHERE id = ?').get(id) as GroupRow | undefined;
+  const row = db.prepare('SELECT id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId FROM groups_ WHERE id = ?').get(id) as GroupRow | undefined;
   return row ? rowToGroup(row) : null;
 }
 
 export function addGroup(name: string): Group {
   const id = uid('g');
   const cleanName = name.trim() || 'New location';
-  db.prepare('INSERT INTO groups_ (id, name, defaultPlaylist, forcedContentId) VALUES (?,?,?,?)').run(id, cleanName, '[]', null);
-  return { id, name: cleanName, defaultPlaylist: [], events: [], forcedContentId: null };
+  db.prepare('INSERT INTO groups_ (id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId) VALUES (?,?,?,?,?)').run(id, cleanName, '[]', null, null);
+  return { id, name: cleanName, defaultPlaylist: [], events: [], forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [] };
 }
 
 export function renameGroup(id: string, name: string): void {
@@ -150,6 +162,21 @@ export function removeEvent(groupId: string, eventId: string): void {
 
 export function setForcedContent(groupId: string, libId: string | null): void {
   db.prepare('UPDATE groups_ SET forcedContentId = ? WHERE id = ?').run(libId, groupId);
+}
+
+export function setForcedAnnouncement(groupId: string, announcementId: string | null): void {
+  db.prepare('UPDATE groups_ SET forcedAnnouncementId = ? WHERE id = ?').run(announcementId, groupId);
+}
+
+export function addAnnouncementSchedule(groupId: string, input: Omit<AnnouncementSchedule, 'id'>): AnnouncementSchedule {
+  const id = uid('as');
+  db.prepare('INSERT INTO announcement_schedules (id, groupId, announcementId, startDate, endDate, startTime, endTime) VALUES (?,?,?,?,?,?,?)')
+    .run(id, groupId, input.announcementId, input.startDate, input.endDate, input.startTime, input.endTime);
+  return { id, ...input };
+}
+
+export function removeAnnouncementSchedule(groupId: string, scheduleId: string): void {
+  db.prepare('DELETE FROM announcement_schedules WHERE id = ? AND groupId = ?').run(scheduleId, groupId);
 }
 
 // ---- Devices ----
@@ -237,6 +264,25 @@ export function activeContentIds(group: Group, today: string = toISODate(new Dat
   return { ids: group.defaultPlaylist, kind: 'default', label: 'Default playlist' };
 }
 
+// Resolution order, highest priority first: (1) forcedAnnouncementId — manually forced
+// on for every screen at this location, same "until cleared" model as forced content;
+// (2) an announcement schedule whose date range AND time-of-day window both cover
+// `now` (string-compared "HH:MM" sorts the same as numeric comparison since it's
+// always zero-padded 24h — doesn't handle a window that spans midnight, e.g.
+// 22:00-02:00, by design: not a case this project's signage use targets); (3) null,
+// meaning each device's own manual announcementId/announcementOn toggle applies
+// instead (see getPlayerState below) — this location-level resolution only ever
+// overrides that per-device toggle, never replaces it as the base behavior.
+export function activeAnnouncementId(group: Group, now: Date = new Date()): string | null {
+  if (group.forcedAnnouncementId) return group.forcedAnnouncementId;
+  const today = toISODate(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const active = group.announcementSchedules.find(
+    (s) => today >= s.startDate && today <= s.endDate && hhmm >= s.startTime && hhmm <= s.endTime,
+  );
+  return active?.announcementId ?? null;
+}
+
 export function getPlayerState(deviceId: string): PlayerState | null {
   const device = getDevice(deviceId);
   if (!device) return null;
@@ -256,11 +302,17 @@ export function getPlayerState(deviceId: string): PlayerState | null {
       ...(item.type === 'pdf' && { pageCount: item.pageCount ?? 1 }),
     }));
 
-  const announcement = device.announcementId ? libraryById.get(device.announcementId) : undefined;
+  // Location-level forced/scheduled announcement overrides this device's own manual
+  // toggle when active; otherwise the device's own announcementId/announcementOn
+  // applies exactly as before.
+  const locationAnnouncementId = activeAnnouncementId(group);
+  const announcementId = locationAnnouncementId ?? device.announcementId;
+  const announcementOn = locationAnnouncementId != null || device.announcementOn;
+  const announcement = announcementId ? libraryById.get(announcementId) : undefined;
   return {
     kind: active.kind,
     label: active.label,
     items,
-    announcement: { on: device.announcementOn && !!announcement, text: announcement?.text ?? null },
+    announcement: { on: announcementOn && !!announcement, text: announcement?.text ?? null },
   };
 }

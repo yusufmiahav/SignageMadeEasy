@@ -31,7 +31,8 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     defaultPlaylist TEXT NOT NULL DEFAULT '[]',
-    forcedContentId TEXT
+    forcedContentId TEXT,
+    forcedAnnouncementId TEXT
   );
 
   CREATE TABLE IF NOT EXISTS events (
@@ -41,6 +42,16 @@ db.exec(`
     start TEXT NOT NULL,
     end TEXT NOT NULL,
     libIds TEXT NOT NULL DEFAULT '[]'
+  );
+
+  CREATE TABLE IF NOT EXISTS announcement_schedules (
+    id TEXT PRIMARY KEY,
+    groupId TEXT NOT NULL REFERENCES groups_(id) ON DELETE CASCADE,
+    announcementId TEXT NOT NULL,
+    startDate TEXT NOT NULL,
+    endDate TEXT NOT NULL,
+    startTime TEXT NOT NULL,
+    endTime TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS devices (
@@ -58,6 +69,10 @@ db.exec(`
 // above is a no-op on an existing database, so the column has to be added separately.
 const hasDurationSec = (db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some((c) => c.name === 'durationSec');
 if (!hasDurationSec) db.exec('ALTER TABLE library ADD COLUMN durationSec INTEGER');
+
+// Same reasoning, for hubs deployed before forcedAnnouncementId existed.
+const hasForcedAnnouncementId = (db.prepare("PRAGMA table_info(groups_)").all() as { name: string }[]).some((c) => c.name === 'forcedAnnouncementId');
+if (!hasForcedAnnouncementId) db.exec('ALTER TABLE groups_ ADD COLUMN forcedAnnouncementId TEXT');
 
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.

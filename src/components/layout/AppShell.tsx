@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { Icon, type IconName } from '../icons/Icon';
 
-export type Tab = 'home' | 'library' | 'schedule' | 'settings';
+export type Tab = 'home' | 'library' | 'schedule' | 'announcements' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'library', label: 'Library', icon: 'image' },
   { id: 'schedule', label: 'Schedule', icon: 'calendar' },
+  { id: 'announcements', label: 'Announcements', icon: 'messageCircle' },
   { id: 'settings', label: 'Settings', icon: 'sliders' },
 ];
 

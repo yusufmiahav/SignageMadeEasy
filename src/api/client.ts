@@ -1,4 +1,4 @@
-import type { Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -39,6 +39,10 @@ export interface SignageApiClient {
   addEvent(groupId: string, event: Omit<ScheduleEvent, 'id'>): Promise<ScheduleEvent>;
   removeEvent(groupId: string, eventId: string): Promise<void>;
   setForcedContent(groupId: string, libId: string | null): Promise<void>;
+  /** Forces an announcement on for every screen at this location, overriding schedules and each screen's own manual toggle, until cleared with `null`. */
+  setForcedAnnouncement(groupId: string, announcementId: string | null): Promise<void>;
+  addAnnouncementSchedule(groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>): Promise<AnnouncementSchedule>;
+  removeAnnouncementSchedule(groupId: string, scheduleId: string): Promise<void>;
 
   // Devices
   listDevices(): Promise<Device[]>;

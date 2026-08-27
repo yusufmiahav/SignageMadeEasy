@@ -1,4 +1,4 @@
-import type { Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -52,6 +52,10 @@ export const httpClient: SignageApiClient = {
   addEvent: (groupId, event) => request<ScheduleEvent>(`/api/groups/${groupId}/events`, { method: 'POST', ...json(event) }),
   removeEvent: (groupId, eventId) => request<void>(`/api/groups/${groupId}/events/${eventId}`, { method: 'DELETE' }),
   setForcedContent: (groupId, libId) => request<void>(`/api/groups/${groupId}/forced`, { method: 'PUT', ...json({ libId }) }),
+  setForcedAnnouncement: (groupId, announcementId) => request<void>(`/api/groups/${groupId}/forced-announcement`, { method: 'PUT', ...json({ announcementId }) }),
+  addAnnouncementSchedule: (groupId, schedule) =>
+    request<AnnouncementSchedule>(`/api/groups/${groupId}/announcement-schedules`, { method: 'POST', ...json(schedule) }),
+  removeAnnouncementSchedule: (groupId, scheduleId) => request<void>(`/api/groups/${groupId}/announcement-schedules/${scheduleId}`, { method: 'DELETE' }),
 
   // Devices
   listDevices: () => request<Device[]>('/api/devices'),

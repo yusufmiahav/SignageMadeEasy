@@ -55,7 +55,7 @@ export function AddEventDialog({ app, groupId, onClose }: AddEventDialogProps) {
       <div className="field">
         <label>Replaces the default playlist with</label>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
-          {library.map((item) => (
+          {library.filter((item) => item.type !== 'announcement').map((item) => (
             <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
               <input type="checkbox" checked={checked.has(item.id)} onChange={() => toggle(item.id)} />
               <span style={{ flex: 1, fontSize: 13 }}>{item.name}</span>

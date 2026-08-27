@@ -1,4 +1,4 @@
-import type { AppData, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, AppData, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -132,6 +132,8 @@ class LocalStoreClient implements SignageApiClient {
       g.defaultPlaylist = g.defaultPlaylist.filter((libId) => libId !== id);
       g.events.forEach((e) => (e.libIds = e.libIds.filter((libId) => libId !== id)));
       if (g.forcedContentId === id) g.forcedContentId = null;
+      if (g.forcedAnnouncementId === id) g.forcedAnnouncementId = null;
+      g.announcementSchedules = g.announcementSchedules.filter((s) => s.announcementId !== id);
     }
     for (const d of this.data.devices) {
       if (d.announcementId === id) {
@@ -148,7 +150,10 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   async addGroup(name: string): Promise<Group> {
-    const group: Group = { id: uid('g'), name: name.trim() || 'New location', defaultPlaylist: [], events: [], forcedContentId: null };
+    const group: Group = {
+      id: uid('g'), name: name.trim() || 'New location', defaultPlaylist: [], events: [],
+      forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [],
+    };
     this.data.groups.push(group);
     this.persist();
     return group;
@@ -214,6 +219,26 @@ class LocalStoreClient implements SignageApiClient {
   async setForcedContent(groupId: string, libId: string | null): Promise<void> {
     const group = this.data.groups.find((g) => g.id === groupId);
     if (group) group.forcedContentId = libId;
+    this.persist();
+  }
+
+  async setForcedAnnouncement(groupId: string, announcementId: string | null): Promise<void> {
+    const group = this.data.groups.find((g) => g.id === groupId);
+    if (group) group.forcedAnnouncementId = announcementId;
+    this.persist();
+  }
+
+  async addAnnouncementSchedule(groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>): Promise<AnnouncementSchedule> {
+    const group = this.data.groups.find((g) => g.id === groupId);
+    const s: AnnouncementSchedule = { id: uid('as'), ...schedule };
+    if (group) group.announcementSchedules.push(s);
+    this.persist();
+    return s;
+  }
+
+  async removeAnnouncementSchedule(groupId: string, scheduleId: string): Promise<void> {
+    const group = this.data.groups.find((g) => g.id === groupId);
+    if (group) group.announcementSchedules = group.announcementSchedules.filter((s) => s.id !== scheduleId);
     this.persist();
   }
 

@@ -26,12 +26,29 @@ export interface ScheduleEvent {
   libIds: string[];
 }
 
+export interface AnnouncementSchedule {
+  id: string;
+  announcementId: string;
+  /** ISO date, e.g. "2026-08-28" */
+  startDate: string;
+  /** ISO date, e.g. "2026-09-03" */
+  endDate: string;
+  /** 24h "HH:MM", e.g. "09:00" */
+  startTime: string;
+  /** 24h "HH:MM", e.g. "17:00" */
+  endTime: string;
+}
+
 export interface Group {
   id: string;
   name: string;
   defaultPlaylist: string[];
   events: ScheduleEvent[];
   forcedContentId: string | null;
+  /** This location's announcement forced on for every one of its screens, overriding schedules and each screen's own manual toggle, until cleared. */
+  forcedAnnouncementId: string | null;
+  /** Date+time windows during which an announcement is shown on every screen at this location, regardless of each screen's own manual toggle. */
+  announcementSchedules: AnnouncementSchedule[];
 }
 
 export type DeviceStatus = 'online' | 'offline';

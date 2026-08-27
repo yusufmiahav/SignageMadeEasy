@@ -70,3 +70,22 @@ groupsRouter.put('/:id/forced', (req, res) => {
   store.setForcedContent(req.params.id, libId ?? null);
   res.status(204).end();
 });
+
+groupsRouter.put('/:id/forced-announcement', (req, res) => {
+  const { announcementId } = req.body ?? {};
+  store.setForcedAnnouncement(req.params.id, announcementId ?? null);
+  res.status(204).end();
+});
+
+groupsRouter.post('/:id/announcement-schedules', (req, res) => {
+  const { announcementId, startDate, endDate, startTime, endTime } = req.body ?? {};
+  if ([announcementId, startDate, endDate, startTime, endTime].some((v) => typeof v !== 'string')) {
+    return res.status(400).json({ error: 'announcementId, startDate, endDate, startTime, endTime are required' });
+  }
+  res.status(201).json(store.addAnnouncementSchedule(req.params.id, { announcementId, startDate, endDate, startTime, endTime }));
+});
+
+groupsRouter.delete('/:id/announcement-schedules/:scheduleId', (req, res) => {
+  store.removeAnnouncementSchedule(req.params.id, req.params.scheduleId);
+  res.status(204).end();
+});

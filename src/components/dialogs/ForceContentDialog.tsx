@@ -29,7 +29,7 @@ export function ForceContentDialog({ app, group, onClose }: ForceContentDialogPr
           <span className="dot" />
           Back to rolling schedule
         </label>
-        {library.map((item) => (
+        {library.filter((item) => item.type !== 'announcement').map((item) => (
           <label key={item.id} className="radio">
             <input type="radio" name="forceContentPick" checked={choiceId === item.id} onChange={() => setChoiceId(item.id)} />
             <span className="dot" />

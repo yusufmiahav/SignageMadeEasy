@@ -42,3 +42,15 @@ export function itemsForDate(group: Group, date: string): { ids: string[]; kind:
   if (event) return { ids: event.libIds, kind: 'event', label: event.name };
   return { ids: group.defaultPlaylist, kind: 'default', label: 'Default playlist' };
 }
+
+// Mirrors hub/src/store.ts's activeAnnouncementId exactly — see its comment for the
+// resolution order and the "doesn't span midnight" caveat on the time-of-day check.
+export function activeAnnouncementId(group: Group, now: Date = new Date()): string | null {
+  if (group.forcedAnnouncementId) return group.forcedAnnouncementId;
+  const today = toISODate(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const active = group.announcementSchedules.find(
+    (s) => today >= s.startDate && today <= s.endDate && hhmm >= s.startTime && hhmm <= s.endTime,
+  );
+  return active?.announcementId ?? null;
+}
