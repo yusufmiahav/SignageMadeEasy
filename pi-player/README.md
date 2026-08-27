@@ -26,13 +26,12 @@ sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/yusufmiahav/Signage
 sudo reboot
 ```
 
-This installs Node.js, `labwc` (a general-purpose wlroots-based Wayland
-compositor, configured here as a single-app kiosk — see `labwc/rc.xml` and
-`labwc/autostart`) and Chromium, builds and deploys the player app to
-`/opt/signage/app`, sets up two systemd services (`signage-player`,
-`signage-kiosk`), configures auto-login on `tty1`, and disables console screen
-blanking. Re-run it after a `git pull` to redeploy player updates — it's
-idempotent.
+This installs Node.js, `cage` (a minimal single-app Wayland kiosk compositor —
+lighter than a full X11 desktop for exactly this one-app-fullscreen use case) and
+Chromium, builds and deploys the player app to `/opt/signage/app`, sets up two
+systemd services (`signage-player`, `signage-kiosk`), configures auto-login on
+`tty1`, and disables console screen blanking. Re-run it after a `git pull` to
+redeploy player updates — it's idempotent.
 
 After reboot the display shows its **IP address and a QR code**. Pair it from the
 control app (Home or Settings → "Add a screen") via Scan network, Scan QR, or Enter
@@ -51,22 +50,18 @@ IP — any of those has the hub reach the Pi directly to finish pairing.
   rotation — smoother video in particular, since it's no longer subject to WiFi
   jitter mid-playback. Downloads happen in the background after each poll; playback
   falls back to the hub's own URL for anything not cached yet, so it never blocks.
-- **`signage-kiosk.service`** — `labwc` running Chromium in kiosk mode pointed at
-  `http://localhost:8088` (`labwc/autostart` launches Chromium and, once it exits
-  for any reason, kills `labwc` too so systemd's `Restart=always` relaunches the
-  whole session together). `labwc/rc.xml` binds an unused key (F13) to labwc's
-  `HideCursor`/`WarpCursor` actions, fired once at startup via `ydotool` — there's
-  no real pointer device on this kiosk, so once hidden it stays hidden.
+- **`signage-kiosk.service`** — `cage` launching Chromium in kiosk mode pointed at
+  `http://localhost:8088`.
 - **The player page** (`public/`) — hard-cuts between playlist items (no crossfade):
   images for their configured duration (8s by default, editable per-image from the
   control app's Schedule screen), video to its natural end, PDF pages 8s each
   (rendered client-side with a vendored copy of `pdf.js`, not a CDN — the Pi only
   needs the LAN to reach the hub, nothing here should require internet access). A
   video that's the sole item in the active playlist (forced content, or a
-  playlist/event with just one video) restarts itself in place instead of
-  reloading via the rotation logic, so it plays seamlessly with no reload between
-  passes. An announcement, if one's turned on for this device, overlays as a
-  ticker regardless of what's in rotation.
+  playlist/event with just one video) loops natively instead of restarting via the
+  rotation logic, so it plays seamlessly with no reload between passes. An
+  announcement, if one's turned on for this device, overlays as a ticker regardless
+  of what's in rotation.
 
 ## Local development / testing (not on real Pi hardware)
 
@@ -77,5 +72,5 @@ SIGNAGE_CONFIG_PATH=./dev-config.json PORT=8088 npm run dev
 ```
 
 Open `http://localhost:8088` in a browser — behaves exactly like the kiosk view
-(minus `labwc`/Chromium's actual fullscreen kiosk chrome). Point it at a hub
-running locally by `POST`ing to `/configure` with a real `deviceId` from that hub.
+(minus `cage`/Chromium's actual fullscreen kiosk chrome). Point it at a hub running
+locally by `POST`ing to `/configure` with a real `deviceId` from that hub.
