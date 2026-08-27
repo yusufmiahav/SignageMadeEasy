@@ -20,7 +20,15 @@ body { font-family: system-ui, sans-serif; color: #fff; }
 #stage img, #stage video, #stage canvas { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; }
 #stage .empty { font-size: 20px; opacity: 0.4; }
 
-.ticker { position: absolute; left: 0; right: 0; bottom: 0; height: 56px; background: rgba(0, 0, 0, 0.8); overflow: hidden; display: flex; align-items: center; }
+/* Opaque background, not translucent: a semi-transparent bar forces the
+   browser to re-blend the actively-changing video frame underneath it on
+   every composite; a fully opaque one lets it skip rendering that covered
+   region of the video entirely — meaningfully cheaper on a Pi 3B+ already
+   spending its CPU on software video decode. */
+.ticker { position: absolute; left: 0; right: 0; bottom: 0; height: 56px; background: #000; overflow: hidden; display: flex; align-items: center; }
 .ticker[hidden] { display: none; }
-.ticker-text { white-space: nowrap; font-size: 22px; font-weight: 600; padding-left: 100%; animation: ticker-scroll 18s linear infinite; }
+/* will-change promotes the scrolling text to its own compositor layer up
+   front, so each scroll step composites independently instead of forcing a
+   repaint of the video layer underneath alongside it. */
+.ticker-text { white-space: nowrap; font-size: 22px; font-weight: 600; padding-left: 100%; animation: ticker-scroll 18s linear infinite; will-change: transform; }
 @keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
