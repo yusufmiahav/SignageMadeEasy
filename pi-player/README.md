@@ -63,6 +63,26 @@ IP — any of those has the hub reach the Pi directly to finish pairing.
   restarts itself in place instead of reloading via the rotation logic, so it plays
   seamlessly with no reload between passes. An announcement, if one's turned on for
   this device, overlays as a ticker regardless of what's in rotation.
+- **Wi-Fi fallback hotspot** (`src/wifiManager.ts`) — if this Pi has no working
+  network connection at all (no ethernet, no associated Wi-Fi — not just "can't
+  reach the hub", which this can't fix anyway) for about a minute, it broadcasts
+  its own Wi-Fi network so a technician can configure it from a phone with no
+  SSH or laptop needed. The kiosk screen itself shows the network name, password,
+  and the address to visit — nothing to look up in documentation. See
+  "Configuring Wi-Fi in the field" below.
+
+## Configuring Wi-Fi in the field (no SSH needed)
+
+If a Pi loses its Wi-Fi connection for about a minute, its screen switches to
+showing:
+- A Wi-Fi network name to join from a phone (`SignageSetup-<hostname>`)
+- Its password
+- A web address to open in a browser once joined
+
+Follow what the screen says, fill in the real network's name and password on
+that page, and submit. The Pi attempts to connect immediately; on success the
+kiosk resumes normally within moments. On failure (wrong password, out of
+range) the fallback network stays up so you can just try again.
 
 ## Local development / testing (not on real Pi hardware)
 

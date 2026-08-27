@@ -5,6 +5,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.mjs';
 const POLL_INTERVAL_MS = 2000;
 
 const screens = {
+  networkSetup: document.getElementById('network-setup-screen'),
   unpaired: document.getElementById('unpaired-screen'),
   connecting: document.getElementById('connecting-screen'),
   player: document.getElementById('player-screen'),
@@ -12,6 +13,9 @@ const screens = {
 const qrImg = document.getElementById('qr');
 const ipEl = document.getElementById('ip');
 const connectingDetail = document.getElementById('connecting-detail');
+const networkSsidEl = document.getElementById('network-ssid');
+const networkPasswordEl = document.getElementById('network-password');
+const networkUrlEl = document.getElementById('network-url');
 const stage = document.getElementById('stage');
 const ticker = document.getElementById('ticker');
 const tickerText = document.getElementById('ticker-text');
@@ -233,7 +237,16 @@ async function pollOnce() {
     const res = await fetch('/state');
     const data = await res.json();
 
-    if (!data.paired) {
+    if (data.networkSetup) {
+      // Takes priority over pairing state: while broadcasting its own fallback
+      // network (see wifiManager.ts) there's no real LAN for the control app to
+      // reach this Pi on, so the usual QR/IP pairing flow doesn't apply yet.
+      playlistKey = null;
+      networkSsidEl.textContent = data.networkSetup.ssid ?? '—';
+      networkPasswordEl.textContent = data.networkSetup.password ?? '—';
+      networkUrlEl.textContent = data.networkSetup.url ?? '—';
+      showScreen('networkSetup');
+    } else if (!data.paired) {
       playlistKey = null;
       ipEl.textContent = data.ip ?? 'unknown';
       qrImg.src = '/qr.png';

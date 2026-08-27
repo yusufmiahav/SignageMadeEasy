@@ -73,6 +73,12 @@ code.** The hub must be able to reach the Pi's IP directly and vice versa — co
 network puts the hub on a different subnet than your LAN) and that both devices are
 actually on the same network/VLAN.
 
+**A Pi lost its Wi-Fi connection and needs reconfiguring in the field.** No SSH
+needed — after about a minute with no network at all, the Pi broadcasts its own
+Wi-Fi network and its screen shows the network name, password, and a web address
+to visit from a phone. See `pi-player/README.md`'s "Configuring Wi-Fi in the
+field" section.
+
 **The kiosk display never starts on its own after a reboot.** Raspberry Pi OS Lite
 boots to `multi-user.target`, not `graphical.target` — a `signage-kiosk.service`
 from before this was fixed (`WantedBy=graphical.target`) will sit inactive forever.

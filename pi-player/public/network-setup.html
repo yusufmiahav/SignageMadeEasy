@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SignageMadeEasy — Wi-Fi setup</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; background: #111; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .card { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 22px; font-weight: 800; }
+  p { font-size: 14px; opacity: 0.8; line-height: 1.4; }
+  label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 4px; }
+  select, input { width: 100%; padding: 10px; font-size: 15px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; }
+  button { padding: 12px; font-size: 15px; font-weight: 700; border-radius: 6px; border: none; background: #e0392c; color: #fff; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #status { font-size: 13px; min-height: 18px; }
+  #status.ok { color: #6fdc7f; }
+  #status.err { color: #ff8a80; }
+  #rescan { background: transparent; border: 1px solid #444; font-weight: 600; padding: 8px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Connect this display to Wi-Fi</h1>
+    <p>Pick your network below and enter its password. The display will try to connect immediately.</p>
+    <div>
+      <label for="ssid-select">Network</label>
+      <select id="ssid-select"><option value="">Scanning&hellip;</option></select>
+    </div>
+    <button type="button" id="rescan">Rescan</button>
+    <div>
+      <label for="ssid-manual">Or type the network name</label>
+      <input id="ssid-manual" placeholder="Network name" />
+    </div>
+    <div>
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="Wi-Fi password" />
+    </div>
+    <button type="button" id="connect">Connect</button>
+    <p id="status"></p>
+  </div>
+  <script>
+    const select = document.getElementById('ssid-select');
+    const manual = document.getElementById('ssid-manual');
+    const password = document.getElementById('password');
+    const status = document.getElementById('status');
+    const connectBtn = document.getElementById('connect');
+
+    async function loadNetworks() {
+      select.innerHTML = '<option value="">Scanning&hellip;</option>';
+      try {
+        const res = await fetch('/network-setup/networks');
+        const data = await res.json();
+        select.innerHTML = '<option value="">Choose a network&hellip;</option>' +
+          data.ssids.map((s) => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
+      } catch {
+        select.innerHTML = '<option value="">Scan failed — type the name below</option>';
+      }
+    }
+
+    document.getElementById('rescan').addEventListener('click', loadNetworks);
+    void loadNetworks();
+
+    connectBtn.addEventListener('click', async () => {
+      const ssid = manual.value.trim() || select.value;
+      if (!ssid) {
+        status.textContent = 'Choose or type a network name first.';
+        status.className = 'err';
+        return;
+      }
+      connectBtn.disabled = true;
+      status.textContent = 'Connecting… this can take up to 30 seconds.';
+      status.className = '';
+      try {
+        const res = await fetch('/network-setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ssid, password: password.value }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          status.textContent = 'Connected! The display will resume shortly — this page no longer applies.';
+          status.className = 'ok';
+        } else {
+          status.textContent = `Couldn't connect: ${data.error ?? 'unknown error'}. Check the password and try again.`;
+          status.className = 'err';
+          connectBtn.disabled = false;
+        }
+      } catch {
+        status.textContent = "Lost connection to the display mid-request — if it joined the new network, this page is no longer reachable; that's expected.";
+        status.className = 'err';
+        connectBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

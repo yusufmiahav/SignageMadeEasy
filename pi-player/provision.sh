@@ -104,6 +104,24 @@ if ! id "$SIGNAGE_USER" >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
+log "Granting $SIGNAGE_USER passwordless nmcli access (Wi-Fi fallback hotspot — see pi-player/src/wifiManager.ts)"
+# The player agent runs as $SIGNAGE_USER, not root, but reconfiguring Wi-Fi
+# (starting a fallback hotspot, connecting to a newly-entered network) needs
+# root/NetworkManager privileges nmcli doesn't grant to arbitrary local users by
+# default on a headless install. Validated with visudo before being installed —
+# a broken sudoers.d file is the kind of mistake that can break sudo system-wide,
+# not something to risk on `set -euo pipefail` alone catching a typo.
+SUDOERS_TMP="$(mktemp)"
+echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /usr/bin/nmcli" > "$SUDOERS_TMP"
+if visudo -c -f "$SUDOERS_TMP" >/dev/null 2>&1; then
+  install -m 440 "$SUDOERS_TMP" /etc/sudoers.d/signage-nmcli
+else
+  echo "Generated nmcli sudoers rule failed validation — skipping. The Wi-Fi" >&2
+  echo "fallback hotspot won't be able to reconfigure networking without it." >&2
+fi
+rm -f "$SUDOERS_TMP"
+
+# ---------------------------------------------------------------------------
 log "Fetching SignageMadeEasy"
 mkdir -p "$INSTALL_DIR"
 if [[ -d "$INSTALL_DIR/src/.git" ]]; then
