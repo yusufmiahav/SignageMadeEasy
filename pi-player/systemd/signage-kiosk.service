@@ -13,13 +13,18 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
-# XCURSOR_SIZE=0 was confirmed invalid enough on real hardware that cage's
-# cursor manager fell back to its default (visible) cursor instead of loading
-# the "blank" theme at all — 24 (a normal cursor size) lets the theme actually
-# load. NOT confirmed sufficient on its own, though: a real-hardware test with
-# this exact value but without the ExecStartPost warp below still showed a
-# visible cursor. Left in regardless — it's free, and it may be doing some of
-# the work alongside the warp, which is the part actually confirmed to work.
+# Final, confirmed-on-real-hardware conclusion after several attempts: cage
+# cannot be made to render a genuinely invisible cursor. Neither this
+# transparent Xcursor theme (XCURSOR_SIZE must be a real size like 24, not 0,
+# or cage falls back to its normal default cursor instead of loading "blank"
+# at all) nor CSS cursor:none on the page changes what cage itself draws —
+# cage's cursor isn't something a client can hide, and cage's own maintainers
+# have said outright that hiding it isn't something they support. Kept
+# regardless since it's free and can only help, but see the ExecStartPost
+# warp below for the part that actually does something: relocating the
+# (still-visible) cursor to a corner, off the main content. See the root
+# README's troubleshooting section for the full story before "fixing" this
+# again — it's an accepted cosmetic limitation, not an open bug.
 Environment=XCURSOR_THEME=blank
 Environment=XCURSOR_SIZE=24
 Environment=XCURSOR_PATH=/home/signage/.icons
@@ -100,14 +105,18 @@ ExecStart=/usr/bin/cage -- /usr/bin/chromium \
   --overscroll-history-navigation=0 \
   --autoplay-policy=no-user-gesture-required
 
-# The part actually confirmed to hide the cursor on real hardware: warping it
-# off-screen via a synthetic input device (ydotoold/ydotool — see provision.sh)
-# indistinguishable from a real mouse at the kernel level, so it works
-# regardless of what cage's own cursor-rendering does or doesn't honor. The
-# sleep gives cage a moment to finish initializing its seat/backend before a
-# synthetic pointer event can reach it; the large relative delta relies on
-# wlroots clamping cursor position to the output's bounds, landing it in the
-# bottom-right corner regardless of actual resolution.
+# Confirmed on real hardware: this relocates the cursor to the bottom-right
+# corner, off the main content — but the cursor itself stays visible there;
+# see the XCURSOR_* comment above and the root README for why full invisibility
+# on cage isn't achievable, and why the corner cursor is an accepted, final
+# state rather than a bug to keep chasing. Uses a synthetic input device
+# (ydotoold/ydotool — see provision.sh) indistinguishable from a real mouse at
+# the kernel level, so the relocation works regardless of what cage's own
+# cursor-rendering does or doesn't honor. The sleep gives cage a moment to
+# finish initializing its seat/backend before a synthetic pointer event can
+# reach it; the large relative delta relies on wlroots clamping cursor
+# position to the output's bounds, landing it in the corner regardless of
+# actual resolution.
 # `|| true`: this must never be able to fail the unit. A failed ExecStartPost
 # marks Type=simple services as failed too, and with Restart=always that would
 # crash-loop the whole kiosk — killing a working cage/Chromium — over nothing

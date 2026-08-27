@@ -81,16 +81,23 @@ file, then reboot. You can check which target a unit is pulled in by with
 `systemctl status signage-kiosk.service`; `inactive (dead)` with zero log lines is
 the signature of this specific issue.
 
-**A visible mouse cursor sits in the middle of an otherwise-working kiosk display.**
-Two stacked fixes, confirmed on real hardware: a transparent Xcursor theme
-(`signage-kiosk.service`'s `XCURSOR_THEME`/`XCURSOR_SIZE`/`XCURSOR_PATH` — `XCURSOR_SIZE`
-must be a real size like 24, not 0, or cage falls back to drawing its normal default
-cursor instead of loading the transparent theme), plus warping the cursor off-screen
-via a synthetic input device (`ydotoold`/`ydotool`, see the `ExecStartPost` in that same
-file) — the warp is the part actually confirmed necessary; the theme fix alone wasn't
-enough in testing. `provision.sh` installs `ydotool`/`ydotoold` best-effort (not every
-Raspberry Pi OS release has it in its default repo) — if it's missing, the warp is
-skipped and the cursor may stay visible. Re-run `provision.sh` and reboot to pick it up.
+**A mouse cursor is visible, parked in the bottom-right corner of the display.**
+This is expected and, on cage, as good as it gets — confirmed on real hardware
+across several attempts that cage cannot be made to render a truly invisible
+cursor: neither a transparent Xcursor theme (`XCURSOR_THEME`/`XCURSOR_SIZE`/
+`XCURSOR_PATH`) nor CSS `cursor: none` on the page changes what cage itself
+draws, since cage's cursor isn't something a client can hide — cage's own
+maintainers have said outright that hiding it isn't something they support.
+What *does* work: `signage-kiosk.service`'s `ExecStartPost` warps the cursor via
+a synthetic input device (`ydotoold`/`ydotool`) to the bottom-right corner at
+startup, off the main content — that's the corner cursor you're seeing, and
+it's intentional, not a bug. `provision.sh` installs `ydotool`/`ydotoold`
+best-effort (not every Raspberry Pi OS release has it in its default repo) — if
+it's missing, the warp is skipped and the cursor stays centered instead. A
+compositor with a real "hide the cursor" feature (e.g. `labwc`, instead of
+`cage`) could do better here, at the cost of a bigger, less-tested change —
+not pursued for this project since the corner cursor is a minor cosmetic
+issue, not a functional one.
 
 **The kiosk service shows "Failed to start" once or twice right after boot, then
 recovers on its own within ~30s** (`journalctl -u signage-kiosk.service -b` shows
