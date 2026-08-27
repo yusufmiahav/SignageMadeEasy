@@ -47,7 +47,13 @@ Environment=XCURSOR_PATH=/home/signage/.icons
 # proceed regardless — if it's still not there, cage will fail exactly as
 # before and Restart=always below still recovers, same self-healing safety
 # net as ever.
-ExecStartPre=/bin/sh -c 'for i in $(seq 1 40); do [ -S "/run/user/%U/bus" ] && exit 0; sleep 0.25; done; exit 0'
+#
+# Deliberately NOT %U: confirmed on real hardware that %U resolves to 0 (the
+# service manager's own UID, i.e. root — PID 1 always runs as root) for a
+# system-level unit, not this unit's own User=signage — that specifier only
+# means "the user this unit runs as" inside a per-user (systemd --user)
+# instance. Looks up signage's real UID directly instead.
+ExecStartPre=/bin/sh -c 'u=$(id -u signage); for i in $(seq 1 40); do [ -S "/run/user/$u/bus" ] && exit 0; sleep 0.25; done; exit 0'
 
 # --kiosk: fullscreen, no chrome. --noerrdialogs/--disable-session-crashed-bubble:
 # no "restore pages?" prompts after a power-cut reboot. --check-for-update-interval
