@@ -33,46 +33,6 @@ apt-get update
 apt-get install -y --no-install-recommends \
   cage curl ca-certificates git rsync
 
-# ydotool/ydotoold (used to warp the cursor off-screen — see signage-kiosk.service)
-# aren't in every release's default repo — e.g. Raspberry Pi OS Trixie only has
-# them in trixie-backports. Best-effort and isolated from the required packages
-# above on purpose: this failing must never take the rest of provisioning down
-# with it (that's exactly what happened before this was split out — one missing
-# package killed the whole script via set -euo pipefail before it ever reached
-# anything else, the same failure mode as the earlier git-ownership bug).
-#
-# Package name varies by architecture too, confirmed on real hardware: on
-# Raspberry Pi OS's 32-bit (armhf) build, `ydotoold` isn't an installable
-# package at all — `ydotool` alone bundles both the client and the daemon —
-# whereas other architectures split them into two separate packages. Try the
-# two-package form first, fall back to the single-package form, and verify
-# with the actual binary rather than trusting either apt-get call's exit code
-# alone, since apt-get can succeed while still not providing what we need.
-try_install_ydotool() {
-  apt-get install -y --no-install-recommends "$@" ydotool ydotoold 2>/dev/null || \
-  apt-get install -y --no-install-recommends "$@" ydotool 2>/dev/null
-}
-
-HAVE_YDOTOOL=0
-if try_install_ydotool && command -v ydotoold >/dev/null 2>&1; then
-  HAVE_YDOTOOL=1
-elif [[ -f /etc/os-release ]] && grep -q '^VERSION_CODENAME=trixie' /etc/os-release; then
-  BACKPORTS_LIST=/etc/apt/sources.list.d/trixie-backports.list
-  if [[ ! -f "$BACKPORTS_LIST" ]]; then
-    echo "deb http://deb.debian.org/debian trixie-backports main" > "$BACKPORTS_LIST"
-  fi
-  # Pinned to trixie-backports specifically (-t) so this doesn't pull anything
-  # else up from backports as a side effect — only touches these two packages.
-  if apt-get update 2>/dev/null && \
-     try_install_ydotool -t trixie-backports && command -v ydotoold >/dev/null 2>&1; then
-    HAVE_YDOTOOL=1
-  fi
-fi
-if [[ "$HAVE_YDOTOOL" -eq 0 ]]; then
-  echo "ydotool/ydotoold not available — skipping the cursor off-screen warp (the" >&2
-  echo "other cursor attempts, XCURSOR_THEME/XCURSOR_SIZE, still apply)." >&2
-fi
-
 # Package name for Chromium differs across Raspberry Pi OS releases.
 if apt-cache show chromium >/dev/null 2>&1; then
   CHROMIUM_PKG=chromium
@@ -131,18 +91,12 @@ chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$APP_DIR"
 
 # ---------------------------------------------------------------------------
 log "Installing a blank cursor theme"
-# One of three independent, stacked attempts at cage's visible-cursor problem —
-# see pi-player/systemd/signage-kiosk.service for the other two (XCURSOR_SIZE=0,
-# and warping the cursor off-screen via ydotool). cage always draws *a* cursor —
-# its own maintainers have said hiding it outright isn't something they intend to
-# support (github.com/cage-kiosk/cage/issues/299, /issues/422) — but it does
-# document and (per /proc/<pid>/environ on real hardware) actually receive
-# XCURSOR_THEME: the cursor it draws is just a normal Xcursor theme lookup, so
-# pointing that at a fully transparent one is worth doing regardless of whether it
-# alone is sufficient. Two earlier, disproven theories aren't part of this
-# anymore: disabling libinput devices entirely (didn't stop the cursor being
-# drawn) and relying on --ozone-platform=wayland to fix it (a real, separate
-# rendering-correctness fix worth keeping, but never actually about the cursor).
+# cage always draws *a* cursor with no direct API to suppress it — but it does
+# receive XCURSOR_THEME/XCURSOR_SIZE (confirmed via /proc/<pid>/environ on real
+# hardware): the cursor it draws is just a normal Xcursor theme lookup at a
+# given size. Pointing XCURSOR_THEME at a fully transparent theme genuinely
+# hides it, PROVIDED XCURSOR_SIZE is a real size — see signage-kiosk.service
+# for why it must not be 0.
 SIGNAGE_HOME="$(getent passwd "$SIGNAGE_USER" | cut -d: -f6)"
 CURSOR_DIR="$SIGNAGE_HOME/.icons/blank/cursors"
 mkdir -p "$CURSOR_DIR"
@@ -161,11 +115,6 @@ sed "s#/usr/bin/chromium#${CHROMIUM_BIN}#" "$APP_DIR/systemd/signage-kiosk.servi
   > /etc/systemd/system/signage-kiosk.service
 systemctl daemon-reload
 systemctl enable --now signage-player.service
-if [[ "$HAVE_YDOTOOL" -eq 1 ]]; then
-  cp "$APP_DIR/systemd/ydotoold.service" /etc/systemd/system/
-  systemctl daemon-reload
-  systemctl enable --now ydotoold.service
-fi
 systemctl enable signage-kiosk.service
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 [Unit]
 Description=SignageMadeEasy kiosk display (cage + Chromium)
-After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service ydotoold.service
-Wants=signage-player.service ydotoold.service
+After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service
+Wants=signage-player.service
 Conflicts=getty@tty1.service
 
 [Service]
@@ -13,16 +13,31 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
-# Two independent, stackable attempts at the visible-cursor problem (see the
-# ExecStartPost comment below for a third). XCURSOR_SIZE=0 on its own is
-# untested — it might render nothing, or it might just get clamped to some
-# default size — cheap enough to try alongside everything else regardless.
-# XCURSOR_THEME=blank was already confirmed (via /proc/<pid>/environ) to
-# actually reach cage's process; the theme itself is a genuinely transparent
-# cursor built by provision.sh, not a hidden/removed one.
+# Root cause, confirmed on real hardware: XCURSOR_SIZE=0 was invalid enough
+# that cage/wlroots's cursor manager fell back to a default (visible) cursor
+# instead of loading the "blank" theme at all — the theme itself was correct
+# the whole time (confirmed transparent, confirmed reaching cage's process via
+# /proc/<pid>/environ), but the size value being 0 stopped it from actually
+# being applied. A real size (24, a normal cursor size) lets the transparent
+# "blank" theme load properly, which genuinely hides the cursor. This alone
+# was sufficient — cage's own maintainers' claim that hiding the cursor isn't
+# supported turned out to be about there being no direct API for it, not that
+# a correctly-loaded transparent theme can't achieve the same effect.
 Environment=XCURSOR_THEME=blank
-Environment=XCURSOR_SIZE=0
+Environment=XCURSOR_SIZE=24
 Environment=XCURSOR_PATH=/home/signage/.icons
+
+# Second real bug, confirmed via journalctl on real hardware: cage's own
+# startup check (cage.c:299) failed with "XDG_RUNTIME_DIR is not set in the
+# environment" on the first 1-2 boot attempts, before pam_systemd/logind
+# finished setting up the signage user's session (it kept self-healing within
+# ~30s via Restart=always below, but that's still ~30s of a failed/blank kiosk
+# on every boot). Sidesteps the race entirely instead of waiting on it:
+# systemd creates and owns this runtime directory itself before ExecStart
+# ever runs, independent of whatever pam_systemd/logind is doing.
+RuntimeDirectory=signage-kiosk
+RuntimeDirectoryMode=0700
+Environment=XDG_RUNTIME_DIR=/run/signage-kiosk
 
 # --kiosk: fullscreen, no chrome. --noerrdialogs/--disable-session-crashed-bubble:
 # no "restore pages?" prompts after a power-cut reboot. --check-for-update-interval
@@ -32,27 +47,28 @@ Environment=XCURSOR_PATH=/home/signage/.icons
 # XWayland compatibility layer — confirmed via real hardware ps/journalctl output
 # to be honored. Doesn't affect the cursor.
 #
-# --remote-debugging-port/--remote-debugging-address: three real-hardware
-# failures in a row on video looping (native `loop` froze, an explicit
-# currentTime+play() restart paused instead of resuming, a play()-rejection
-# retry+fallback still froze) with every hypothesis so far unreproducible in
-# this project's sandbox — opens real DevTools at http://<pi-ip>:9222 from any
-# device on the LAN instead of guessing a fourth theory blind. Same LAN-trust
-# model as everything else here (no auth anywhere in this project); bound to
-# 0.0.0.0 on purpose so it's reachable from another device, not just localhost.
+# --remote-debugging-port/--remote-debugging-address: opens real DevTools at
+# http://<pi-ip>:9222 from any device on the LAN — used to diagnose real
+# on-device video playback issues that never reproduced in a sandbox. Same
+# LAN-trust model as everything else here (no auth anywhere in this project);
+# bound to 0.0.0.0 on purpose. Chromium itself still only binds the DevTools
+# socket to 127.0.0.1 regardless of this flag (a hardening behavior, confirmed
+# on real hardware) — reach it via `ssh -L 9222:localhost:9222 pi@<ip>` +
+# chrome://inspect, not this flag alone.
 #
-# --disable-accelerated-video-decode: diagnosed via the remote DevTools console
-# above on real hardware — a long (2min+) video reliably stalls with
-# networkState idle and readyState stuck at "have current data", at the exact
-# same point every time, with the fully-intact cached file confirmed
-# byte-identical to the original (ruling out a truncated download) and zero
-# new kernel dmesg entries at the moment of the freeze (ruling out an OOM
-# kill or a kernel-level GPU driver reset). That combination points at
-# Chromium's own hardware video decode pipeline (VideoCore GPU via V4L2)
-# silently hanging partway through, which is a known rough edge on this
-# platform — not something fixable from the page's JavaScript. Forcing
-# software decode trades CPU load for using Chromium's far more mature,
-# battle-tested decode path instead.
+# --disable-accelerated-video-decode: diagnosed via that remote DevTools console
+# on real hardware — a long (2min+) video reliably stalled with networkState
+# idle and readyState stuck at "have current data", at the exact same point
+# every time, with the cached file confirmed byte-identical to the original
+# (ruling out a truncated download) and zero new kernel dmesg entries at the
+# moment of the freeze (ruling out an OOM kill or a kernel-level GPU driver
+# reset). That combination points at Chromium's own hardware video decode
+# pipeline (VideoCore GPU via V4L2) silently hanging partway through — a known
+# rough edge on this platform, not something fixable from the page's
+# JavaScript. Forcing software decode trades CPU load (confirmed choppier on
+# real hardware — re-encode source video to 720p H.264 if that's a problem,
+# see the troubleshooting section in the root README) for Chromium's far more
+# mature, battle-tested decode path.
 ExecStart=/usr/bin/cage -- /usr/bin/chromium \
   --kiosk http://localhost:8088 \
   --ozone-platform=wayland \
@@ -67,27 +83,6 @@ ExecStart=/usr/bin/cage -- /usr/bin/chromium \
   --check-for-update-interval=31536000 \
   --overscroll-history-navigation=0 \
   --autoplay-policy=no-user-gesture-required
-
-# Third, independent attempt at the visible-cursor problem: cage always draws a
-# cursor with no way to suppress it, and its own maintainers have said outright
-# hiding isn't something they intend to support — disabling input devices entirely
-# and a fully transparent XCURSOR_THEME (env-var-confirmed reaching cage's process)
-# both failed on real hardware anyway, for reasons not diagnosable further from
-# here. Sidestepping "make it invisible" entirely: warp it off-screen instead, via
-# a synthetic input device (ydotoold/ydotool — see provision.sh) that's
-# indistinguishable from a real mouse at the kernel level, so it works regardless
-# of what cage's own cursor-rendering does or doesn't honor. The sleep gives cage a
-# moment to finish initializing its seat/backend before a synthetic pointer event
-# can reach it; the large relative delta relies on wlroots clamping cursor
-# position to the output's bounds, landing it in the bottom-right corner
-# regardless of actual resolution. Not verified end-to-end — this project's
-# sandbox has no /dev/uinput to test synthetic input against.
-# `|| true`: this must never be able to fail the unit. A failed ExecStartPost
-# marks Type=simple services as failed too, and with Restart=always that would
-# crash-loop the whole kiosk — killing a working cage/Chromium — over nothing
-# worse than ydotool being unavailable (provision.sh installs it best-effort;
-# not every release has it in its default repo).
-ExecStartPost=/bin/sh -c 'sleep 3; YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool mousemove -- 10000 10000 || true'
 
 Restart=always
 RestartSec=2

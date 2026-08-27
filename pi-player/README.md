@@ -58,10 +58,10 @@ IP — any of those has the hub reach the Pi directly to finish pairing.
   (rendered client-side with a vendored copy of `pdf.js`, not a CDN — the Pi only
   needs the LAN to reach the hub, nothing here should require internet access). A
   video that's the sole item in the active playlist (forced content, or a
-  playlist/event with just one video) loops natively instead of restarting via the
-  rotation logic, so it plays seamlessly with no reload between passes. An
-  announcement, if one's turned on for this device, overlays as a ticker regardless
-  of what's in rotation.
+  playlist/event with just one video) restarts itself in place instead of
+  reloading via the rotation logic, so it plays seamlessly with no reload
+  between passes. An announcement, if one's turned on for this device,
+  overlays as a ticker regardless of what's in rotation.
 
 ## Local development / testing (not on real Pi hardware)
 

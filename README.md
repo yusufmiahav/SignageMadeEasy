@@ -82,8 +82,19 @@ file, then reboot. You can check which target a unit is pulled in by with
 the signature of this specific issue.
 
 **A visible mouse cursor sits in the middle of an otherwise-working kiosk display.**
-Fixed by disabling libinput device discovery in the kiosk's systemd unit
-(`WLR_LIBINPUT_NO_DEVICES=1`) — re-run `provision.sh` and reboot to pick it up.
+Fixed via a transparent Xcursor theme (`signage-kiosk.service`'s `XCURSOR_THEME`/
+`XCURSOR_SIZE`/`XCURSOR_PATH`, theme installed by `provision.sh`) — the key detail
+is that `XCURSOR_SIZE` must be a real size (24 is used) and not 0; a size of 0 stops
+the transparent theme from actually loading and cage falls back to drawing its
+normal default cursor instead. Re-run `provision.sh` and reboot to pick it up.
+
+**The kiosk service shows "Failed to start" once or twice right after boot, then
+recovers on its own within ~30s** (`journalctl -u signage-kiosk.service -b` shows
+`XDG_RUNTIME_DIR is not set in the environment`). A startup race: `pam_systemd`/
+logind hadn't finished setting up the signage user's session by the time cage's
+first attempt or two ran. Fixed via `RuntimeDirectory=`/`XDG_RUNTIME_DIR` in
+`signage-kiosk.service`, which has systemd create and own that directory itself
+instead of waiting on the race — re-run `provision.sh` and reboot to pick it up.
 
 **Deleting a screen in the control app doesn't disconnect it / the Pi still shows
 "connected".** Fixed in the hub/Pi-player pairing logic — the hub now pushes an
@@ -98,6 +109,18 @@ throttling. A one-off warning right after boot is usually the SoC bootloader
 noticing a brief dip and is not itself something `provision.sh` can fix — swap the
 power supply/cable if it persists or you see repeated warnings in
 `dmesg | grep -i voltage`.
+
+**Video playback is choppy.** `signage-kiosk.service` forces Chromium's software
+video decoder (`--disable-accelerated-video-decode`) because hardware decode on
+this platform was found to silently hang partway through longer videos — see the
+comment in that file for the full diagnosis. Software decode trades some smoothness
+for reliability; if it's too choppy, re-encode your source video to 720p H.264
+(baseline/main profile, not H.265/HEVC/VP9/AV1 — those are much heavier to decode
+in software), e.g.:
+```bash
+ffmpeg -i input.mp4 -vf scale=1280:720 -c:v libx264 -profile:v main -preset medium -crf 23 -an output.mp4
+```
+(`-an` strips audio — the kiosk always plays muted, so it's dead weight.)
 
 **A fresh hub still shows old locations/screens/library items.** It isn't seeded
 with demo data — anything you see was added through the app itself. If you expected
