@@ -112,17 +112,26 @@ ExecStart=/usr/bin/cage -- /usr/bin/chromium \
 # state rather than a bug to keep chasing. Uses a synthetic input device
 # (ydotoold/ydotool — see provision.sh) indistinguishable from a real mouse at
 # the kernel level, so the relocation works regardless of what cage's own
-# cursor-rendering does or doesn't honor. The sleep gives cage a moment to
-# finish initializing its seat/backend before a synthetic pointer event can
-# reach it; the large relative delta relies on wlroots clamping cursor
-# position to the output's bounds, landing it in the corner regardless of
-# actual resolution.
-# `|| true`: this must never be able to fail the unit. A failed ExecStartPost
-# marks Type=simple services as failed too, and with Restart=always that would
-# crash-loop the whole kiosk — killing a working cage/Chromium — over nothing
-# worse than ydotool being unavailable (provision.sh installs it best-effort;
-# not every release has it in its default repo).
-ExecStartPost=/bin/sh -c 'sleep 3; YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool mousemove -- 10000 10000 || true'
+# cursor-rendering does or doesn't honor.
+#
+# Retries every second for 15s instead of firing once after a fixed sleep:
+# confirmed on real hardware that a single "sleep 3, then warp" attempt can
+# silently no-op on a slow boot — ydotool reports success either way (writing
+# to the synthetic input device succeeds regardless of whether cage's own
+# input backend has finished initializing enough to actually consume the
+# event yet), so a single attempt gives no signal that it didn't land. Same
+# race as the ExecStartPre wait above, just on cage's seat/input backend
+# instead of pam_systemd's runtime dir — a boot slow enough to need several
+# kiosk restarts before succeeding (see that comment) leaves cage starting
+# later than a fixed 3s assumes. Repeating is harmless: warping an
+# already-warped cursor to the same corner again is a no-op.
+# `|| true` at the very end: this must never be able to fail the unit. A
+# failed ExecStartPost marks Type=simple services as failed too, and with
+# Restart=always that would crash-loop the whole kiosk — killing a working
+# cage/Chromium — over nothing worse than ydotool being unavailable
+# (provision.sh installs it best-effort; not every release has it in its
+# default repo).
+ExecStartPost=/bin/sh -c 'for i in $(seq 1 15); do sleep 1; YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool mousemove -- 10000 10000 2>/dev/null; done || true'
 
 Restart=always
 RestartSec=2
