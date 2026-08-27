@@ -29,12 +29,25 @@ Environment=XCURSOR_PATH=/home/signage/.icons
 # environment" on the first 1-2 boot attempts, before pam_systemd/logind
 # finished setting up the signage user's session (it kept self-healing within
 # ~30s via Restart=always below, but that's still ~30s of a failed/blank kiosk
-# on every boot). Sidesteps the race entirely instead of waiting on it:
-# systemd creates and owns this runtime directory itself before ExecStart
-# ever runs, independent of whatever pam_systemd/logind is doing.
-RuntimeDirectory=signage-kiosk
-RuntimeDirectoryMode=0700
-Environment=XDG_RUNTIME_DIR=/run/signage-kiosk
+# on every boot).
+#
+# A previous fix here pointed XDG_RUNTIME_DIR at a directory systemd's own
+# RuntimeDirectory= created, to sidestep the race entirely — that was wrong
+# and confirmed broken on real hardware: libseat needs the *actual*
+# pam_systemd-managed /run/user/<uid> (it hosts the D-Bus session bus socket
+# logind is reached through), not just some XDG_RUNTIME_DIR-shaped directory.
+# Pointing it elsewhere made libseat unable to reach logind at all
+# ("Could not connect to logind"), which cascaded into libinput failing to
+# init and cage never starting its wlroots backend — worse than the original
+# race, since it no longer self-healed via Restart=always.
+#
+# Fixed by waiting for the real thing instead of substituting a fake one:
+# poll for pam_systemd's own /run/user/<uid>/bus (the file that specifically
+# indicates the D-Bus session libseat needs is actually up), up to 10s, then
+# proceed regardless — if it's still not there, cage will fail exactly as
+# before and Restart=always below still recovers, same self-healing safety
+# net as ever.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 40); do [ -S "/run/user/%U/bus" ] && exit 0; sleep 0.25; done; exit 0'
 
 # --kiosk: fullscreen, no chrome. --noerrdialogs/--disable-session-crashed-bubble:
 # no "restore pages?" prompts after a power-cut reboot. --check-for-update-interval

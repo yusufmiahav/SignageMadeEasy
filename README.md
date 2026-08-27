@@ -96,9 +96,14 @@ skipped and the cursor may stay visible. Re-run `provision.sh` and reboot to pic
 recovers on its own within ~30s** (`journalctl -u signage-kiosk.service -b` shows
 `XDG_RUNTIME_DIR is not set in the environment`). A startup race: `pam_systemd`/
 logind hadn't finished setting up the signage user's session by the time cage's
-first attempt or two ran. Fixed via `RuntimeDirectory=`/`XDG_RUNTIME_DIR` in
-`signage-kiosk.service`, which has systemd create and own that directory itself
-instead of waiting on the race — re-run `provision.sh` and reboot to pick it up.
+first attempt or two ran. Fixed via an `ExecStartPre` in `signage-kiosk.service`
+that waits (up to 10s) for `pam_systemd`'s own `/run/user/<uid>/bus` to actually
+exist before starting cage — re-run `provision.sh` and reboot to pick it up. (An
+earlier attempt at this fix pointed `XDG_RUNTIME_DIR` at a directory systemd
+created itself instead of waiting for the real one — don't do that: cage's
+`libseat` needs the *actual* pam_systemd-managed runtime directory specifically,
+since that's where the D-Bus session socket it uses to reach logind lives;
+pointing it elsewhere breaks device access entirely with no self-healing.)
 
 **Deleting a screen in the control app doesn't disconnect it / the Pi still shows
 "connected".** Fixed in the hub/Pi-player pairing logic — the hub now pushes an
