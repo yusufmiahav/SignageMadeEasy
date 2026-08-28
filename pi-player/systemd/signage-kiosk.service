@@ -90,6 +90,12 @@ ExecStartPre=/bin/sh -c 'u=$(id -u signage); for i in $(seq 1 40); do [ -S "/run
 # real hardware — re-encode source video to 720p H.264 if that's a problem,
 # see the troubleshooting section in the root README) for Chromium's far more
 # mature, battle-tested decode path.
+#
+# Moot but harmless as of pi-player/src/mpvPlayer.ts: video no longer plays through
+# Chromium's <video> element at all (mpv handles it as a separate hardware-decoded
+# process instead — see pi-player/README.md), so this flag has nothing left to act
+# on. Left in place rather than removed since Chromium still needs to not fight mpv
+# for the GPU decode unit if anything ever routes video through it again.
 ExecStart=/usr/bin/cage -- /usr/bin/chromium \
   --kiosk http://localhost:8088 \
   --ozone-platform=wayland \

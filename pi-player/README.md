@@ -54,15 +54,32 @@ IP — any of those has the hub reach the Pi directly to finish pairing.
   `http://localhost:8088`.
 - **The player page** (`public/`) — hard-cuts between playlist items (no crossfade):
   images for their configured duration (8s by default, editable per-image from the
-  control app's Schedule screen), video to its natural end, PDF pages 8s each
-  (rendered client-side with a vendored copy of `pdf.js`, not a CDN — the Pi only
-  needs the LAN to reach the hub, nothing here should require internet access), and
-  a live clock (current time of day on a black background, no file involved) for
-  its own configured duration same as an image. A video that's the sole item in the
-  active playlist (forced content, or a playlist/event with just one video)
-  restarts itself in place instead of reloading via the rotation logic, so it plays
-  seamlessly with no reload between passes. An announcement, if one's turned on for
-  this device, overlays as a ticker regardless of what's in rotation.
+  control app's Schedule screen), PDF pages 8s each (rendered client-side with a
+  vendored copy of `pdf.js`, not a CDN — the Pi only needs the LAN to reach the hub,
+  nothing here should require internet access), and a live clock (current time of
+  day on a black background, no file involved) for its own configured duration same
+  as an image. An announcement, if one's turned on for this device, overlays as a
+  ticker regardless of what's in rotation.
+- **Video playback** (`src/mpvPlayer.ts`) — video runs through `mpv` as a separate
+  process, hardware-decoded, rather than an in-page `<video>` element. Chromium's own
+  hardware video decode was tried first and confirmed on real hardware to silently
+  stall mid-video at a fixed point every time (see `signage-kiosk.service`'s
+  `--disable-accelerated-video-decode`, kept for documentation even though Chromium
+  no longer plays video at all) — mpv uses the same underlying V4L2 decoder, so that
+  risk isn't gone, just mitigated: a watchdog kills and restarts mpv if its reported
+  playback position ever stops advancing, and `SIGNAGE_MPV_HWDEC=no` (set as an
+  `Environment=` line in `signage-player.service` and restart the service — no
+  redeploy needed) forces software decode if hardware decode turns out to be
+  unreliable on a given Pi. mpv connects to the same Wayland compositor socket cage
+  already runs for Chromium and paints its own fullscreen surface on top of it,
+  discovered fresh at each launch rather than assumed at a fixed path (see
+  `mpvPlayer.ts`'s `findWaylandDisplay`) since the player agent and kiosk are
+  separate services that can start in either order. **Not yet confirmed on real
+  hardware** — verified in this project's sandbox as far as an environment with no
+  real Pi/Wayland/mpv can go (route wiring, the display-discovery timeout/fallback
+  path, and the IPC reply-parsing logic against a fake mpv socket); the actual
+  hardware-decode behavior, the cage-stacking assumption, and the watchdog's
+  real-world timing all need a real device to confirm.
 - **Wi-Fi fallback hotspot** (`src/wifiManager.ts`) — if this Pi has no working
   network connection at all (no ethernet, no associated Wi-Fi — not just "can't
   reach the hub", which this can't fix anyway) for about a minute, it broadcasts

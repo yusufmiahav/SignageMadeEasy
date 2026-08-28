@@ -10,6 +10,7 @@ import { loadConfig } from './config.js';
 import * as mediaCache from './mediaCache.js';
 import * as wifiManager from './wifiManager.js';
 import * as localContent from './localContent.js';
+import * as mpvPlayer from './mpvPlayer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -72,6 +73,25 @@ export function createApp() {
     const file = localContent.filePath();
     if (!file) return res.status(404).end();
     res.sendFile(file);
+  });
+
+  // Hardware-decoded video: player.js hands the URL here instead of using an in-page
+  // <video> element (see mpvPlayer.ts for why), then polls the status endpoint the
+  // same way it polls /state, advancing the rotation once playing goes false.
+  app.post('/native-video/play', (req, res) => {
+    const { url } = req.body ?? {};
+    if (typeof url !== 'string' || !url) return res.status(400).json({ error: 'url is required' });
+    const token = mpvPlayer.play(url);
+    res.json({ token });
+  });
+
+  app.get('/native-video/status/:token', (req, res) => {
+    res.json({ playing: mpvPlayer.isPlaying(Number(req.params.token)) });
+  });
+
+  app.post('/native-video/stop', (_req, res) => {
+    mpvPlayer.stop();
+    res.json({ ok: true });
   });
 
   // Field Wi-Fi provisioning (see wifiManager.ts) — reachable at this same address

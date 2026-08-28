@@ -9,6 +9,11 @@ User=signage
 WorkingDirectory=/opt/signage/app
 Environment=PORT=8088
 Environment=SIGNAGE_CONFIG_PATH=/opt/signage/config.json
+# Hardware-decoded by default (see mpvPlayer.ts) — if video turns out to be
+# unreliable on a given Pi the way Chromium's own hardware decode was, change this
+# to "no" and run `systemctl restart signage-player` for software decode instead.
+# No redeploy needed either way.
+Environment=SIGNAGE_MPV_HWDEC=v4l2m2m-copy
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=2

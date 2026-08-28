@@ -31,7 +31,7 @@ log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  cage curl ca-certificates git rsync
+  cage curl ca-certificates git rsync mpv
 
 # ydotool/ydotoold (used to warp the cursor off-screen — see signage-kiosk.service,
 # the part actually confirmed on real hardware to hide it) aren't in every

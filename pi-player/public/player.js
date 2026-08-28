@@ -43,12 +43,14 @@ function teardownStage() {
   advanceTimer = null;
   clearInterval(clockTimer);
   clockTimer = null;
+  // Video no longer lives in the DOM (see playNativeVideo) — mpv runs as its own
+  // process outside the browser, so tearing the stage down doesn't touch it on its
+  // own. Called unconditionally and fire-and-forget on every transition (including
+  // away from a non-video item, and every natural video-ended advance) since it's a
+  // harmless no-op when nothing's playing — the one thing that must never happen is
+  // a generation change mid-video leaving mpv running on top of whatever mounts next.
+  fetch('/native-video/stop', { method: 'POST' }).catch(() => {});
   for (const child of [...stage.children]) {
-    if (child instanceof HTMLVideoElement) {
-      child.pause();
-      child.removeAttribute('src');
-      child.load();
-    }
     child.remove();
   }
 }
@@ -59,6 +61,54 @@ function scheduleAdvance(seconds, myGeneration) {
     currentIndex = (currentIndex + 1) % activeItems.length;
     playItem(currentIndex);
   }, seconds * 1000);
+}
+
+const NATIVE_VIDEO_POLL_MS = 500;
+
+// mpv runs and loops entirely outside the browser (see mpvPlayer.ts) — this just
+// starts it, polls until it's done, and advances the rotation exactly like the
+// ended-event handlers the old in-page <video> element used. Single-item rotation
+// (forced content, or any playlist that just happens to have one video) loops
+// correctly for free: playItem(currentIndex) calling back into here starts mpv on the
+// same file again, no special-case restart-in-place logic needed like the old
+// Chromium path required.
+async function playNativeVideo(item, myGeneration) {
+  let token;
+  try {
+    const res = await fetch('/native-video/play', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: item.url }),
+    });
+    ({ token } = await res.json());
+  } catch {
+    // Local agent unreachable — bail out silently; the next /state poll (which hits
+    // the same agent) will surface it via the connecting screen if it's really down.
+    return;
+  }
+  if (myGeneration !== generation) {
+    fetch('/native-video/stop', { method: 'POST' }).catch(() => {});
+    return;
+  }
+
+  await new Promise((resolve) => {
+    const check = async () => {
+      if (myGeneration !== generation) return resolve();
+      try {
+        const res = await fetch(`/native-video/status/${token}`);
+        const data = await res.json();
+        if (!data.playing) return resolve();
+      } catch {
+        // transient — keep polling rather than treating one failed check as "done"
+      }
+      setTimeout(check, NATIVE_VIDEO_POLL_MS);
+    };
+    void check();
+  });
+
+  if (myGeneration !== generation) return;
+  currentIndex = (currentIndex + 1) % activeItems.length;
+  playItem(currentIndex);
 }
 
 async function playPdf(item, myGeneration) {
@@ -115,83 +165,13 @@ function playItem(index) {
     img.onload = () => scheduleAdvance(item.duration ?? 8, myGeneration);
     stage.appendChild(img);
   } else if (item.type === 'video') {
-    const video = document.createElement('video');
-    video.src = item.url;
-    video.autoplay = true;
-    video.muted = true;
-    video.playsInline = true;
-
-    // Diagnostics for the DevTools console (--remote-debugging-port=9222, see
-    // signage-kiosk.service) — three real-hardware fixes for video looping have
-    // failed in a row (native `loop` froze, an explicit restart paused instead
-    // of resuming, a play()-rejection retry+fallback still froze) and none of
-    // them reproduce in this project's sandbox, so surfacing exactly what the
-    // video element itself reports beats guessing a fourth theory blind.
-    const log = (msg) => console.log(`[signage video ${item.id}]`, msg, {
-      readyState: video.readyState, networkState: video.networkState,
-      paused: video.paused, currentTime: video.currentTime,
-      error: video.error && { code: video.error.code, message: video.error.message },
-    });
-    video.onerror = () => log('error event');
-    video.onstalled = () => log('stalled event');
-    video.onwaiting = () => log('waiting event');
-
-    if (activeItems.length === 1) {
-      // Sole item in the active list — always true for forced content, and also
-      // true for any playlist/event that just happens to contain one video.
-      // Restart in place instead of tearing the stage down and remounting a fresh
-      // <video> on every pass via the onended->playItem path below (that's what
-      // makes multi-item rotation flicker every loop on a single-video screen).
-      // Deliberately NOT the native `loop` attribute — froze on the last frame
-      // instead of restarting on real hardware.
-      //
-      // Two layers of recovery, since a rejected play() promise turned out not
-      // to be the only real-hardware failure mode: (1) retry a rejected play()
-      // a few times with a short delay: (2) a watchdog that checks — regardless
-      // of whether play() ever rejected — that currentTime actually advanced
-      // shortly after restarting, since play() can resolve successfully while
-      // the video still doesn't visually progress. Either layer failing enough
-      // times falls back to the same full teardown+remount path multi-item
-      // rotation already uses, which has never been reported broken, even
-      // though it means a visible reload instead of a seamless restart.
-      // Bumped on every restartVideo call so a stale watchdog from an earlier
-      // attempt can tell it's been superseded and no-op instead of misreading a
-      // legitimate newer restart's fresh currentTime=0 as its own attempt having
-      // stalled — a real false positive this hit in testing with a short clip
-      // that naturally loops again before the previous watchdog's timer fires.
-      let restartToken = 0;
-      const restartVideo = (attempt) => {
-        if (myGeneration !== generation) return;
-        const myToken = ++restartToken;
-        log(`restarting, attempt ${attempt}`);
-        video.currentTime = 0;
-        const played = video.play();
-        if (played && typeof played.catch === 'function') {
-          played.catch(() => {
-            if (myGeneration !== generation || myToken !== restartToken) return;
-            log(`play() rejected, attempt ${attempt}`);
-            if (attempt < 3) setTimeout(() => restartVideo(attempt + 1), 300);
-            else { log('giving up after 3 rejected play() attempts, falling back to remount'); playItem(currentIndex); }
-          });
-        }
-        setTimeout(() => {
-          if (myGeneration !== generation || myToken !== restartToken) return;
-          if (video.paused || video.currentTime < 0.1) {
-            log(`stalled after restart (attempt ${attempt}) despite play() not rejecting`);
-            if (attempt < 3) restartVideo(attempt + 1);
-            else { log('giving up after 3 stalled attempts, falling back to remount'); playItem(currentIndex); }
-          }
-        }, 2000);
-      };
-      video.onended = () => restartVideo(0);
-    } else {
-      video.onended = () => {
-        if (myGeneration !== generation) return;
-        currentIndex = (currentIndex + 1) % activeItems.length;
-        playItem(currentIndex);
-      };
-    }
-    stage.appendChild(video);
+    // Hardware-decoded via mpv, running as a separate process outside the browser
+    // entirely (see mpvPlayer.ts) — replaces the old in-page <video> element, which
+    // was capped at software decode on this hardware (signage-kiosk.service's
+    // --disable-accelerated-video-decode documents why: Chromium's own hardware
+    // decode silently stalled mid-video on real hardware). The stage stays empty;
+    // mpv paints its own fullscreen surface on top of this page via cage.
+    void playNativeVideo(item, myGeneration);
   } else if (item.type === 'pdf') {
     void playPdf(item, myGeneration);
   } else if (item.type === 'clock') {
