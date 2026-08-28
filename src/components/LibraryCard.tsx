@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Icon, type IconName } from './icons/Icon';
 import type { LibraryItem } from '../api/types';
 
@@ -35,9 +36,22 @@ function metaText(item: LibraryItem): string {
 interface LibraryCardProps {
   item: LibraryItem;
   onRemove: (id: string) => void;
+  onRename: (id: string, name: string) => void;
 }
 
-export function LibraryCard({ item, onRemove }: LibraryCardProps) {
+export function LibraryCard({ item, onRemove, onRename }: LibraryCardProps) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(item.name);
+
+  const startEdit = () => {
+    setName(item.name);
+    setEditing(true);
+  };
+  const save = () => {
+    if (name.trim()) onRename(item.id, name);
+    setEditing(false);
+  };
+
   return (
     <div className="card" style={{ gap: 8, padding: 8 }}>
       <div className="thumb-box">
@@ -67,7 +81,30 @@ export function LibraryCard({ item, onRemove }: LibraryCardProps) {
           <Icon name="x" size={12} />
         </button>
       </div>
-      <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+      {editing ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input
+            className="input"
+            style={{ flex: 1, fontSize: 12, padding: '4px 6px' }}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            autoFocus
+          />
+          <button type="button" className="btn btn-secondary btn-icon" aria-label="Save name" onClick={save}>
+            <Icon name="check" size={12} />
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {item.name}
+          </div>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={startEdit}>
+            <Icon name="pencil" size={12} />
+          </button>
+        </div>
+      )}
       <div className="text-muted" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{metaText(item)}</div>
     </div>
   );

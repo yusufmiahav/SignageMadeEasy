@@ -80,6 +80,11 @@ export function useAppState() {
     await refreshLibrary();
   }, [refreshLibrary]);
 
+  const renameLibraryItem = useCallback(async (id: string, name: string) => {
+    await api.renameLibraryItem(id, name);
+    await refreshLibrary();
+  }, [refreshLibrary]);
+
   const removeLibraryItem = useCallback(async (id: string) => {
     await api.removeLibraryItem(id);
     await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices()]);
@@ -220,6 +225,7 @@ export function useAppState() {
     addAnnouncement,
     addClock,
     setItemDuration,
+    renameLibraryItem,
     removeLibraryItem,
     addGroup,
     renameGroup,

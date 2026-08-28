@@ -82,11 +82,17 @@ libraryRouter.post('/clock', (req, res) => {
 });
 
 libraryRouter.patch('/:id', (req, res) => {
-  const { durationSec } = req.body ?? {};
-  if (typeof durationSec !== 'number' || !Number.isFinite(durationSec) || durationSec < 1) {
-    return res.status(400).json({ error: 'durationSec must be a positive number' });
+  const { durationSec, name } = req.body ?? {};
+  if (durationSec !== undefined) {
+    if (typeof durationSec !== 'number' || !Number.isFinite(durationSec) || durationSec < 1) {
+      return res.status(400).json({ error: 'durationSec must be a positive number' });
+    }
+    store.setItemDuration(req.params.id, Math.round(durationSec));
   }
-  store.setItemDuration(req.params.id, Math.round(durationSec));
+  if (typeof name === 'string') {
+    if (!name.trim()) return res.status(400).json({ error: 'name cannot be empty' });
+    store.renameLibraryItem(req.params.id, name.trim());
+  }
   res.status(204).end();
 });
 

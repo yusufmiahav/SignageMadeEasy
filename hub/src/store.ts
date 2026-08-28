@@ -70,6 +70,10 @@ export function setItemDuration(id: string, durationSec: number): void {
   db.prepare("UPDATE library SET durationSec = ? WHERE id = ? AND type IN ('image', 'clock')").run(durationSec, id);
 }
 
+export function renameLibraryItem(id: string, name: string): void {
+  db.prepare('UPDATE library SET name = ? WHERE id = ?').run(name, id);
+}
+
 // ---- Groups ----
 
 interface GroupRow { id: string; name: string; defaultPlaylist: string; forcedContentId: string | null; forcedAnnouncementId: string | null }

@@ -23,6 +23,7 @@ export interface SignageApiClient {
   /** Current time of day on a black background, rendered live on the Pi — no file involved. */
   addClock(name: string): Promise<LibraryItem>;
   removeLibraryItem(id: string): Promise<void>;
+  renameLibraryItem(id: string, name: string): Promise<void>;
   /** Images and clocks only — anything else is a server-side no-op. */
   setItemDuration(id: string, durationSec: number): Promise<void>;
 

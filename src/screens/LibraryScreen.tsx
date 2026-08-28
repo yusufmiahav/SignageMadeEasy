@@ -9,7 +9,7 @@ interface LibraryScreenProps {
 }
 
 export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps) {
-  const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem } = app;
+  const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, renameLibraryItem } = app;
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -108,7 +108,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
       ) : (
         <div className="library-grid">
           {library.map((item) => (
-            <LibraryCard key={item.id} item={item} onRemove={removeLibraryItem} />
+            <LibraryCard key={item.id} item={item} onRemove={removeLibraryItem} onRename={renameLibraryItem} />
           ))}
         </div>
       )}
