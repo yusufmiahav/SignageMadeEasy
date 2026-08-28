@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
@@ -8,8 +9,18 @@ import { getLocalIp } from './localIp.js';
 import { loadConfig } from './config.js';
 import * as mediaCache from './mediaCache.js';
 import * as wifiManager from './wifiManager.js';
+import * as localContent from './localContent.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const localContentUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, localContent.tmpDir()),
+    filename: (_req, file, cb) => cb(null, `upload-${Date.now()}${path.extname(file.originalname)}`),
+  }),
+  // Generous cap — this is a single-file fallback, but the file may well be a video.
+  limits: { fileSize: 2 * 1024 * 1024 * 1024 },
+});
 
 export function createApp() {
   const app = express();
@@ -34,7 +45,33 @@ export function createApp() {
     const networkSetup = wifiStatus.hotspotActive
       ? { ssid: wifiStatus.hotspotSsid, password: wifiStatus.hotspotPassword, url: `http://${getLocalIp()}:8088/network-setup.html` }
       : null;
-    res.json({ paired: config != null, ip: getLocalIp(), state: resolved, error, networkSetup });
+    res.json({ paired: config != null, ip: getLocalIp(), state: resolved, error, networkSetup, localContent: localContent.get() });
+  });
+
+  // Field fail-safe: reachable any time the hub can't be reached (unpaired, hub down,
+  // wrong IP, not deployed yet — not just the no-network hotspot case above), so this
+  // isn't gated on wifiStatus/hotspot state the way /network-setup is. See player.js's
+  // pollOnce for where this takes priority over the unpaired/connecting screens, and
+  // loses it the moment the hub has real state to show again.
+  app.post('/local-content', localContentUpload.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'file is required' });
+    try {
+      localContent.save(req.file);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.delete('/local-content', (_req, res) => {
+    localContent.clear();
+    res.json({ ok: true });
+  });
+
+  app.get('/local-content/file', (_req, res) => {
+    const file = localContent.filePath();
+    if (!file) return res.status(404).end();
+    res.sendFile(file);
   });
 
   // Field Wi-Fi provisioning (see wifiManager.ts) — reachable at this same address

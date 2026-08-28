@@ -13,6 +13,8 @@ const screens = {
 const qrImg = document.getElementById('qr');
 const ipEl = document.getElementById('ip');
 const connectingDetail = document.getElementById('connecting-detail');
+const unpairedHint = document.getElementById('unpaired-local-hint');
+const connectingHint = document.getElementById('connecting-local-hint');
 const networkSsidEl = document.getElementById('network-ssid');
 const networkPasswordEl = document.getElementById('network-password');
 const networkUrlEl = document.getElementById('network-url');
@@ -232,28 +234,48 @@ function renderPlayerState(state) {
 
 // --- Polling -----------------------------------------------------------------
 
+// Wraps an uploaded fallback file (see localContent.ts) as a fake single-item
+// player state so it reuses playItem/renderPlayerState as-is — including the
+// hardened single-video restart-in-place path, which nothing here needs to
+// duplicate. Only shown when there's genuinely no hub content to fall back on
+// (see pollOnce below) — the moment the hub has real state again, it wins.
+function localContentState(item) {
+  return { items: [item], announcement: { on: false, text: null } };
+}
+
 async function pollOnce() {
   try {
     const res = await fetch('/state');
     const data = await res.json();
+    const localUrl = data.ip ? `http://${data.ip}:8088/network-setup.html` : null;
 
     if (data.networkSetup) {
-      // Takes priority over pairing state: while broadcasting its own fallback
-      // network (see wifiManager.ts) there's no real LAN for the control app to
-      // reach this Pi on, so the usual QR/IP pairing flow doesn't apply yet.
+      // Takes priority over everything else: while broadcasting its own fallback
+      // network (see wifiManager.ts) there's no real LAN for the control app — or
+      // a phone visiting this Pi's own IP for local content — to reach this Pi on,
+      // so nothing below applies until this resolves.
       playlistKey = null;
       networkSsidEl.textContent = data.networkSetup.ssid ?? '—';
       networkPasswordEl.textContent = data.networkSetup.password ?? '—';
       networkUrlEl.textContent = data.networkSetup.url ?? '—';
       showScreen('networkSetup');
+    } else if (!data.paired && data.localContent) {
+      renderPlayerState(localContentState(data.localContent));
     } else if (!data.paired) {
       playlistKey = null;
       ipEl.textContent = data.ip ?? 'unknown';
       qrImg.src = '/qr.png';
+      if (unpairedHint) unpairedHint.textContent = localUrl ? `Fail-safe: open ${localUrl} on your phone to upload content directly to this display.` : '';
       showScreen('unpaired');
+    } else if (!data.state && data.localContent) {
+      // Paired but nothing usable from the hub yet (down, unreachable, wrong IP) —
+      // deliberately NOT reached while a stale-but-real state is still cached (see
+      // poller.ts), since resuming last-known-good content already covers that case.
+      renderPlayerState(localContentState(data.localContent));
     } else if (!data.state) {
       playlistKey = null;
       connectingDetail.textContent = data.error ? `Last error: ${data.error}` : '';
+      if (connectingHint) connectingHint.textContent = localUrl ? `Fail-safe: open ${localUrl} on your phone to upload content directly to this display.` : '';
       showScreen('connecting');
     } else {
       renderPlayerState(data.state);

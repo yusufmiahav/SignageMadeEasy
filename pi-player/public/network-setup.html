@@ -3,26 +3,32 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>SignageMadeEasy — Wi-Fi setup</title>
+<title>SignageMadeEasy — Display setup</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; background: #111; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-  .card { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 14px; }
+  body { font-family: system-ui, sans-serif; background: #111; color: #fff; min-height: 100vh; padding: 24px; }
+  .card { width: 100%; max-width: 380px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
   h1 { font-size: 22px; font-weight: 800; }
+  h2 { font-size: 17px; font-weight: 800; }
   p { font-size: 14px; opacity: 0.8; line-height: 1.4; }
   label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 4px; }
   select, input { width: 100%; padding: 10px; font-size: 15px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; }
+  input[type="file"] { padding: 8px; }
   button { padding: 12px; font-size: 15px; font-weight: 700; border-radius: 6px; border: none; background: #e0392c; color: #fff; cursor: pointer; }
   button:disabled { opacity: 0.5; cursor: default; }
-  #status { font-size: 13px; min-height: 18px; }
-  #status.ok { color: #6fdc7f; }
-  #status.err { color: #ff8a80; }
+  #status, #content-status { font-size: 13px; min-height: 18px; }
+  #status.ok, #content-status.ok { color: #6fdc7f; }
+  #status.err, #content-status.err { color: #ff8a80; }
   #rescan { background: transparent; border: 1px solid #444; font-weight: 600; padding: 8px; }
+  #content-clear { background: transparent; border: 1px solid #444; font-weight: 600; padding: 8px; }
+  hr { border: none; border-top: 1px solid #333; margin: 6px 0; }
 </style>
 </head>
 <body>
   <div class="card">
-    <h1>Connect this display to Wi-Fi</h1>
+    <h1>Set up this display</h1>
+
+    <h2>Wi-Fi</h2>
     <p>Pick your network below and enter its password. The display will try to connect immediately.</p>
     <div>
       <label for="ssid-select">Network</label>
@@ -39,6 +45,21 @@
     </div>
     <button type="button" id="connect">Connect</button>
     <p id="status"></p>
+
+    <hr />
+
+    <h2>Local content (fail-safe)</h2>
+    <p>Upload an image, video, or PDF to show directly on this display whenever it can't reach the
+      hub — no network setup needed for this part. It loops on its own until the hub is reachable
+      again, at which point the hub's own content takes back over automatically.</p>
+    <p id="content-current"></p>
+    <div>
+      <label for="content-file">File</label>
+      <input id="content-file" type="file" accept="image/*,video/*,application/pdf" />
+    </div>
+    <button type="button" id="content-upload">Upload</button>
+    <button type="button" id="content-clear">Clear local content</button>
+    <p id="content-status"></p>
   </div>
   <script>
     const select = document.getElementById('ssid-select');
@@ -91,6 +112,74 @@
         status.textContent = "Lost connection to the display mid-request — if it joined the new network, this page is no longer reachable; that's expected.";
         status.className = 'err';
         connectBtn.disabled = false;
+      }
+    });
+
+    // --- Local content (fail-safe) -----------------------------------------
+    const contentCurrent = document.getElementById('content-current');
+    const contentFile = document.getElementById('content-file');
+    const contentUpload = document.getElementById('content-upload');
+    const contentClear = document.getElementById('content-clear');
+    const contentStatus = document.getElementById('content-status');
+
+    async function loadCurrentContent() {
+      try {
+        const res = await fetch('/state');
+        const data = await res.json();
+        const article = data.localContent && /^[aeiou]/i.test(data.localContent.type) ? 'an' : 'a';
+        contentCurrent.textContent = data.localContent
+          ? `Currently set: ${article} ${data.localContent.type}.`
+          : 'No local content set — the display falls back to its normal unpaired/connecting screen.';
+      } catch {
+        contentCurrent.textContent = '';
+      }
+    }
+    void loadCurrentContent();
+
+    contentUpload.addEventListener('click', async () => {
+      const file = contentFile.files[0];
+      if (!file) {
+        contentStatus.textContent = 'Choose a file first.';
+        contentStatus.className = 'err';
+        return;
+      }
+      contentUpload.disabled = true;
+      contentStatus.textContent = 'Uploading…';
+      contentStatus.className = '';
+      try {
+        const body = new FormData();
+        body.append('file', file);
+        const res = await fetch('/local-content', { method: 'POST', body });
+        const data = await res.json();
+        if (data.ok) {
+          contentStatus.textContent = 'Uploaded — this will show whenever the display can\'t reach the hub.';
+          contentStatus.className = 'ok';
+          contentFile.value = '';
+          void loadCurrentContent();
+        } else {
+          contentStatus.textContent = `Couldn't upload: ${data.error ?? 'unknown error'}.`;
+          contentStatus.className = 'err';
+        }
+      } catch {
+        contentStatus.textContent = 'Lost connection to the display mid-upload — try again.';
+        contentStatus.className = 'err';
+      } finally {
+        contentUpload.disabled = false;
+      }
+    });
+
+    contentClear.addEventListener('click', async () => {
+      contentClear.disabled = true;
+      try {
+        await fetch('/local-content', { method: 'DELETE' });
+        contentStatus.textContent = 'Local content cleared.';
+        contentStatus.className = 'ok';
+        void loadCurrentContent();
+      } catch {
+        contentStatus.textContent = 'Lost connection to the display — try again.';
+        contentStatus.className = 'err';
+      } finally {
+        contentClear.disabled = false;
       }
     });
   </script>

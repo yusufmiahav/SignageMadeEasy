@@ -84,6 +84,22 @@ that page, and submit. The Pi attempts to connect immediately; on success the
 kiosk resumes normally within moments. On failure (wrong password, out of
 range) the fallback network stays up so you can just try again.
 
+## Local content fail-safe (no hub connection needed)
+
+That same setup page (`http://<pi-ip>:8088/network-setup.html`) has a "Local
+content" section below the Wi-Fi form — reachable any time the Pi has *some*
+network path to it, not just while it's broadcasting its own fallback hotspot.
+Upload a single image, video, or PDF there and it plays full-screen, looping,
+whenever this Pi has nothing usable from the hub: never paired yet, hub down,
+wrong hub address, hub not deployed at all. The unpaired and "waiting for the
+hub" screens also print that same URL as a hint, so the option is discoverable
+without already knowing it exists.
+
+It's a one-file stand-in, not a second content library — a new upload replaces
+whatever was there before, and "Clear local content" removes it. The instant
+the hub has real content to serve again, the player switches back to it
+automatically; local content never needs to be manually turned off.
+
 ## Local development / testing (not on real Pi hardware)
 
 ```bash
