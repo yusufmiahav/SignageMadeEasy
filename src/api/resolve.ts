@@ -31,10 +31,18 @@ export function activeContentIds(group: Group, today: string = toISODate(new Dat
   return { ids: group.defaultPlaylist, kind: 'default', label: 'Default playlist' };
 }
 
-export function nowPlayingName(group: Group, libraryById: Map<string, LibraryItem>): string {
+function firstResolvedItem(group: Group, libraryById: Map<string, LibraryItem>): LibraryItem | undefined {
   const { ids } = activeContentIds(group);
-  const first = ids.map((id) => libraryById.get(id)).find((item): item is LibraryItem => !!item);
-  return first ? first.name : '—';
+  return ids.map((id) => libraryById.get(id)).find((item): item is LibraryItem => !!item);
+}
+
+export function nowPlayingName(group: Group, libraryById: Map<string, LibraryItem>): string {
+  return firstResolvedItem(group, libraryById)?.name ?? '—';
+}
+
+/** The actual item currently resolved for this location (for a thumbnail/preview) — undefined if nothing's scheduled. */
+export function nowPlayingItem(group: Group, libraryById: Map<string, LibraryItem>): LibraryItem | undefined {
+  return firstResolvedItem(group, libraryById);
 }
 
 export function itemsForDate(group: Group, date: string): { ids: string[]; kind: 'event' | 'default'; label: string } {

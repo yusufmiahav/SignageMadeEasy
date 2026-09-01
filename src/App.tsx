@@ -17,8 +17,9 @@ import { ForceAnnouncementDialog } from './components/dialogs/ForceAnnouncementD
 import { AddAnnouncementScheduleDialog } from './components/dialogs/AddAnnouncementScheduleDialog';
 import { MoveDeviceDialog } from './components/dialogs/MoveDeviceDialog';
 import { ForceContentDialog } from './components/dialogs/ForceContentDialog';
+import { ContentPreviewDialog } from './components/dialogs/ContentPreviewDialog';
 import { useAppState } from './hooks/useAppState';
-import type { Device } from './api/types';
+import type { Device, LibraryItem } from './api/types';
 
 type DialogState =
   | { type: 'pair' }
@@ -33,6 +34,7 @@ type DialogState =
   | { type: 'forceContent'; groupId: string | null }
   | { type: 'forceAnnouncement'; groupId: string | null }
   | { type: 'addAnnouncementSchedule'; groupId: string }
+  | { type: 'preview'; item: LibraryItem }
   | null;
 
 export default function App() {
@@ -58,6 +60,7 @@ export default function App() {
             onForceAnnouncementAllScreens={() => setDialog({ type: 'forceAnnouncement', groupId: null })}
             onMoveDevice={(device) => setDialog({ type: 'moveDevice', device })}
             onPickAnnouncement={(device) => setDialog({ type: 'announcementPicker', device })}
+            onPreviewContent={(item) => setDialog({ type: 'preview', item })}
           />
         )}
         {tab === 'library' && (
@@ -115,6 +118,7 @@ export default function App() {
         />
       )}
       {dialog?.type === 'addAnnouncementSchedule' && <AddAnnouncementScheduleDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
+      {dialog?.type === 'preview' && <ContentPreviewDialog item={dialog.item} onClose={closeDialog} />}
 
       <Toast message={app.toast} />
     </>

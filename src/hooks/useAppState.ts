@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DiscoveredDevice } from '../api/client';
-import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from '../api/types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from '../api/types';
 
 export function useAppState() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
@@ -87,6 +87,11 @@ export function useAppState() {
 
   const renameLibraryItem = useCallback(async (id: string, name: string) => {
     await api.renameLibraryItem(id, name);
+    await refreshLibrary();
+  }, [refreshLibrary]);
+
+  const reorderLibrary = useCallback(async (ids: string[]) => {
+    await api.reorderLibrary(ids);
     await refreshLibrary();
   }, [refreshLibrary]);
 
@@ -222,6 +227,12 @@ export function useAppState() {
 
   const scanNetwork = useCallback((): Promise<DiscoveredDevice[]> => api.scanNetwork(), []);
 
+  // ---- Backup / restore ----
+  const exportBackup = useCallback((): Promise<Backup> => api.exportBackup(), []);
+  const importBackup = useCallback(async (backup: Backup) => {
+    await api.importBackup(backup);
+  }, []);
+
   return {
     loaded,
     library,
@@ -236,6 +247,7 @@ export function useAppState() {
     addClock,
     setItemDuration,
     renameLibraryItem,
+    reorderLibrary,
     removeLibraryItem,
     addGroup,
     renameGroup,
@@ -260,6 +272,8 @@ export function useAppState() {
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,
     scanNetwork,
+    exportBackup,
+    importBackup,
   };
 }
 

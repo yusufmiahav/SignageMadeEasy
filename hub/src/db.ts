@@ -95,5 +95,17 @@ if (!libraryCols.includes('transcodeStatus')) db.exec('ALTER TABLE library ADD C
 const hasVideoQuality = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).some((c) => c.name === 'videoQuality');
 if (!hasVideoQuality) db.exec("ALTER TABLE devices ADD COLUMN videoQuality TEXT NOT NULL DEFAULT 'auto'");
 
+// Same reasoning, for hubs deployed before the Library screen supported drag-to-reorder
+// — every existing row gets seeded with its current createdAt-based position so
+// nothing visibly reshuffles the first time this runs; new rows get one past the
+// current max (see store.ts's addLibraryItem).
+const hasSortOrder = (db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some((c) => c.name === 'sortOrder');
+if (!hasSortOrder) {
+  db.exec('ALTER TABLE library ADD COLUMN sortOrder INTEGER');
+  const rows = db.prepare('SELECT id FROM library ORDER BY createdAt ASC').all() as { id: string }[];
+  const setOrder = db.prepare('UPDATE library SET sortOrder = ? WHERE id = ?');
+  rows.forEach((r, i) => setOrder.run(i, r.id));
+}
+
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.

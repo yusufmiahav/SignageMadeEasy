@@ -29,7 +29,7 @@ function rowToLibraryItem(r: LibraryRow): LibraryItem {
 }
 
 export function listLibrary(): LibraryItem[] {
-  const rows = db.prepare('SELECT id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus FROM library ORDER BY createdAt ASC').all() as LibraryRow[];
+  const rows = db.prepare('SELECT id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus FROM library ORDER BY sortOrder ASC').all() as LibraryRow[];
   return rows.map(rowToLibraryItem);
 }
 
@@ -38,10 +38,12 @@ export function addLibraryItem(input: {
   fullUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus'];
 }): LibraryItem {
   const id = uid('l');
-  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@createdAt)').run({
+  const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM library').get() as { n: number }).n;
+  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@sortOrder,@createdAt)').run({
     id, name: input.name, type: input.type,
     size: input.size ?? null, duration: input.duration ?? null, thumb: input.thumb ?? null, text: input.text ?? null, pageCount: input.pageCount ?? null,
     fullUrl: input.fullUrl ?? null, transcodeStatus: input.transcodeStatus ?? null,
+    sortOrder: nextOrder,
     createdAt: Date.now(),
   });
   return {
@@ -51,6 +53,14 @@ export function addLibraryItem(input: {
     ...(input.fullUrl && { fullUrl: input.fullUrl }), ...(input.transcodeStatus && { transcodeStatus: input.transcodeStatus }),
   };
 }
+
+/** Persists a full drag-and-drop reorder from the Library screen — `ids` is the complete new display order. Any existing item not included keeps its relative order, appended after the given ones, so an incomplete list can't silently drop items from view. */
+export const reorderLibrary = db.transaction((ids: string[]): void => {
+  const setOrder = db.prepare('UPDATE library SET sortOrder = ? WHERE id = ?');
+  ids.forEach((id, i) => setOrder.run(i, id));
+  const rest = db.prepare('SELECT id FROM library WHERE id NOT IN (SELECT value FROM json_each(?)) ORDER BY sortOrder ASC').all(JSON.stringify(ids)) as { id: string }[];
+  rest.forEach((r, i) => setOrder.run(ids.length + i, r.id));
+});
 
 /** Called once the background capping job (see routes/library.ts) finishes for a video item. */
 export function setVideoTranscodeResult(id: string, status: 'done' | 'failed', cappedUrl?: string): void {
@@ -345,3 +355,90 @@ export function getPlayerState(deviceId: string): PlayerState | null {
     announcement: { on: announcementOn && !!announcement, text: announcement?.text ?? null },
   };
 }
+
+// ---- Backup / restore ----
+
+export interface Backup {
+  version: 1;
+  exportedAt: string;
+  library: LibraryItem[];
+  groups: Group[];
+  devices: Device[];
+}
+
+/** Full snapshot of everything the control app manages — content metadata, locations/playlists/schedules, and paired screens (name, IP, MAC, settings). Uploaded media files themselves aren't included (they're not JSON-portable); back up hub/data/uploads separately if you need those too. */
+export function exportBackup(): Backup {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    library: listLibrary(),
+    groups: listGroups(),
+    devices: listDevices(),
+  };
+}
+
+/**
+ * Wipes and replaces every table from a previously exported backup, preserving every
+ * id exactly — library items, groups, events, announcement schedules, and devices
+ * all cross-reference each other by id (a group's defaultPlaylist/forcedContentId
+ * point at library ids, a device's groupId points at a group), and a fresh uid() per
+ * row the way addLibraryItem/addGroup/pairDevice normally generate one would
+ * silently break every one of those references. Restored devices come back offline
+ * (lastSeenAt cleared) until each Pi's own poller heartbeats again, rather than
+ * presenting stale liveness state as current.
+ */
+export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'groups' | 'devices'>): void => {
+  db.prepare('DELETE FROM events').run();
+  db.prepare('DELETE FROM announcement_schedules').run();
+  db.prepare('DELETE FROM devices').run();
+  db.prepare('DELETE FROM groups_').run();
+  db.prepare('DELETE FROM library').run();
+
+  const insertLibrary = db.prepare(
+    'INSERT INTO library (id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, sortOrder, createdAt) ' +
+    'VALUES (@id,@name,@type,@size,@duration,@durationSec,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@sortOrder,@createdAt)',
+  );
+  backup.library.forEach((item, i) => {
+    insertLibrary.run({
+      id: item.id, name: item.name, type: item.type,
+      size: item.size ?? null, duration: item.duration ?? null, durationSec: item.durationSec ?? null,
+      thumb: item.thumb ?? null, text: item.text ?? null, pageCount: item.pageCount ?? null,
+      fullUrl: item.fullUrl ?? null, transcodeStatus: item.transcodeStatus ?? null,
+      sortOrder: i, createdAt: Date.now() + i, // +i keeps insertion order stable if createdAt is ever read as a tiebreaker
+    });
+  });
+
+  const insertGroup = db.prepare(
+    'INSERT INTO groups_ (id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId) VALUES (@id,@name,@defaultPlaylist,@forcedContentId,@forcedAnnouncementId)',
+  );
+  const insertEvent = db.prepare('INSERT INTO events (id, groupId, name, start, end, libIds) VALUES (@id,@groupId,@name,@start,@end,@libIds)');
+  const insertAnnSchedule = db.prepare(
+    'INSERT INTO announcement_schedules (id, groupId, announcementId, startDate, endDate, startTime, endTime) VALUES (@id,@groupId,@announcementId,@startDate,@endDate,@startTime,@endTime)',
+  );
+  for (const group of backup.groups) {
+    insertGroup.run({
+      id: group.id, name: group.name, defaultPlaylist: JSON.stringify(group.defaultPlaylist),
+      forcedContentId: group.forcedContentId, forcedAnnouncementId: group.forcedAnnouncementId,
+    });
+    for (const event of group.events) {
+      insertEvent.run({ id: event.id, groupId: group.id, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds) });
+    }
+    for (const s of group.announcementSchedules) {
+      insertAnnSchedule.run({
+        id: s.id, groupId: group.id, announcementId: s.announcementId,
+        startDate: s.startDate, endDate: s.endDate, startTime: s.startTime, endTime: s.endTime,
+      });
+    }
+  }
+
+  const insertDevice = db.prepare(
+    'INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@announcementId,@announcementOn,@videoQuality,NULL)',
+  );
+  for (const device of backup.devices) {
+    insertDevice.run({
+      id: device.id, name: device.name, ip: device.ip, mac: device.mac, groupId: device.groupId,
+      announcementId: device.announcementId, announcementOn: device.announcementOn ? 1 : 0, videoQuality: device.videoQuality,
+    });
+  }
+});

@@ -29,6 +29,15 @@ libraryRouter.get('/', (_req, res) => {
   res.json(store.listLibrary());
 });
 
+libraryRouter.put('/reorder', (req, res) => {
+  const { ids } = req.body ?? {};
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+    return res.status(400).json({ error: 'ids must be an array of strings' });
+  }
+  store.reorderLibrary(ids);
+  res.status(204).end();
+});
+
 libraryRouter.post('/image', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file is required' });
   const item = store.addLibraryItem({

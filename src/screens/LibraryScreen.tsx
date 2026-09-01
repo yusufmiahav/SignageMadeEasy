@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import { LibraryCard } from '../components/LibraryCard';
 import type { AppState } from '../hooks/useAppState';
+import type { LibraryItem } from '../api/types';
 
 interface LibraryScreenProps {
   app: AppState;
@@ -15,8 +16,8 @@ interface InFlightUpload {
 }
 
 export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps) {
-  const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, renameLibraryItem } = app;
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, renameLibraryItem, reorderLibrary } = app;
+  const dropzoneInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<InFlightUpload[]>([]);
@@ -36,16 +37,10 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
     }
   };
 
-  const handleImages = async (files: FileList | null) => {
-    if (!files) return;
-    for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) await trackUpload(file, addImage);
-    }
-  };
-
-  // Dropzone accepts both images and videos, one per file by MIME type — the
-  // dedicated "Add video" button/input still exists for a deliberate single-file
-  // pick, this just covers the drag-and-drop path too.
+  // Shared by both the dropzone's own drag-and-drop and its click-to-browse input
+  // (accept="image/*,video/*") — one file list, routed per file by MIME type, so
+  // "click to upload" actually offers the same two types the dropzone's own label
+  // promises instead of silently restricting to images.
   const handleDropped = async (files: FileList | null) => {
     if (!files) return;
     for (const file of Array.from(files)) {
@@ -54,16 +49,53 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
     }
   };
 
+  // ---- Drag-to-reorder ----
+  // Native HTML5 drag-and-drop, reordering live as the dragged card passes over
+  // another (classic "shift as you drag" list behavior), persisted once via
+  // reorderLibrary on drop rather than on every intermediate shuffle.
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
+  const draggedIdRef = useRef<string | null>(null);
+  const orderedIds = dragOrder ?? library.map((item) => item.id);
+  const displayItems = orderedIds
+    .map((id) => library.find((item) => item.id === id))
+    .filter((item): item is LibraryItem => !!item);
+
+  const handleDragStart = (id: string) => {
+    draggedIdRef.current = id;
+    setDragOrder(library.map((item) => item.id));
+  };
+
+  const handleDragEnter = (overId: string) => {
+    const dragged = draggedIdRef.current;
+    if (!dragged || dragged === overId) return;
+    setDragOrder((prev) => {
+      const current = prev ?? library.map((item) => item.id);
+      const from = current.indexOf(dragged);
+      const to = current.indexOf(overId);
+      if (from === -1 || to === -1) return current;
+      const next = [...current];
+      next.splice(from, 1);
+      next.splice(to, 0, dragged);
+      return next;
+    });
+  };
+
+  const handleDragEnd = () => {
+    draggedIdRef.current = null;
+    if (dragOrder) void reorderLibrary(dragOrder);
+    setDragOrder(null);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <input
-        ref={imageInputRef}
+        ref={dropzoneInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/*"
         multiple
         style={{ display: 'none' }}
         onChange={(e) => {
-          void handleImages(e.target.files);
+          void handleDropped(e.target.files);
           e.target.value = '';
         }}
       />
@@ -114,7 +146,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
 
       <div
         style={{ border: '2px dashed var(--color-divider)', padding: '22px 12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-        onClick={() => imageInputRef.current?.click()}
+        onClick={() => dropzoneInputRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
@@ -145,8 +177,24 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
         <p className="text-muted" style={{ margin: 0 }}>No content yet.</p>
       ) : (
         <div className="library-grid">
-          {library.map((item) => (
-            <LibraryCard key={item.id} item={item} onRemove={removeLibraryItem} onRename={renameLibraryItem} />
+          {displayItems.map((item) => (
+            <LibraryCard
+              key={item.id}
+              item={item}
+              onRemove={removeLibraryItem}
+              onRename={renameLibraryItem}
+              isDragging={draggedIdRef.current === item.id}
+              dragHandleProps={{
+                draggable: true,
+                onDragStart: (e) => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  handleDragStart(item.id);
+                },
+                onDragEnter: () => handleDragEnter(item.id),
+                onDragOver: (e) => e.preventDefault(),
+                onDragEnd: handleDragEnd,
+              }}
+            />
           ))}
         </div>
       )}

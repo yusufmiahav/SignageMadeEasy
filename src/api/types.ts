@@ -86,3 +86,12 @@ export interface AppData {
   groups: Group[];
   devices: Device[];
 }
+
+/** A full config snapshot — everything except the uploaded media files themselves (not JSON-portable). See Settings → Device inventory / backup. */
+export interface Backup {
+  version: 1;
+  exportedAt: string;
+  library: LibraryItem[];
+  groups: Group[];
+  devices: Device[];
+}

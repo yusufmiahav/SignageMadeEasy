@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -60,6 +60,7 @@ export const httpClient: SignageApiClient = {
   addAnnouncement: (name, text) => request<LibraryItem>('/api/library/announcement', { method: 'POST', ...json({ name, text }) }),
   addClock: (name) => request<LibraryItem>('/api/library/clock', { method: 'POST', ...json({ name }) }),
   removeLibraryItem: (id) => request<void>(`/api/library/${id}`, { method: 'DELETE' }),
+  reorderLibrary: (ids) => request<void>('/api/library/reorder', { method: 'PUT', ...json({ ids }) }),
   setItemDuration: (id, durationSec) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ durationSec }) }),
   renameLibraryItem: (id, name) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ name }) }),
 
@@ -100,4 +101,8 @@ export const httpClient: SignageApiClient = {
 
   // Pairing helpers
   scanNetwork: () => request<DiscoveredDevice[]>('/api/scan'),
+
+  // Backup / restore
+  exportBackup: () => request<Backup>('/api/backup'),
+  importBackup: (backup) => request<void>('/api/backup/restore', { method: 'POST', ...json(backup) }),
 };

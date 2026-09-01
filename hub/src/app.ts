@@ -8,13 +8,17 @@ import { groupsRouter } from './routes/groups.js';
 import { devicesRouter } from './routes/devices.js';
 import { playerRouter } from './routes/player.js';
 import { scanRouter } from './routes/scan.js';
+import { backupRouter } from './routes/backup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createApp() {
   const app = express();
   app.use(cors());
-  app.use(express.json());
+  // A backup export/import (see routes/backup.ts) is pure JSON metadata, no binary,
+  // but a large library/device count could still exceed express's 100kb default —
+  // raised generously since every other route here sends tiny bodies anyway.
+  app.use(express.json({ limit: '10mb' }));
 
   app.use('/uploads', express.static(UPLOADS_DIR));
 
@@ -23,6 +27,7 @@ export function createApp() {
   app.use('/api/devices', devicesRouter);
   app.use('/api/player', playerRouter);
   app.use('/api/scan', scanRouter);
+  app.use('/api/backup', backupRouter);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
