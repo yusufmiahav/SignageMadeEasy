@@ -130,7 +130,13 @@ elif [[ -f "$(dirname "$0")/../pi-player/package.json" ]]; then
   # Already running from inside a checkout — use it directly rather than re-cloning.
   ln -sfn "$(cd "$(dirname "$0")/.." && pwd)" "$INSTALL_DIR/src"
 else
-  git clone --depth 1 "$REPO_URL" "$INSTALL_DIR/src"
+  # --depth implies --single-branch unless told otherwise: without --no-single-branch
+  # here, this clone only ever tracks whatever branch was checked out at clone time,
+  # and a later `git fetch origin` + `git checkout <other-branch>` fails outright with
+  # "pathspec did not match any file(s) known to git" since the remote branch was
+  # never fetchable at all — confirmed on a real Pi trying to switch onto a different
+  # branch after being provisioned once already.
+  git clone --depth 1 --no-single-branch "$REPO_URL" "$INSTALL_DIR/src"
 fi
 
 log "Building the player app"
