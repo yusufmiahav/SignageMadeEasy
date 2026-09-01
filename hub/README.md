@@ -70,20 +70,37 @@ encode quality. Lowering the source resolution is what actually fixes stutter; a
   isn't the bottleneck here, resolution and codec are.
 
 **What the hub does automatically on upload** (`hub/src/videoTranscode.ts`): every
-video upload is inspected with `ffprobe`, and re-encoded down to `1280px` wide
-(preserving aspect ratio) via `ffmpeg` if it's wider than that; anything already at
-or under that width is left alone untouched, audio copied through unchanged. This
-means you don't strictly have to pre-encode correctly yourself — a 4K or 1080p
-upload gets scaled down automatically — but it only checks *resolution*, not codec,
-so an already-small HEVC/VP9/AV1 file currently skips transcoding and still hits
-slow software decode on the Pi. If you're not sure your source is H.264, re-encode
-it yourself first (or ask for the codec check to be added here too).
+video upload is inspected with `ffprobe`; if it's wider than `1280px` a capped copy
+is encoded via `ffmpeg` **in the background**, alongside the untouched original —
+neither replaces the other. This means you don't strictly have to pre-encode
+correctly yourself — a 4K or 1080p upload gets a capped copy made for it
+automatically — but it only checks *resolution*, not codec, so an already-small
+HEVC/VP9/AV1 file currently skips capping and still hits slow software decode on
+the Pi. If you're not sure your source is H.264, re-encode it yourself first (or
+ask for the codec check to be added here too).
 
-Override the cap with the `SIGNAGE_MAX_VIDEO_WIDTH` environment variable on the hub
-container if you're on more capable player hardware (Pi 4/5) or want to lower it
-further for an even weaker device. A large source video takes real time to
-re-encode on upload — the NAS is far more capable than the Pi this protects, but
-it's not instant.
+Because capping runs in the background, the upload itself responds immediately —
+you don't wait through a multi-minute re-encode before the item shows up in the
+Library. While it's running, the item's card shows a **"Decoding…"** badge; if it
+ever shows **"Full-res only"** instead, capping failed for that file (corrupt
+input, an ffmpeg error, a timeout on a very long clip) and every screen just plays
+the original, same as if it never needed capping at all.
+
+**Full resolution on a per-screen basis**: each screen (Home screen → its device
+card) has a "Video" dropdown — **Optimized video** (default) plays the capped copy
+once one exists, falling back to the original while it's still processing;
+**Full-resolution video** always plays the original upload regardless of capping
+state. Use "Full-resolution video" for a screen on more capable hardware (Pi 4/5)
+or a lower-resolution display where the cap buys nothing — every other screen keeps
+getting the capped copy from the same upload.
+
+Override the cap width with the `SIGNAGE_MAX_VIDEO_WIDTH` environment variable on
+the hub container if your fleet's baseline hardware differs (e.g. everything is
+Pi 4/5-class, or you want it lower for an even weaker device) — it only changes
+what "capped" means, the per-screen full-resolution option above is independent of
+it. A large source video takes real time to re-encode — the NAS is far more capable
+than the Pi this protects, but it's not instant, which is exactly why it no longer
+blocks the upload response.
 
 **Maximum upload size**: 500MB per file (`hub/src/routes/library.ts`'s `multer`
 config) — generous headroom for looped signage clips, which are typically short.

@@ -12,6 +12,7 @@ interface DeviceCardProps {
   onRemove: (id: string) => void;
   onPickAnnouncement: (device: Device) => void;
   onToggleAnnouncement: (id: string) => void;
+  onSetVideoQuality: (id: string, videoQuality: 'auto' | 'full') => void;
 }
 
 export function DeviceCard({
@@ -24,6 +25,7 @@ export function DeviceCard({
   onRemove,
   onPickAnnouncement,
   onToggleAnnouncement,
+  onSetVideoQuality,
 }: DeviceCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(device.name);
@@ -92,6 +94,19 @@ export function DeviceCard({
         </a>
         {device.mac && <span className="tag tag-neutral">{device.mac}</span>}
         <span className="tag tag-neutral">{device.status === 'online' ? 'Online' : 'Offline'}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Icon name="video" size={12} style={{ opacity: 0.6, flexShrink: 0 }} />
+        <select
+          className="input"
+          style={{ flex: 1, fontSize: 11, padding: '3px 6px' }}
+          value={device.videoQuality}
+          onChange={(e) => onSetVideoQuality(device.id, e.target.value as 'auto' | 'full')}
+          title="Which copy of a video this screen plays — full resolution needs more capable player hardware"
+        >
+          <option value="auto">Optimized video (recommended)</option>
+          <option value="full">Full-resolution video</option>
+        </select>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 2, borderTop: '1px solid var(--color-divider)' }}>
         <button

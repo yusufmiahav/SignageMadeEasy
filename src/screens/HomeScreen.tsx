@@ -27,7 +27,7 @@ export function HomeScreen({
   onMoveDevice,
   onPickAnnouncement,
 }: HomeScreenProps) {
-  const { groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setForcedContent, setForcedAnnouncement } = app;
+  const { groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality, setForcedContent, setForcedAnnouncement } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
   // Every location shows here, even with zero screens paired yet — a location is
   // useful on its own (you can force content/announcements on it, or it's just
@@ -126,6 +126,7 @@ export function HomeScreen({
                       onRemove={removeDevice}
                       onPickAnnouncement={onPickAnnouncement}
                       onToggleAnnouncement={toggleDeviceAnnouncement}
+                      onSetVideoQuality={setDeviceVideoQuality}
                     />
                   ))}
                 </div>

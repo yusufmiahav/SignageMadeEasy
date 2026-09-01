@@ -266,6 +266,7 @@ class LocalStoreClient implements SignageApiClient {
       groupId: input.groupId,
       announcementId: null,
       announcementOn: false,
+      videoQuality: 'auto',
     };
     this.data.devices.push(device);
     this.persist();
@@ -305,6 +306,12 @@ class LocalStoreClient implements SignageApiClient {
   async toggleDeviceAnnouncement(id: string): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device && device.announcementId) device.announcementOn = !device.announcementOn;
+    this.persist();
+  }
+
+  async setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === id);
+    if (device) device.videoQuality = videoQuality;
     this.persist();
   }
 

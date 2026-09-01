@@ -12,6 +12,7 @@ function uid(prefix: string): string {
 
 interface LibraryRow {
   id: string; name: string; type: LibraryItem['type']; size: string | null; duration: string | null; durationSec: number | null; thumb: string | null; text: string | null; pageCount: number | null;
+  fullUrl: string | null; transcodeStatus: LibraryItem['transcodeStatus'] | null;
 }
 
 function rowToLibraryItem(r: LibraryRow): LibraryItem {
@@ -22,26 +23,42 @@ function rowToLibraryItem(r: LibraryRow): LibraryItem {
   if (r.thumb != null) item.thumb = r.thumb;
   if (r.text != null) item.text = r.text;
   if (r.pageCount != null) item.pageCount = r.pageCount;
+  if (r.fullUrl != null) item.fullUrl = r.fullUrl;
+  if (r.transcodeStatus != null) item.transcodeStatus = r.transcodeStatus;
   return item;
 }
 
 export function listLibrary(): LibraryItem[] {
-  const rows = db.prepare('SELECT id, name, type, size, duration, durationSec, thumb, text, pageCount FROM library ORDER BY createdAt ASC').all() as LibraryRow[];
+  const rows = db.prepare('SELECT id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus FROM library ORDER BY createdAt ASC').all() as LibraryRow[];
   return rows.map(rowToLibraryItem);
 }
 
-export function addLibraryItem(input: { name: string; type: LibraryItem['type']; size?: string; duration?: string; thumb?: string; text?: string; pageCount?: number }): LibraryItem {
+export function addLibraryItem(input: {
+  name: string; type: LibraryItem['type']; size?: string; duration?: string; thumb?: string; text?: string; pageCount?: number;
+  fullUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus'];
+}): LibraryItem {
   const id = uid('l');
-  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@createdAt)').run({
+  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@createdAt)').run({
     id, name: input.name, type: input.type,
     size: input.size ?? null, duration: input.duration ?? null, thumb: input.thumb ?? null, text: input.text ?? null, pageCount: input.pageCount ?? null,
+    fullUrl: input.fullUrl ?? null, transcodeStatus: input.transcodeStatus ?? null,
     createdAt: Date.now(),
   });
   return {
     id, name: input.name, type: input.type,
     ...(input.size && { size: input.size }), ...(input.duration && { duration: input.duration }),
     ...(input.thumb && { thumb: input.thumb }), ...(input.text && { text: input.text }), ...(input.pageCount != null && { pageCount: input.pageCount }),
+    ...(input.fullUrl && { fullUrl: input.fullUrl }), ...(input.transcodeStatus && { transcodeStatus: input.transcodeStatus }),
   };
+}
+
+/** Called once the background capping job (see routes/library.ts) finishes for a video item. */
+export function setVideoTranscodeResult(id: string, status: 'done' | 'failed', cappedUrl?: string): void {
+  if (status === 'done' && cappedUrl) {
+    db.prepare('UPDATE library SET thumb = ?, transcodeStatus = ? WHERE id = ?').run(cappedUrl, status, id);
+  } else {
+    db.prepare('UPDATE library SET transcodeStatus = ? WHERE id = ?').run(status, id);
+  }
 }
 
 export function removeLibraryItem(id: string): void {
@@ -185,7 +202,7 @@ export function removeAnnouncementSchedule(groupId: string, scheduleId: string):
 
 // ---- Devices ----
 
-interface DeviceRow { id: string; name: string; ip: string; mac: string | null; groupId: string; announcementId: string | null; announcementOn: number; lastSeenAt: number | null }
+interface DeviceRow { id: string; name: string; ip: string; mac: string | null; groupId: string; announcementId: string | null; announcementOn: number; videoQuality: Device['videoQuality']; lastSeenAt: number | null }
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -194,18 +211,18 @@ function statusFor(lastSeenAt: number | null): DeviceStatus {
 function rowToDevice(r: DeviceRow): Device {
   return {
     id: r.id, name: r.name, ip: r.ip, mac: r.mac, groupId: r.groupId,
-    announcementId: r.announcementId, announcementOn: !!r.announcementOn,
+    announcementId: r.announcementId, announcementOn: !!r.announcementOn, videoQuality: r.videoQuality,
     status: statusFor(r.lastSeenAt), lastSeenAt: r.lastSeenAt ?? undefined,
   };
 }
 
 export function listDevices(): Device[] {
-  const rows = db.prepare('SELECT id, name, ip, mac, groupId, announcementId, announcementOn, lastSeenAt FROM devices ORDER BY rowid ASC').all() as DeviceRow[];
+  const rows = db.prepare('SELECT id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt FROM devices ORDER BY rowid ASC').all() as DeviceRow[];
   return rows.map(rowToDevice);
 }
 
 export function getDevice(id: string): Device | null {
-  const row = db.prepare('SELECT id, name, ip, mac, groupId, announcementId, announcementOn, lastSeenAt FROM devices WHERE id = ?').get(id) as DeviceRow | undefined;
+  const row = db.prepare('SELECT id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt FROM devices WHERE id = ?').get(id) as DeviceRow | undefined;
   return row ? rowToDevice(row) : null;
 }
 
@@ -213,8 +230,12 @@ export function pairDevice(input: { name: string; ip: string; mac?: string | nul
   const id = uid('d');
   const lastSeenAt = input.status === 'offline' ? null : Date.now();
   const mac = input.mac ?? null;
-  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, lastSeenAt) VALUES (?,?,?,?,?,?,0,?)').run(id, input.name, input.ip, mac, input.groupId, null, lastSeenAt);
-  return { id, name: input.name, ip: input.ip, mac, groupId: input.groupId, announcementId: null, announcementOn: false, status: statusFor(lastSeenAt) };
+  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt) VALUES (?,?,?,?,?,?,0,?,?)').run(id, input.name, input.ip, mac, input.groupId, null, 'auto', lastSeenAt);
+  return { id, name: input.name, ip: input.ip, mac, groupId: input.groupId, announcementId: null, announcementOn: false, videoQuality: 'auto', status: statusFor(lastSeenAt) };
+}
+
+export function setDeviceVideoQuality(id: string, videoQuality: Device['videoQuality']): void {
+  db.prepare('UPDATE devices SET videoQuality = ? WHERE id = ?').run(videoQuality, id);
 }
 
 export function renameDevice(id: string, name: string): void {
@@ -302,7 +323,10 @@ export function getPlayerState(deviceId: string): PlayerState | null {
     .map((item) => ({
       id: item.id,
       type: item.type,
-      url: item.thumb ?? '',
+      // This screen's own preference wins for video: 'full' always gets the original
+      // upload; otherwise the resolution-capped copy once one exists, falling back to
+      // the original while it's still processing or if capping failed outright.
+      url: (item.type === 'video' && device.videoQuality === 'full' ? item.fullUrl : undefined) ?? item.thumb ?? item.fullUrl ?? '',
       duration: item.type === 'video' ? null : item.type === 'image' || item.type === 'clock' ? (item.durationSec ?? 8) : 8,
       ...(item.type === 'pdf' && { pageCount: item.pageCount ?? 1 }),
     }));

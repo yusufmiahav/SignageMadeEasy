@@ -125,6 +125,20 @@ rm -f "$SUDOERS_TMP"
 log "Fetching SignageMadeEasy"
 mkdir -p "$INSTALL_DIR"
 if [[ -d "$INSTALL_DIR/src/.git" ]]; then
+  # A pre-fix version of this script recursively chowned all of $INSTALL_DIR
+  # (src/ included) to $SIGNAGE_USER. That's since been narrowed below to leave
+  # src/ root-owned, but that narrowing can't undo ownership a Pi already picked
+  # up from an earlier bad run — and root's own `git pull` trips the same
+  # dubious-ownership safety check any other mismatched user would, permanently
+  # wedging every future re-run at this exact step (confirmed on real hardware:
+  # the checkout stayed on a commit from months earlier despite repeated
+  # re-provisioning). Both lines are idempotent and harmless when ownership is
+  # already correct, so they run unconditionally rather than only when something
+  # looks wrong.
+  chown -R root:root "$INSTALL_DIR/src"
+  if ! git config --global --get-all safe.directory | grep -qx "$INSTALL_DIR/src"; then
+    git config --global --add safe.directory "$INSTALL_DIR/src"
+  fi
   git -C "$INSTALL_DIR/src" pull --ff-only
 elif [[ -f "$(dirname "$0")/../pi-player/package.json" ]]; then
   # Already running from inside a checkout — use it directly rather than re-cloning.

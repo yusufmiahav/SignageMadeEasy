@@ -82,5 +82,18 @@ if (!hasForcedAnnouncementId) db.exec('ALTER TABLE groups_ ADD COLUMN forcedAnno
 const hasMac = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).some((c) => c.name === 'mac');
 if (!hasMac) db.exec('ALTER TABLE devices ADD COLUMN mac TEXT');
 
+// Same reasoning, for hubs deployed before video resolution capping ran in the
+// background — fullUrl is the untouched original upload, transcodeStatus tracks
+// whether a capped copy exists yet (see videoTranscode.ts and routes/library.ts).
+const libraryCols = (db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).map((c) => c.name);
+if (!libraryCols.includes('fullUrl')) db.exec('ALTER TABLE library ADD COLUMN fullUrl TEXT');
+if (!libraryCols.includes('transcodeStatus')) db.exec('ALTER TABLE library ADD COLUMN transcodeStatus TEXT');
+
+// Same reasoning, for hubs deployed before per-screen video quality existed — every
+// existing screen defaults to 'auto' (the capped copy), matching this project's
+// prior behavior of always serving a capped video to every screen.
+const hasVideoQuality = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).some((c) => c.name === 'videoQuality');
+if (!hasVideoQuality) db.exec("ALTER TABLE devices ADD COLUMN videoQuality TEXT NOT NULL DEFAULT 'auto'");
+
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.

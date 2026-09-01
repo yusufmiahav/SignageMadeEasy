@@ -14,6 +14,15 @@ export interface LibraryItem {
   thumb?: string;
   /** Message body. Announcements only. */
   text?: string;
+  /** Videos only — the original, untouched upload. `thumb` holds the resolution-capped copy once one exists (see transcodeStatus); screens set to "full resolution" (Device.videoQuality) are served this instead. */
+  fullUrl?: string;
+  /**
+   * Videos only. 'processing': the hub is capping this video in the background right
+   * now — 'done': a capped copy exists. 'skipped': the source was already small
+   * enough, nothing to wait for. 'failed': capping errored; playback falls back to
+   * the original, same as 'skipped'.
+   */
+  transcodeStatus?: 'processing' | 'done' | 'skipped' | 'failed';
 }
 
 export interface ScheduleEvent {
@@ -63,6 +72,13 @@ export interface Device {
   groupId: string;
   announcementId: string | null;
   announcementOn: boolean;
+  /**
+   * Which copy of a video this screen is served. 'auto' (default): the resolution-capped
+   * copy, sized for a Pi 3B+'s hardware decoder — right for most screens. 'full': always
+   * the original upload, for a screen on more capable hardware (Pi 4/5) or a lower-res
+   * display where the cap buys nothing.
+   */
+  videoQuality: 'auto' | 'full';
 }
 
 export interface AppData {
