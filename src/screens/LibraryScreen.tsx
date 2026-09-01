@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Icon } from '../components/icons/Icon';
 import { LibraryCard } from '../components/LibraryCard';
 import type { AppState } from '../hooks/useAppState';
@@ -50,11 +50,28 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
   };
 
   // ---- Drag-to-reorder ----
-  // Native HTML5 drag-and-drop, reordering live as the dragged card passes over
-  // another (classic "shift as you drag" list behavior), persisted once via
-  // reorderLibrary on drop rather than on every intermediate shuffle.
+  // Pointer Events rather than native HTML5 drag-and-drop: the HTML5 DnD API
+  // (draggable + dragstart/dragover/drop) simply doesn't fire from touch input on
+  // mobile browsers at all, which made this unusable on a phone - Pointer Events
+  // fire uniformly for mouse, touch, and pen, so this one implementation covers
+  // both. Reorders live as the dragged card passes over another (classic
+  // "shift as you drag" list behavior), persisted once via reorderLibrary on
+  // release rather than on every intermediate shuffle. Which card is "under" the
+  // pointer is found via elementFromPoint + a data-library-id attribute on each
+  // card's root, since pointer capture keeps delivering move/up events to the
+  // handle that was originally grabbed regardless of where the pointer travels.
   const [dragOrder, setDragOrder] = useState<string[] | null>(null);
   const draggedIdRef = useRef<string | null>(null);
+  // The source of truth for the in-progress order, updated synchronously in each
+  // handler body — NOT inside setDragOrder's functional updater. React 18's
+  // automatic batching only guarantees a functional updater runs by the time of the
+  // next render, not synchronously at call time; a burst of pointer events fired
+  // back-to-back with no render landing in between (confirmed directly: React 19
+  // batches these and defers the updater past the whole synchronous event chain, so
+  // mirroring the ref *inside* the updater ran too late for handleDragEnd to see it)
+  // needs a plain, immediately-updated ref instead. dragOrder (state) still exists
+  // purely to trigger the visual re-render during the drag.
+  const dragOrderRef = useRef<string[] | null>(null);
   const orderedIds = dragOrder ?? library.map((item) => item.id);
   const displayItems = orderedIds
     .map((id) => library.find((item) => item.id === id))
@@ -62,28 +79,38 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
 
   const handleDragStart = (id: string) => {
     draggedIdRef.current = id;
-    setDragOrder(library.map((item) => item.id));
+    const initial = library.map((item) => item.id);
+    dragOrderRef.current = initial;
+    setDragOrder(initial);
   };
 
   const handleDragEnter = (overId: string) => {
     const dragged = draggedIdRef.current;
     if (!dragged || dragged === overId) return;
-    setDragOrder((prev) => {
-      const current = prev ?? library.map((item) => item.id);
-      const from = current.indexOf(dragged);
-      const to = current.indexOf(overId);
-      if (from === -1 || to === -1) return current;
-      const next = [...current];
-      next.splice(from, 1);
-      next.splice(to, 0, dragged);
-      return next;
-    });
+    const current = dragOrderRef.current ?? library.map((item) => item.id);
+    const from = current.indexOf(dragged);
+    const to = current.indexOf(overId);
+    if (from === -1 || to === -1) return;
+    const next = [...current];
+    next.splice(from, 1);
+    next.splice(to, 0, dragged);
+    dragOrderRef.current = next;
+    setDragOrder(next);
   };
 
   const handleDragEnd = () => {
     draggedIdRef.current = null;
-    if (dragOrder) void reorderLibrary(dragOrder);
+    if (dragOrderRef.current) void reorderLibrary(dragOrderRef.current);
+    dragOrderRef.current = null;
     setDragOrder(null);
+  };
+
+  const handlePointerMove = (e: ReactPointerEvent) => {
+    if (!draggedIdRef.current) return;
+    e.preventDefault();
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const overId = (el?.closest('[data-library-id]') as HTMLElement | null)?.dataset.libraryId;
+    if (overId) handleDragEnter(overId);
   };
 
   return (
@@ -185,14 +212,14 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
               onRename={renameLibraryItem}
               isDragging={draggedIdRef.current === item.id}
               dragHandleProps={{
-                draggable: true,
-                onDragStart: (e) => {
-                  e.dataTransfer.effectAllowed = 'move';
+                onPointerDown: (e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
                   handleDragStart(item.id);
                 },
-                onDragEnter: () => handleDragEnter(item.id),
-                onDragOver: (e) => e.preventDefault(),
-                onDragEnd: handleDragEnd,
+                onPointerMove: handlePointerMove,
+                onPointerUp: handleDragEnd,
+                onPointerCancel: handleDragEnd,
+                style: { touchAction: 'none' },
               }}
             />
           ))}

@@ -184,6 +184,37 @@ body {
   text-align: center;
 }
 
+/* — forced-content indicator: a lit-up glow + a diagonal tiled watermark, so a
+   location stuck showing forced content instead of its normal schedule is obvious
+   at a glance rather than something you only notice by reading a small tag — */
+.preview-box-forced {
+  box-shadow: 0 0 0 2px var(--color-accent), 0 0 18px color-mix(in srgb, var(--color-accent) 55%, transparent);
+}
+
+.force-watermark {
+  position: absolute;
+  inset: -20%;
+  overflow: hidden;
+  pointer-events: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  justify-content: center;
+  gap: 14px 30px;
+  transform: rotate(-18deg);
+}
+
+.force-watermark span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-accent);
+  opacity: 0.55;
+  white-space: nowrap;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--color-accent) 80%, transparent);
+}
+
 .thumb-box {
   position: relative;
   aspect-ratio: 4 / 3;

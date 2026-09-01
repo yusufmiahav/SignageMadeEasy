@@ -71,6 +71,7 @@ export default function App() {
             app={app}
             onOpenAddContent={(groupId) => setDialog({ type: 'addContent', groupId })}
             onOpenAddEvent={(groupId) => setDialog({ type: 'addEvent', groupId })}
+            onPreviewContent={(item) => setDialog({ type: 'preview', item })}
           />
         )}
         {tab === 'announcements' && (

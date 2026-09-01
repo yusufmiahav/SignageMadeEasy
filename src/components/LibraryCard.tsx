@@ -67,7 +67,7 @@ export function LibraryCard({ item, onRemove, onRename, dragHandleProps, isDragg
   };
 
   return (
-    <div className="card" style={{ gap: 8, padding: 8, opacity: isDragging ? 0.4 : 1 }}>
+    <div className="card" data-library-id={item.id} style={{ gap: 8, padding: 8, opacity: isDragging ? 0.4 : 1 }}>
       <div className="thumb-box">
         {item.type === 'image' && item.thumb ? (
           <div className="thumb-img" style={{ backgroundImage: `url(${item.thumb})` }} />
