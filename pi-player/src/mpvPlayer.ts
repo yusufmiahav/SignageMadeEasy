@@ -38,6 +38,15 @@ let nextToken = 0;
 let current: PlaybackState | null = null;
 let currentProc: ChildProcess | null = null;
 
+// Cheap insurance: the first real-hardware test of this module (video simply never
+// appeared) turned out to be a one-line bug in the caller, not this module — but
+// diagnosing that took several rounds of blind guessing over SSH with no visibility
+// into what this module was actually doing at each step. Logging every real decision
+// point below so `journalctl -u signage-player -f` shows it directly next time.
+function log(msg: string, extra?: unknown): void {
+  console.log(`[mpvPlayer]`, msg, extra ?? '');
+}
+
 /**
  * cage stacks additional Wayland clients fullscreen "on top" of whatever's already
  * running (confirmed via cage's own docs, not this project's real hardware — that
@@ -144,6 +153,7 @@ export function stop(): void {
 export function play(url: string): number {
   const token = ++nextToken;
   current = { token, playing: true, ended: false };
+  log(`play() token=${token}`, url);
   void runWithRestarts(url, token, 0);
   return token;
 }
@@ -154,15 +164,17 @@ async function runWithRestarts(url: string, token: number, restarts: number): Pr
   let display: { xdgRuntimeDir: string; waylandDisplay: string };
   try {
     display = await waitForWaylandDisplay(5000);
-  } catch {
+  } catch (err) {
+    log(`token=${token} giving up: no Wayland display found`, err instanceof Error ? err.message : err);
     if (current?.token === token) { current.playing = false; current.ended = true; }
     return;
   }
   if (current?.token !== token) return;
+  log(`token=${token} found display`, display);
 
   killCurrentProc();
 
-  const proc = spawn('mpv', [
+  const args = [
     '--fullscreen',
     '--no-input-default-bindings',
     '--no-osc',
@@ -174,15 +186,17 @@ async function runWithRestarts(url: string, token: number, restarts: number): Pr
     '--loop-file=no',
     `--input-ipc-server=${IPC_SOCKET}`,
     url,
-  ], {
+  ];
+  log(`token=${token} spawning mpv (attempt ${restarts + 1})`, args.join(' '));
+  const proc = spawn('mpv', args, {
     env: { ...process.env, XDG_RUNTIME_DIR: display.xdgRuntimeDir, WAYLAND_DISPLAY: display.waylandDisplay },
   });
   currentProc = proc;
 
   let exited = false;
   const exitPromise = new Promise<void>((resolve) => {
-    proc.on('exit', () => { exited = true; resolve(); });
-    proc.on('error', () => { exited = true; resolve(); });
+    proc.on('exit', (code, signal) => { exited = true; log(`token=${token} mpv exited`, { code, signal }); resolve(); });
+    proc.on('error', (err) => { exited = true; log(`token=${token} mpv spawn error`, err.message); resolve(); });
   });
 
   // Watchdog: confirms time-pos is actually advancing, not just that the process is
@@ -199,6 +213,7 @@ async function runWithRestarts(url: string, token: number, restarts: number): Pr
         lastPos = pos;
         lastAdvance = Date.now();
       } else if (Date.now() - lastAdvance > STALL_TIMEOUT_MS) {
+        log(`token=${token} stall detected (lastPos=${lastPos}), killing and restarting`);
         killCurrentProc();
         break;
       }
@@ -220,6 +235,7 @@ async function runWithRestarts(url: string, token: number, restarts: number): Pr
   }
 
   if (current.token === token) {
+    log(`token=${token} done (exited=${exited}, restarts=${restarts})`);
     current.playing = false;
     current.ended = true;
   }

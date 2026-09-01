@@ -81,7 +81,13 @@ export function createApp() {
   app.post('/native-video/play', (req, res) => {
     const { url } = req.body ?? {};
     if (typeof url !== 'string' || !url) return res.status(400).json({ error: 'url is required' });
-    const token = mpvPlayer.play(url);
+    // The browser is happy with a bare /media/:id path (relative to its own page
+    // origin — see mediaCache.resolveUrl), but mpv is a separate OS process with no
+    // concept of "relative to this webpage": handed that same bare path, it tries to
+    // open it as a literal filesystem path, finds nothing there, and fails instantly.
+    // Needs to be this agent's own absolute address instead.
+    const absoluteUrl = /^https?:\/\//i.test(url) ? url : `http://localhost:${process.env.PORT ?? 8088}${url}`;
+    const token = mpvPlayer.play(absoluteUrl);
     res.json({ token });
   });
 
