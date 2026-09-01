@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
 import type { Backup } from '../api/types';
+import { copyText } from '../utils/clipboard';
 
 interface SettingsScreenProps {
   app: AppState;
@@ -23,12 +24,8 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
   const devicesWithMac = devices.filter((d): d is typeof d & { mac: string } => !!d.mac);
   const copyMacAddresses = async () => {
     const text = devicesWithMac.map((d) => `${d.name}\t${d.mac}`).join('\n');
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast(`Copied ${devicesWithMac.length} MAC address${devicesWithMac.length === 1 ? '' : 'es'}`);
-    } catch {
-      showToast('Could not copy — clipboard access denied');
-    }
+    const ok = await copyText(text);
+    showToast(ok ? `Copied ${devicesWithMac.length} MAC address${devicesWithMac.length === 1 ? '' : 'es'}` : 'Could not copy — clipboard access denied');
   };
 
   const downloadBackup = async () => {
