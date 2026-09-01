@@ -1,8 +1,18 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import * as store from '../store.js';
 import * as piAgent from '../piAgent.js';
 
 export const devicesRouter = Router();
+
+// The hub can't know which of its own addresses a given Pi can actually reach — on a
+// multi-homed NAS (e.g. one NIC on 192.168.x, another on 10.21.x), the browser doing
+// the pairing might be on a different subnet than the Pi being paired, and blindly
+// trusting req.get('host') below bakes in whichever address the *browser* happened to
+// use, not one the Pi can necessarily route to. Set this to an address reachable from
+// every Pi's network when that's not always the same one.
+function publicHubUrl(req: Request): string {
+  return process.env.SIGNAGE_PUBLIC_HUB_URL ?? `${req.protocol}://${req.get('host')}`;
+}
 
 devicesRouter.get('/', (_req, res) => {
   res.json(store.listDevices());
@@ -39,7 +49,7 @@ devicesRouter.post('/pair', async (req, res) => {
 
   if (!skipHandshake && status === 'online') {
     try {
-      await piAgent.configure(ip, device.id, req.protocol + '://' + req.get('host'));
+      await piAgent.configure(ip, device.id, publicHubUrl(req));
     } catch {
       // Non-fatal — the Pi will show its unpaired screen until it can be reconfigured.
     }

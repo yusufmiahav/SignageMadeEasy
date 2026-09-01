@@ -16,5 +16,9 @@ services:
     environment:
       - PORT=4000
       - SIGNAGE_DATA_DIR=/app/data
+      # Only needed on a multi-homed NAS (more than one NIC/subnet) — see
+      # hub/README.md's "Multi-homed NAS" section. Uncomment and set to an address
+      # every Pi can reach, regardless of which interface a pairing request arrives on.
+      # - SIGNAGE_PUBLIC_HUB_URL=http://10.21.0.5:4000
     volumes:
       - ./data:/app/data

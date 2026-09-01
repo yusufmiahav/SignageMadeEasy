@@ -25,6 +25,18 @@ macvlan network bound to your LAN interface instead.
 Everything persists under `hub/data/` (bind-mounted): `signage.db` (SQLite) and
 `uploads/` (the media library). Back that directory up; that's the whole hub's state.
 
+**Multi-homed NAS (more than one network)**: when pairing a screen, the hub tells it
+which address to poll based on whatever host the *browser* used to reach the hub —
+fine on a single-subnet LAN, but if your NAS has multiple NICs (e.g. one on
+`192.168.x`, another on `10.21.x`) and a Pi ends up on a different one than the
+browser doing the pairing, the Pi gets handed an address it can't route to and sits
+stuck on "waiting for the hub." Set `SIGNAGE_PUBLIC_HUB_URL` (e.g.
+`http://10.21.0.5:4000`) as an environment variable on the hub container to always
+hand out one specific, known-reachable address regardless of which interface the
+pairing request came in on. A screen already paired with the wrong address needs its
+`hubUrl` fixed directly in `/opt/signage/config.json` on the Pi (then
+`sudo systemctl restart signage-player`) — re-pairing isn't required.
+
 ## Pairing a Raspberry Pi
 
 See `../pi-player/README.md` for flashing + provisioning. Once a Pi is running the
