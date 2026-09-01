@@ -77,6 +77,16 @@ export function LibraryCard({ item, onRemove, onRename }: LibraryCardProps) {
           <Icon name={TYPE_ICON[item.type]} size={24} style={{ opacity: 0.4 }} />
         )}
         <span className="tag tag-accent type-tag">{TYPE_LABEL[item.type]}</span>
+        {item.transcodeStatus === 'processing' && (
+          <span className="tag tag-neutral" style={{ position: 'absolute', bottom: 4, left: 4 }} title="The hub is creating a resolution-capped copy of this video in the background">
+            Decoding…
+          </span>
+        )}
+        {item.transcodeStatus === 'failed' && (
+          <span className="tag tag-neutral" style={{ position: 'absolute', bottom: 4, left: 4 }} title="Capping this video failed — screens set to 'Optimized video' will play the full-resolution original instead">
+            Full-res only
+          </span>
+        )}
         <button type="button" className="btn btn-ghost btn-icon thumb-remove" aria-label="Remove" onClick={() => onRemove(item.id)}>
           <Icon name="x" size={12} />
         </button>

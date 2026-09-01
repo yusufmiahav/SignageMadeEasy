@@ -16,9 +16,10 @@ export interface DiscoveredDevice {
 export interface SignageApiClient {
   // Library
   listLibrary(): Promise<LibraryItem[]>;
-  addImage(file: File): Promise<LibraryItem>;
-  addVideo(file: File): Promise<LibraryItem>;
-  addPdf(file: File): Promise<LibraryItem>;
+  /** `onProgress` (0-100), where supported, reports the raw upload transfer — not the hub's own post-upload processing (e.g. video capping), which is tracked separately via the returned item's transcodeStatus. */
+  addImage(file: File, onProgress?: (pct: number) => void): Promise<LibraryItem>;
+  addVideo(file: File, onProgress?: (pct: number) => void): Promise<LibraryItem>;
+  addPdf(file: File, onProgress?: (pct: number) => void): Promise<LibraryItem>;
   addAnnouncement(name: string, text: string): Promise<LibraryItem>;
   /** Current time of day on a black background, rendered live on the Pi — no file involved. */
   addClock(name: string): Promise<LibraryItem>;
@@ -54,6 +55,7 @@ export interface SignageApiClient {
   restartDevice(id: string): Promise<void>;
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
+  setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;
 
   // Pairing helpers (simulated placeholders until the hub can do a real LAN scan)
   scanNetwork(): Promise<DiscoveredDevice[]>;

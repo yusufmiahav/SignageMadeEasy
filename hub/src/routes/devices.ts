@@ -59,9 +59,10 @@ devicesRouter.post('/pair', async (req, res) => {
 });
 
 devicesRouter.patch('/:id', (req, res) => {
-  const { name, groupId } = req.body ?? {};
+  const { name, groupId, videoQuality } = req.body ?? {};
   if (typeof name === 'string') store.renameDevice(req.params.id, name);
   if (typeof groupId === 'string') store.moveDevice(req.params.id, groupId);
+  if (videoQuality === 'auto' || videoQuality === 'full') store.setDeviceVideoQuality(req.params.id, videoQuality);
   res.status(204).end();
 });
 

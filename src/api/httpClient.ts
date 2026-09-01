@@ -23,18 +23,40 @@ function json(body: unknown): RequestInit {
   return { body: JSON.stringify(body) };
 }
 
-async function uploadFile(path: string, file: File): Promise<LibraryItem> {
-  const form = new FormData();
-  form.append('file', file);
-  return request<LibraryItem>(path, { method: 'POST', body: form });
+// fetch() has no cross-browser way to observe upload (as opposed to download)
+// progress, so a real progress bar needs XMLHttpRequest for this one call.
+function uploadFile(path: string, file: File, onProgress?: (pct: number) => void): Promise<LibraryItem> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${BASE_URL}${path}`);
+    xhr.upload.onprogress = (e) => {
+      if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText) as LibraryItem);
+        return;
+      }
+      // Mirrors request()'s error handling: surface the hub's own { error: "..." }
+      // body where available rather than just a bare status code.
+      const body = (() => {
+        try { return JSON.parse(xhr.responseText) as { error?: string }; } catch { return null; }
+      })();
+      reject(new Error(body?.error || `POST ${path} failed: ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error(`POST ${path} failed: network error`));
+    const form = new FormData();
+    form.append('file', file);
+    xhr.send(form);
+  });
 }
 
 export const httpClient: SignageApiClient = {
   // Library
   listLibrary: () => request<LibraryItem[]>('/api/library'),
-  addImage: (file) => uploadFile('/api/library/image', file),
-  addVideo: (file) => uploadFile('/api/library/video', file),
-  addPdf: (file) => uploadFile('/api/library/pdf', file),
+  addImage: (file, onProgress) => uploadFile('/api/library/image', file, onProgress),
+  addVideo: (file, onProgress) => uploadFile('/api/library/video', file, onProgress),
+  addPdf: (file, onProgress) => uploadFile('/api/library/pdf', file, onProgress),
   addAnnouncement: (name, text) => request<LibraryItem>('/api/library/announcement', { method: 'POST', ...json({ name, text }) }),
   addClock: (name) => request<LibraryItem>('/api/library/clock', { method: 'POST', ...json({ name }) }),
   removeLibraryItem: (id) => request<void>(`/api/library/${id}`, { method: 'DELETE' }),
@@ -74,6 +96,7 @@ export const httpClient: SignageApiClient = {
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
   setDeviceAnnouncement: (id, announcementId) => request<void>(`/api/devices/${id}/announcement`, { method: 'PUT', ...json({ announcementId }) }),
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
+  setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),
 
   // Pairing helpers
   scanNetwork: () => request<DiscoveredDevice[]>('/api/scan'),

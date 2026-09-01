@@ -18,6 +18,16 @@ export interface LibraryItem {
   text?: string;
   /** PDFs only — real page count, extracted server-side (the frontend's local-storage mode has no way to do this). */
   pageCount?: number;
+  /** Videos only — the original, untouched upload. `thumb` holds the resolution-capped copy once one exists (see transcodeStatus); screens set to "full resolution" (Device.videoQuality) are served this instead. */
+  fullUrl?: string;
+  /**
+   * Videos only. 'processing': capping is running in the background on the hub right
+   * now (thumb still points at the original while this is in progress) — 'done': a
+   * capped copy exists at `thumb`. 'skipped': the source was already at or under the
+   * cap, so there's nothing to wait for. 'failed': capping errored; `thumb` falls back
+   * to the original, same as 'skipped' from a playback standpoint.
+   */
+  transcodeStatus?: 'processing' | 'done' | 'skipped' | 'failed';
 }
 
 export interface ScheduleEvent {
@@ -65,6 +75,13 @@ export interface Device {
   groupId: string;
   announcementId: string | null;
   announcementOn: boolean;
+  /**
+   * Which copy of a video this screen is served. 'auto' (default): the resolution-capped
+   * copy, sized for a Pi 3B+'s hardware decoder — right for most screens. 'full': always
+   * the original upload, for a screen on more capable hardware (Pi 4/5) or a lower-res
+   * display where the cap buys nothing.
+   */
+  videoQuality: 'auto' | 'full';
   /** ms since epoch of the last heartbeat received. Not exposed to the control app. */
   lastSeenAt?: number;
 }

@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs';
-import path from 'node:path';
 
 const execFileAsync = promisify(execFile);
 
@@ -32,29 +31,38 @@ async function getVideoWidth(filePath: string): Promise<number | null> {
   }
 }
 
-/** Downscales in place (same path) if the source is wider than MAX_WIDTH; a no-op otherwise. Audio, if any, is copied untouched — only the video stream needs re-encoding. */
-export async function capVideoResolution(filePath: string): Promise<void> {
+/** True if the source is wider than MAX_WIDTH and therefore worth capping; false if it's already small enough or its width couldn't be read (leave it alone rather than risk a bad transcode). */
+export async function needsCapping(filePath: string): Promise<boolean> {
   const width = await getVideoWidth(filePath);
-  if (width == null || width <= MAX_WIDTH) return; // already small enough, or couldn't tell — leave it alone rather than risk a bad transcode
+  return width != null && width > MAX_WIDTH;
+}
 
-  const tmpPath = `${filePath}.transcoding${path.extname(filePath)}`;
+/**
+ * Downscales `sourcePath` to `destPath` — never overwrites the original, since some
+ * screens (see Device.videoQuality) are meant to keep playing the full-resolution
+ * upload instead. Runs as a background job from routes/library.ts, off the upload
+ * request's response path — a large source video can take real time to re-encode
+ * even on hardware far more capable than the Pi this protects, so the caller isn't
+ * meant to block on it. Audio, if any, is copied untouched; only the video stream is
+ * re-encoded. Returns whether it succeeded.
+ */
+export async function transcodeToCapped(sourcePath: string, destPath: string): Promise<boolean> {
   try {
     await execFileAsync('ffmpeg', [
       '-y',
-      '-i', filePath,
+      '-i', sourcePath,
       '-vf', `scale=${MAX_WIDTH}:-2`,
       '-c:v', 'libx264',
       '-preset', 'veryfast',
       '-crf', '23',
       '-c:a', 'copy',
-      tmpPath,
-      // A NAS is far more capable than the Pi this is protecting, but a long source
-      // video still takes real time to re-encode — generous rather than tight.
+      destPath,
     ], { timeout: 10 * 60 * 1000 });
-    fs.renameSync(tmpPath, filePath);
+    return true;
   } catch {
     // Transcode failed for any reason (corrupt input, unsupported codec, timeout) —
     // fall back to serving the original upload rather than losing it entirely.
-    fs.rmSync(tmpPath, { force: true });
+    fs.rmSync(destPath, { force: true });
+    return false;
   }
 }

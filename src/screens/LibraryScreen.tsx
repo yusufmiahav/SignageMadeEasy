@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import { LibraryCard } from '../components/LibraryCard';
 import type { AppState } from '../hooks/useAppState';
@@ -8,16 +8,38 @@ interface LibraryScreenProps {
   onOpenAnnounceDialog: () => void;
 }
 
+interface InFlightUpload {
+  key: string;
+  name: string;
+  pct: number;
+}
+
 export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps) {
   const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, renameLibraryItem } = app;
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
+  const [uploads, setUploads] = useState<InFlightUpload[]>([]);
+
+  // Tracks the raw upload transfer for each in-flight file (not the hub's own
+  // post-upload processing, e.g. video capping — that shows up as a "Decoding…"
+  // badge on the card itself once the item lands, via LibraryCard's transcodeStatus).
+  const trackUpload = async <T,>(file: File, upload: (file: File, onProgress: (pct: number) => void) => Promise<T>): Promise<T> => {
+    const key = `${file.name}-${file.size}-${Date.now()}`;
+    setUploads((prev) => [...prev, { key, name: file.name, pct: 0 }]);
+    try {
+      return await upload(file, (pct) => {
+        setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, pct } : u)));
+      });
+    } finally {
+      setUploads((prev) => prev.filter((u) => u.key !== key));
+    }
+  };
 
   const handleImages = async (files: FileList | null) => {
     if (!files) return;
     for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) await addImage(file);
+      if (file.type.startsWith('image/')) await trackUpload(file, addImage);
     }
   };
 
@@ -27,8 +49,8 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
   const handleDropped = async (files: FileList | null) => {
     if (!files) return;
     for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) await addImage(file);
-      else if (file.type.startsWith('video/')) await addVideo(file);
+      if (file.type.startsWith('image/')) await trackUpload(file, addImage);
+      else if (file.type.startsWith('video/')) await trackUpload(file, addVideo);
     }
   };
 
@@ -52,7 +74,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
         style={{ display: 'none' }}
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) void addVideo(file);
+          if (file) void trackUpload(file, addVideo);
           e.target.value = '';
         }}
       />
@@ -63,7 +85,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
         style={{ display: 'none' }}
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) void addPdf(file);
+          if (file) void trackUpload(file, addPdf);
           e.target.value = '';
         }}
       />
@@ -102,6 +124,22 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
         <Icon name="uploadCloud" size={20} />
         <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>Drag and drop images or videos here, or click to upload</p>
       </div>
+
+      {uploads.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {uploads.map((u) => (
+            <div key={u.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Uploading {u.name}…</span>
+                <span className="text-muted">{u.pct}%</span>
+              </div>
+              <div style={{ height: 4, borderRadius: 2, background: 'var(--color-divider)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${u.pct}%`, background: 'var(--color-accent)', borderRadius: 2, transition: 'width 150ms linear' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {library.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>No content yet.</p>
