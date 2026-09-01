@@ -44,18 +44,49 @@ player service, pair it from the control app's Settings/Home "Add a screen" dial
 Scan network, Scan QR, or Enter IP all end up calling this hub's `/api/devices/pair`,
 which reaches the Pi directly to complete the handshake.
 
-## Video uploads are capped at 1280px wide automatically
+## Video: resolution, format, and how the automatic capping works
 
-Confirmed on real Pi 3B+ hardware: a 1920x1080 H.264 source dropped roughly 65% of
-frames even with hardware decode active, the display already at its correct native
-resolution, and heat/bitrate ruled out — the constraint is decode throughput at the
-*source* resolution, not display output. Every video upload is re-encoded down to
-1280px wide (preserving aspect ratio) if it's larger, via `ffmpeg`/`ffprobe` (already
-in the hub's Docker image); anything already at or under that width is left alone
-untouched. Override with `SIGNAGE_MAX_VIDEO_WIDTH` if you're on more capable hardware
-(Pi 4/5) or need to lower it further. A large source video takes real time to
-re-encode on upload — the NAS is far more capable than the Pi this protects, but it's
-not instant.
+**Why this matters**: a Raspberry Pi 3B+ decodes video in hardware (the VideoCore IV
+GPU), but that hardware decoder is fixed-throughput — it can only decode so many
+pixels per second regardless of CPU load, temperature, or how good the source
+bitrate is. Confirmed on real Pi 3B+ hardware: a 1920x1080 H.264 source dropped
+roughly 65% of frames even with hardware decode active, the display already at its
+correct native resolution, and heat/bitrate ruled out as causes — the bottleneck is
+decode throughput at the *source* resolution, not anything about the display or the
+encode quality. Lowering the source resolution is what actually fixes stutter; a
+"better" bitrate or a beefier heatsink doesn't touch this bottleneck at all.
+
+**Best settings to upload, if you're encoding yourself:**
+- **Resolution**: 1280x720 (720p) or lower. This is what's confirmed smooth on a
+  Pi 3B+ — the automatic cap below defaults to exactly this width for that reason.
+  Go lower (e.g. 854x480) if you're still seeing dropped frames on your specific
+  hardware/content mix.
+- **Codec**: H.264 ("AVC"), in an `.mp4` container. This is the only codec the
+  Pi 3B+'s VideoCore IV has a hardware decode path for at all — HEVC/H.265, VP9, and
+  AV1 all fall back to slow software decode on this SoC regardless of resolution, so
+  a small HEVC file can stutter worse than a larger H.264 one.
+- **Profile**: H.264 High or Main profile at a moderate bitrate (a few Mbps is
+  plenty for signage content) — the hardware decoder handles either fine; profile
+  isn't the bottleneck here, resolution and codec are.
+
+**What the hub does automatically on upload** (`hub/src/videoTranscode.ts`): every
+video upload is inspected with `ffprobe`, and re-encoded down to `1280px` wide
+(preserving aspect ratio) via `ffmpeg` if it's wider than that; anything already at
+or under that width is left alone untouched, audio copied through unchanged. This
+means you don't strictly have to pre-encode correctly yourself — a 4K or 1080p
+upload gets scaled down automatically — but it only checks *resolution*, not codec,
+so an already-small HEVC/VP9/AV1 file currently skips transcoding and still hits
+slow software decode on the Pi. If you're not sure your source is H.264, re-encode
+it yourself first (or ask for the codec check to be added here too).
+
+Override the cap with the `SIGNAGE_MAX_VIDEO_WIDTH` environment variable on the hub
+container if you're on more capable player hardware (Pi 4/5) or want to lower it
+further for an even weaker device. A large source video takes real time to
+re-encode on upload — the NAS is far more capable than the Pi this protects, but
+it's not instant.
+
+**Maximum upload size**: 500MB per file (`hub/src/routes/library.ts`'s `multer`
+config) — generous headroom for looped signage clips, which are typically short.
 
 ## API surface
 

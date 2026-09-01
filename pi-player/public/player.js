@@ -140,7 +140,7 @@ function playItem(index) {
     const video = document.createElement('video');
     video.src = item.url;
     video.autoplay = true;
-    video.muted = true;
+    video.muted = false;
     video.playsInline = true;
 
     // Diagnostics for the DevTools console (--remote-debugging-port=9222, see
