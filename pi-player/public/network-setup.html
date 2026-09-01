@@ -14,6 +14,7 @@
   label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 4px; }
   select, input { width: 100%; padding: 10px; font-size: 15px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; }
   input[type="file"] { padding: 8px; }
+  input[type="radio"], input[type="checkbox"] { width: auto; padding: 0; border: none; background: none; }
   button { padding: 12px; font-size: 15px; font-weight: 700; border-radius: 6px; border: none; background: #e0392c; color: #fff; cursor: pointer; }
   button:disabled { opacity: 0.5; cursor: default; }
   #status, #content-status { font-size: 13px; min-height: 18px; }
@@ -22,6 +23,13 @@
   #rescan { background: transparent; border: 1px solid #444; font-weight: 600; padding: 8px; }
   #content-clear { background: transparent; border: 1px solid #444; font-weight: 600; padding: 8px; }
   hr { border: none; border-top: 1px solid #333; margin: 6px 0; }
+  /* Defined here (not inline on the element) so the [hidden] rule below — a higher-
+     specificity attribute selector on the same id — actually wins the cascade; an
+     inline style="display:flex" on the element itself would beat [hidden]'s
+     display:none outright regardless of specificity rules, silently keeping it
+     visible even while "hidden" is set. */
+  #ip-manual-fields, #underclock-reboot-prompt { display: flex; flex-direction: column; gap: 10px; }
+  #ip-manual-fields[hidden], #underclock-reboot-prompt[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -48,6 +56,33 @@
 
     <hr />
 
+    <h2>IP address</h2>
+    <p>DHCP (automatic) is right for almost every setup — only switch to a static IP
+      if you specifically need this display to always be reachable at the same
+      address.</p>
+    <div style="display: flex; gap: 16px;">
+      <label style="display: flex; align-items: center; gap: 6px; font-weight: 400;"><input type="radio" name="ip-method" id="ip-method-auto" value="auto" style="width: auto;" /> DHCP</label>
+      <label style="display: flex; align-items: center; gap: 6px; font-weight: 400;"><input type="radio" name="ip-method" id="ip-method-manual" value="manual" style="width: auto;" /> Static</label>
+    </div>
+    <div id="ip-manual-fields" hidden>
+      <div>
+        <label for="ip-address">IP address (with prefix)</label>
+        <input id="ip-address" placeholder="192.168.1.50/24" />
+      </div>
+      <div>
+        <label for="ip-gateway">Gateway</label>
+        <input id="ip-gateway" placeholder="192.168.1.1" />
+      </div>
+      <div>
+        <label for="ip-dns">DNS (comma-separated)</label>
+        <input id="ip-dns" placeholder="1.1.1.1,8.8.8.8" />
+      </div>
+    </div>
+    <button type="button" id="ip-apply">Apply</button>
+    <p id="ip-status"></p>
+
+    <hr />
+
     <h2>Local content (fail-safe)</h2>
     <p>Upload an image, video, or PDF to show directly on this display whenever it can't reach the
       hub — no network setup needed for this part. It loops on its own until the hub is reachable
@@ -60,6 +95,21 @@
     <button type="button" id="content-upload">Upload</button>
     <button type="button" id="content-clear">Clear local content</button>
     <p id="content-status"></p>
+
+    <hr />
+
+    <h2>Performance</h2>
+    <p>Caps the CPU's top speed to run cooler — worth trying if this Pi has no
+      heatsink and is throttling from heat. Trades away some headroom, so only
+      needed if that's actually happening.</p>
+    <label style="display: flex; align-items: center; gap: 8px; font-weight: 400;">
+      <input type="checkbox" id="underclock-toggle" style="width: auto;" /> Underclock (reduces heat)
+    </label>
+    <p id="underclock-status"></p>
+    <div id="underclock-reboot-prompt" hidden>
+      <p style="color: #ffcf6e;">Reboot required for this to take effect.</p>
+      <button type="button" id="underclock-reboot">Reboot now</button>
+    </div>
   </div>
   <script>
     const select = document.getElementById('ssid-select');
@@ -112,6 +162,137 @@
         status.textContent = "Lost connection to the display mid-request — if it joined the new network, this page is no longer reachable; that's expected.";
         status.className = 'err';
         connectBtn.disabled = false;
+      }
+    });
+
+    // --- IP address (static/DHCP) -------------------------------------------
+    const ipAuto = document.getElementById('ip-method-auto');
+    const ipManual = document.getElementById('ip-method-manual');
+    const ipManualFields = document.getElementById('ip-manual-fields');
+    const ipAddress = document.getElementById('ip-address');
+    const ipGateway = document.getElementById('ip-gateway');
+    const ipDns = document.getElementById('ip-dns');
+    const ipApply = document.getElementById('ip-apply');
+    const ipStatus = document.getElementById('ip-status');
+
+    function syncIpFieldsVisibility() {
+      ipManualFields.hidden = !ipManual.checked;
+    }
+    ipAuto.addEventListener('change', syncIpFieldsVisibility);
+    ipManual.addEventListener('change', syncIpFieldsVisibility);
+
+    async function loadIpStatus() {
+      try {
+        const res = await fetch('/network-ip/status');
+        const data = await res.json();
+        if (data.method === 'manual') {
+          ipManual.checked = true;
+          ipAddress.value = data.address ?? '';
+          ipGateway.value = data.gateway ?? '';
+          ipDns.value = data.dns ?? '';
+        } else {
+          ipAuto.checked = true;
+        }
+      } catch {
+        // leave both radios unchecked — user can still pick one and apply
+      }
+      syncIpFieldsVisibility();
+    }
+    void loadIpStatus();
+
+    ipApply.addEventListener('click', async () => {
+      const method = ipManual.checked ? 'manual' : 'auto';
+      if (method === 'manual' && (!ipAddress.value.trim() || !ipGateway.value.trim())) {
+        ipStatus.textContent = 'IP address and gateway are required for a static IP.';
+        ipStatus.className = 'err';
+        return;
+      }
+      ipApply.disabled = true;
+      ipStatus.textContent = 'Applying… this may briefly disconnect the display.';
+      ipStatus.className = '';
+      try {
+        const res = await fetch('/network-ip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method, address: ipAddress.value.trim(), gateway: ipGateway.value.trim(), dns: ipDns.value.trim() }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          ipStatus.textContent = method === 'manual'
+            ? `Applied — if this display moved to a new address, reload this page at http://${ipAddress.value.split('/')[0]}:8088/network-setup.html.`
+            : 'Switched back to DHCP.';
+          ipStatus.className = 'ok';
+        } else {
+          ipStatus.textContent = `Couldn't apply: ${data.error ?? 'unknown error'}.`;
+          ipStatus.className = 'err';
+        }
+      } catch {
+        ipStatus.textContent = "Lost connection to the display mid-request — if the address changed, this page is no longer reachable at the old one; that's expected.";
+        ipStatus.className = 'err';
+      } finally {
+        ipApply.disabled = false;
+      }
+    });
+
+    // --- Performance (underclock) -------------------------------------------
+    const underclockToggle = document.getElementById('underclock-toggle');
+    const underclockStatus = document.getElementById('underclock-status');
+    const underclockRebootPrompt = document.getElementById('underclock-reboot-prompt');
+    const underclockReboot = document.getElementById('underclock-reboot');
+
+    function renderUnderclockStatus(data) {
+      underclockToggle.checked = data.enabled;
+      underclockRebootPrompt.hidden = !data.rebootRequired;
+    }
+
+    async function loadUnderclockStatus() {
+      try {
+        const res = await fetch('/underclock/status');
+        renderUnderclockStatus(await res.json());
+      } catch {
+        underclockStatus.textContent = "Couldn't check the current setting.";
+        underclockStatus.className = 'err';
+      }
+    }
+    void loadUnderclockStatus();
+
+    underclockToggle.addEventListener('change', async () => {
+      underclockToggle.disabled = true;
+      underclockStatus.textContent = 'Updating…';
+      underclockStatus.className = '';
+      try {
+        const res = await fetch('/underclock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: underclockToggle.checked }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          renderUnderclockStatus(data);
+          underclockStatus.textContent = underclockToggle.checked ? 'Underclock enabled.' : 'Underclock disabled.';
+          underclockStatus.className = 'ok';
+        } else {
+          underclockToggle.checked = !underclockToggle.checked;
+          underclockStatus.textContent = `Couldn't update: ${data.error ?? 'unknown error'}.`;
+          underclockStatus.className = 'err';
+        }
+      } catch {
+        underclockToggle.checked = !underclockToggle.checked;
+        underclockStatus.textContent = 'Lost connection to the display — try again.';
+        underclockStatus.className = 'err';
+      } finally {
+        underclockToggle.disabled = false;
+      }
+    });
+
+    underclockReboot.addEventListener('click', async () => {
+      underclockReboot.disabled = true;
+      underclockStatus.textContent = 'Rebooting…';
+      underclockStatus.className = '';
+      try {
+        await fetch('/system/reboot', { method: 'POST' });
+      } catch {
+        // Expected — the Pi is going down.
       }
     });
 

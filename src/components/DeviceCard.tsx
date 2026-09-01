@@ -80,7 +80,17 @@ export function DeviceCard({
         </div>
       )}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <span className="tag tag-neutral">{device.ip}</span>
+        <a
+          className="tag tag-neutral"
+          style={{ textDecoration: 'none' }}
+          href={`http://${device.ip}:8088/network-setup.html`}
+          target="_blank"
+          rel="noreferrer"
+          title="Open this screen's own settings page (Wi-Fi, local content, performance)"
+        >
+          {device.ip}
+        </a>
+        {device.mac && <span className="tag tag-neutral">{device.mac}</span>}
         <span className="tag tag-neutral">{device.status === 'online' ? 'Online' : 'Offline'}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 2, borderTop: '1px solid var(--color-divider)' }}>

@@ -150,6 +150,36 @@ chown "$SIGNAGE_USER:$SIGNAGE_USER" "$INSTALL_DIR"
 chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$APP_DIR"
 
 # ---------------------------------------------------------------------------
+log "Installing the underclock toggle script (root-owned — see pi-player/src/underclock.ts)"
+# Deliberately NOT under $APP_DIR: that whole tree is chowned to $SIGNAGE_USER
+# above, and $SIGNAGE_USER can invoke this script via the sudoers grant below —
+# if $SIGNAGE_USER could also edit the script it runs as root, that grant would
+# be a straight path to arbitrary root access instead of the one fixed on/off
+# toggle it's meant to be.
+mkdir -p /opt/signage/bin
+install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/set-underclock.sh" /opt/signage/bin/set-underclock.sh
+
+# ---------------------------------------------------------------------------
+log "Granting $SIGNAGE_USER passwordless access to the underclock script and reboot"
+# Same reasoning and same visudo-validate-before-install pattern as the nmcli grant
+# above: narrow, specific, fixed commands only — never a blanket NOPASSWD:ALL.
+# reboot's real path varies across Raspberry Pi OS releases (merged-/usr or not) —
+# resolved here rather than hardcoded, same as $CHROMIUM_BIN above.
+REBOOT_BIN="$(command -v reboot)"
+SUDOERS_TMP="$(mktemp)"
+{
+  echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /opt/signage/bin/set-underclock.sh"
+  echo "$SIGNAGE_USER ALL=(root) NOPASSWD: $REBOOT_BIN"
+} > "$SUDOERS_TMP"
+if visudo -c -f "$SUDOERS_TMP" >/dev/null 2>&1; then
+  install -m 440 "$SUDOERS_TMP" /etc/sudoers.d/signage-underclock
+else
+  echo "Generated underclock sudoers rule failed validation — skipping. The" >&2
+  echo "underclock toggle and reboot-from-the-setup-page won't work without it." >&2
+fi
+rm -f "$SUDOERS_TMP"
+
+# ---------------------------------------------------------------------------
 log "Installing a blank cursor theme"
 # cage always draws *a* cursor with no direct API to suppress it — but it does
 # receive XCURSOR_THEME/XCURSOR_SIZE (confirmed via /proc/<pid>/environ on real

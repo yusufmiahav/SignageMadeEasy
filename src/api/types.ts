@@ -57,6 +57,8 @@ export interface Device {
   id: string;
   name: string;
   ip: string;
+  /** Captured once at pairing time from the Pi's own agent. Null for a screen paired before this existed, one paired while offline, or any device in standalone/localStorage mode (no real Pi to ask). */
+  mac: string | null;
   status: DeviceStatus;
   groupId: string;
   announcementId: string | null;

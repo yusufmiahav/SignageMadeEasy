@@ -10,6 +10,8 @@ import { loadConfig } from './config.js';
 import * as mediaCache from './mediaCache.js';
 import * as wifiManager from './wifiManager.js';
 import * as localContent from './localContent.js';
+import * as underclock from './underclock.js';
+import * as staticIp from './staticIp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -72,6 +74,61 @@ export function createApp() {
     const file = localContent.filePath();
     if (!file) return res.status(404).end();
     res.sendFile(file);
+  });
+
+  // Underclock toggle (see underclock.ts) — a no-heatsink option for running a bare
+  // Pi 3B+ cooler, at the cost of some CPU headroom. Only takes effect on reboot,
+  // which is what rebootRequired below is for.
+  app.get('/underclock/status', async (_req, res) => {
+    res.json(await underclock.getStatus());
+  });
+
+  app.post('/underclock', async (req, res) => {
+    const { enabled } = req.body ?? {};
+    if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
+    try {
+      await underclock.setEnabled(enabled);
+      res.json(await underclock.getStatus());
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // A real hardware reboot — deliberately separate from agent.ts's /restart (which
+  // only restarts this Node process) and only ever reachable from the local
+  // device-setup page a person is physically looking at, never from the hub.
+  app.post('/system/reboot', async (_req, res) => {
+    try {
+      res.json({ ok: true });
+      await underclock.reboot();
+    } catch {
+      // Response already sent — nothing left to do differently if this fails.
+    }
+  });
+
+  // Static-IP / DHCP toggle (see staticIp.ts) for whichever connection currently
+  // holds this Pi's default route.
+  app.get('/network-ip/status', async (_req, res) => {
+    res.json(await staticIp.getStatus());
+  });
+
+  app.post('/network-ip', async (req, res) => {
+    const { method, address, gateway, dns } = req.body ?? {};
+    try {
+      if (method === 'auto') {
+        await staticIp.setDhcp();
+      } else if (method === 'manual') {
+        if (typeof address !== 'string' || !address || typeof gateway !== 'string' || !gateway) {
+          return res.status(400).json({ error: 'address and gateway are required for a static IP' });
+        }
+        await staticIp.setStatic({ address, gateway, dns: typeof dns === 'string' ? dns : '' });
+      } else {
+        return res.status(400).json({ error: 'method must be "auto" or "manual"' });
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   // Field Wi-Fi provisioning (see wifiManager.ts) — reachable at this same address

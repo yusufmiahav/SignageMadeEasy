@@ -185,7 +185,7 @@ export function removeAnnouncementSchedule(groupId: string, scheduleId: string):
 
 // ---- Devices ----
 
-interface DeviceRow { id: string; name: string; ip: string; groupId: string; announcementId: string | null; announcementOn: number; lastSeenAt: number | null }
+interface DeviceRow { id: string; name: string; ip: string; mac: string | null; groupId: string; announcementId: string | null; announcementOn: number; lastSeenAt: number | null }
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -193,27 +193,28 @@ function statusFor(lastSeenAt: number | null): DeviceStatus {
 
 function rowToDevice(r: DeviceRow): Device {
   return {
-    id: r.id, name: r.name, ip: r.ip, groupId: r.groupId,
+    id: r.id, name: r.name, ip: r.ip, mac: r.mac, groupId: r.groupId,
     announcementId: r.announcementId, announcementOn: !!r.announcementOn,
     status: statusFor(r.lastSeenAt), lastSeenAt: r.lastSeenAt ?? undefined,
   };
 }
 
 export function listDevices(): Device[] {
-  const rows = db.prepare('SELECT id, name, ip, groupId, announcementId, announcementOn, lastSeenAt FROM devices ORDER BY rowid ASC').all() as DeviceRow[];
+  const rows = db.prepare('SELECT id, name, ip, mac, groupId, announcementId, announcementOn, lastSeenAt FROM devices ORDER BY rowid ASC').all() as DeviceRow[];
   return rows.map(rowToDevice);
 }
 
 export function getDevice(id: string): Device | null {
-  const row = db.prepare('SELECT id, name, ip, groupId, announcementId, announcementOn, lastSeenAt FROM devices WHERE id = ?').get(id) as DeviceRow | undefined;
+  const row = db.prepare('SELECT id, name, ip, mac, groupId, announcementId, announcementOn, lastSeenAt FROM devices WHERE id = ?').get(id) as DeviceRow | undefined;
   return row ? rowToDevice(row) : null;
 }
 
-export function pairDevice(input: { name: string; ip: string; groupId: string; status?: DeviceStatus }): Device {
+export function pairDevice(input: { name: string; ip: string; mac?: string | null; groupId: string; status?: DeviceStatus }): Device {
   const id = uid('d');
   const lastSeenAt = input.status === 'offline' ? null : Date.now();
-  db.prepare('INSERT INTO devices (id, name, ip, groupId, announcementId, announcementOn, lastSeenAt) VALUES (?,?,?,?,?,0,?)').run(id, input.name, input.ip, input.groupId, null, lastSeenAt);
-  return { id, name: input.name, ip: input.ip, groupId: input.groupId, announcementId: null, announcementOn: false, status: statusFor(lastSeenAt) };
+  const mac = input.mac ?? null;
+  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, lastSeenAt) VALUES (?,?,?,?,?,?,0,?)').run(id, input.name, input.ip, mac, input.groupId, null, lastSeenAt);
+  return { id, name: input.name, ip: input.ip, mac, groupId: input.groupId, announcementId: null, announcementOn: false, status: statusFor(lastSeenAt) };
 }
 
 export function renameDevice(id: string, name: string): void {

@@ -19,6 +19,7 @@ devicesRouter.post('/pair', async (req, res) => {
 
   let resolvedName = typeof name === 'string' && name.trim() ? name.trim() : 'Display';
   let status: 'online' | 'offline' = 'offline';
+  let mac: string | null = null;
 
   // Real Pis run the tiny local agent this hands off to; skipHandshake lets tests /
   // manual entries that don't have a real agent running still create a device record.
@@ -27,13 +28,14 @@ devicesRouter.post('/pair', async (req, res) => {
       const identity = await piAgent.identify(ip);
       resolvedName = resolvedName === 'Display' ? identity.hostname : resolvedName;
       status = 'online';
+      mac = identity.mac ?? null;
     } catch {
       // Pi unreachable right now — still pair it (matches the frontend's existing
       // manual-IP flow, which doesn't require the display to be live to save the pairing).
     }
   }
 
-  const device = store.pairDevice({ name: resolvedName, ip, groupId, status });
+  const device = store.pairDevice({ name: resolvedName, ip, mac, groupId, status });
 
   if (!skipHandshake && status === 'online') {
     try {

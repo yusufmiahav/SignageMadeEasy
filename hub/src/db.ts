@@ -58,6 +58,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     ip TEXT NOT NULL,
+    mac TEXT,
     groupId TEXT NOT NULL REFERENCES groups_(id) ON DELETE CASCADE,
     announcementId TEXT,
     announcementOn INTEGER NOT NULL DEFAULT 0,
@@ -73,6 +74,13 @@ if (!hasDurationSec) db.exec('ALTER TABLE library ADD COLUMN durationSec INTEGER
 // Same reasoning, for hubs deployed before forcedAnnouncementId existed.
 const hasForcedAnnouncementId = (db.prepare("PRAGMA table_info(groups_)").all() as { name: string }[]).some((c) => c.name === 'forcedAnnouncementId');
 if (!hasForcedAnnouncementId) db.exec('ALTER TABLE groups_ ADD COLUMN forcedAnnouncementId TEXT');
+
+// Same reasoning, for hubs deployed before mac existed — captured once at pairing
+// time from the Pi's own /identify response (see piAgent.ts), never null for a
+// screen paired after this shipped, always null for one paired before it (and for
+// every device in standalone/localStorage mode, which has no real Pi to ask).
+const hasMac = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).some((c) => c.name === 'mac');
+if (!hasMac) db.exec('ALTER TABLE devices ADD COLUMN mac TEXT');
 
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.

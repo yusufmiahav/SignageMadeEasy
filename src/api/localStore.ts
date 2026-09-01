@@ -261,6 +261,7 @@ class LocalStoreClient implements SignageApiClient {
       id: uid('d'),
       name: input.name,
       ip: input.ip,
+      mac: null,
       status: input.status ?? 'online',
       groupId: input.groupId,
       announcementId: null,

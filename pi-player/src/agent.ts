@@ -2,6 +2,7 @@ import { Router } from 'express';
 import os from 'node:os';
 import { clearConfig, loadConfig, saveConfig } from './config.js';
 import { startPolling, stopPolling } from './poller.js';
+import { getLocalMac } from './localIp.js';
 
 export const agentRouter = Router();
 
@@ -9,7 +10,7 @@ export const agentRouter = Router();
 // These deliberately have no auth, matching the rest of this LAN-trusted design.
 
 agentRouter.get('/identify', (_req, res) => {
-  res.json({ hostname: os.hostname(), paired: loadConfig() != null });
+  res.json({ hostname: os.hostname(), paired: loadConfig() != null, mac: getLocalMac() });
 });
 
 agentRouter.post('/configure', (req, res) => {
