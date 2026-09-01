@@ -29,7 +29,7 @@ function rowToLibraryItem(r: LibraryRow): LibraryItem {
 }
 
 export function listLibrary(): LibraryItem[] {
-  const rows = db.prepare('SELECT id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus FROM library ORDER BY createdAt ASC').all() as LibraryRow[];
+  const rows = db.prepare('SELECT id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus FROM library ORDER BY sortOrder ASC').all() as LibraryRow[];
   return rows.map(rowToLibraryItem);
 }
 
@@ -38,10 +38,12 @@ export function addLibraryItem(input: {
   fullUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus'];
 }): LibraryItem {
   const id = uid('l');
-  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@createdAt)').run({
+  const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM library').get() as { n: number }).n;
+  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@sortOrder,@createdAt)').run({
     id, name: input.name, type: input.type,
     size: input.size ?? null, duration: input.duration ?? null, thumb: input.thumb ?? null, text: input.text ?? null, pageCount: input.pageCount ?? null,
     fullUrl: input.fullUrl ?? null, transcodeStatus: input.transcodeStatus ?? null,
+    sortOrder: nextOrder,
     createdAt: Date.now(),
   });
   return {
@@ -51,6 +53,14 @@ export function addLibraryItem(input: {
     ...(input.fullUrl && { fullUrl: input.fullUrl }), ...(input.transcodeStatus && { transcodeStatus: input.transcodeStatus }),
   };
 }
+
+/** Persists a full drag-and-drop reorder from the Library screen — `ids` is the complete new display order. Any existing item not included keeps its relative order, appended after the given ones, so an incomplete list can't silently drop items from view. */
+export const reorderLibrary = db.transaction((ids: string[]): void => {
+  const setOrder = db.prepare('UPDATE library SET sortOrder = ? WHERE id = ?');
+  ids.forEach((id, i) => setOrder.run(i, id));
+  const rest = db.prepare('SELECT id FROM library WHERE id NOT IN (SELECT value FROM json_each(?)) ORDER BY sortOrder ASC').all(JSON.stringify(ids)) as { id: string }[];
+  rest.forEach((r, i) => setOrder.run(ids.length + i, r.id));
+});
 
 /** Called once the background capping job (see routes/library.ts) finishes for a video item. */
 export function setVideoTranscodeResult(id: string, status: 'done' | 'failed', cappedUrl?: string): void {

@@ -132,6 +132,14 @@ class LocalStoreClient implements SignageApiClient {
     this.persist();
   }
 
+  async reorderLibrary(ids: string[]): Promise<void> {
+    const byId = new Map(this.data.library.map((item) => [item.id, item]));
+    const reordered = ids.map((id) => byId.get(id)).filter((i): i is LibraryItem => !!i);
+    const remaining = this.data.library.filter((item) => !ids.includes(item.id));
+    this.data.library = [...reordered, ...remaining];
+    this.persist();
+  }
+
   async removeLibraryItem(id: string): Promise<void> {
     this.data.library = this.data.library.filter((i) => i.id !== id);
     for (const g of this.data.groups) {

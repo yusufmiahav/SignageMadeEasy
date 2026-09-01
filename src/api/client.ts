@@ -25,6 +25,8 @@ export interface SignageApiClient {
   addClock(name: string): Promise<LibraryItem>;
   removeLibraryItem(id: string): Promise<void>;
   renameLibraryItem(id: string, name: string): Promise<void>;
+  /** Persists a drag-and-drop reorder from the Library screen — the complete new display order. */
+  reorderLibrary(ids: string[]): Promise<void>;
   /** Images and clocks only — anything else is a server-side no-op. */
   setItemDuration(id: string, durationSec: number): Promise<void>;
 

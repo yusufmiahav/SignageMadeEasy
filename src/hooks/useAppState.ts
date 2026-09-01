@@ -90,6 +90,11 @@ export function useAppState() {
     await refreshLibrary();
   }, [refreshLibrary]);
 
+  const reorderLibrary = useCallback(async (ids: string[]) => {
+    await api.reorderLibrary(ids);
+    await refreshLibrary();
+  }, [refreshLibrary]);
+
   const removeLibraryItem = useCallback(async (id: string) => {
     await api.removeLibraryItem(id);
     await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices()]);
@@ -236,6 +241,7 @@ export function useAppState() {
     addClock,
     setItemDuration,
     renameLibraryItem,
+    reorderLibrary,
     removeLibraryItem,
     addGroup,
     renameGroup,

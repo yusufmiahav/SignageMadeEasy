@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type HTMLAttributes } from 'react';
 import { Icon, type IconName } from './icons/Icon';
 import type { LibraryItem } from '../api/types';
 
@@ -37,9 +37,12 @@ interface LibraryCardProps {
   item: LibraryItem;
   onRemove: (id: string) => void;
   onRename: (id: string, name: string) => void;
+  /** Spread onto a small grip icon rather than the whole card, so dragging doesn't fight with selecting the rename input's text or clicking the remove button. */
+  dragHandleProps?: HTMLAttributes<HTMLSpanElement>;
+  isDragging?: boolean;
 }
 
-export function LibraryCard({ item, onRemove, onRename }: LibraryCardProps) {
+export function LibraryCard({ item, onRemove, onRename, dragHandleProps, isDragging }: LibraryCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
 
@@ -53,7 +56,7 @@ export function LibraryCard({ item, onRemove, onRename }: LibraryCardProps) {
   };
 
   return (
-    <div className="card" style={{ gap: 8, padding: 8 }}>
+    <div className="card" style={{ gap: 8, padding: 8, opacity: isDragging ? 0.4 : 1 }}>
       <div className="thumb-box">
         {item.type === 'image' && item.thumb ? (
           <div className="thumb-img" style={{ backgroundImage: `url(${item.thumb})` }} />
@@ -107,6 +110,14 @@ export function LibraryCard({ item, onRemove, onRename }: LibraryCardProps) {
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span
+            {...dragHandleProps}
+            aria-label="Drag to reorder"
+            title="Drag to reorder"
+            style={{ display: 'flex', flexShrink: 0, opacity: 0.4, cursor: 'grab', ...dragHandleProps?.style }}
+          >
+            <Icon name="gripVertical" size={12} />
+          </span>
           <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {item.name}
           </div>
