@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { DialogShell } from './DialogShell';
 import { Icon } from '../icons/Icon';
+import { QrScanner } from '../QrScanner';
 import type { AppState } from '../../hooks/useAppState';
 
 type PairMode = 'scan' | 'qr' | 'manual';
@@ -24,6 +25,11 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   // unroutable IP network. Without this the button just sits there with no feedback,
   // which reads as the UI having hung rather than as a normal, if slow, wait.
   const [pairingIp, setPairingIp] = useState<string | null>(null);
+  // QrScanner calls onScan on every frame the code is still in view, not just once —
+  // this ref (synchronous, unlike the pairingIp state) stops a burst of frames
+  // decoded before the first pairFound() call's state update lands from firing
+  // pairDevice() more than once for the same scan.
+  const qrScanLockRef = useRef(false);
 
   const isNewGroup = groupId === '__new__';
 
@@ -62,9 +68,12 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     }
   };
 
-  const simulateQrScan = () => {
-    const ip = `192.168.1.${20 + Math.floor(Math.random() * 200)}`;
-    void pairFound({ id: 'qr', name: 'Scanned Display', ip });
+  const handleQrScan = (ip: string) => {
+    if (qrScanLockRef.current) return;
+    qrScanLockRef.current = true;
+    void pairFound({ id: 'qr', name: 'Scanned Display', ip }).finally(() => {
+      qrScanLockRef.current = false;
+    });
   };
 
   const connectManual = async () => {
@@ -138,16 +147,10 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
 
       {mode === 'qr' && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '6px 0' }}>
-          <div className="qr-viewfinder">
-            <span className="qr-corner tl" />
-            <span className="qr-corner tr" />
-            <span className="qr-corner bl" />
-            <span className="qr-corner br" />
-          </div>
-          <p className="text-muted" style={{ margin: 0, textAlign: 'center', fontSize: 13 }}>Point your camera at the code shown on the display when it boots.</p>
-          <button type="button" className="btn btn-secondary" disabled={pairingIp !== null} onClick={simulateQrScan}>
-            {pairingIp !== null ? 'Pairing…' : 'Simulate scan'}
-          </button>
+          <QrScanner onScan={handleQrScan} />
+          <p className="text-muted" style={{ margin: 0, textAlign: 'center', fontSize: 13 }}>
+            {pairingIp !== null ? 'Pairing…' : 'Point your camera at the code shown on the display when it boots.'}
+          </p>
         </div>
       )}
 
