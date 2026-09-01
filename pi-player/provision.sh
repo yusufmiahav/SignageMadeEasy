@@ -202,6 +202,18 @@ if [[ -f /boot/firmware/cmdline.txt ]] && ! grep -q consoleblank=0 /boot/firmwar
   sed -i 's/$/ consoleblank=0/' /boot/firmware/cmdline.txt
 fi
 
+log "Forcing full HDMI mode (video + audio) instead of a DVI-compatible, audio-less negotiation"
+# Some monitors/EDIDs make the Pi negotiate HDMI in a video-only mode with no audio
+# at all, regardless of what mpv tries to output — a well-known, low-risk Pi gotcha,
+# distinct from (and much safer than) forcing a specific resolution: this doesn't
+# touch EDID parsing or the chosen video mode, it only tells the firmware "this is
+# a real HDMI sink, always enable audio."
+CONFIG_FILE=/boot/firmware/config.txt
+[[ -f "$CONFIG_FILE" ]] || CONFIG_FILE=/boot/config.txt
+if [[ -f "$CONFIG_FILE" ]] && ! grep -q '^hdmi_drive=' "$CONFIG_FILE"; then
+  echo "hdmi_drive=2" >> "$CONFIG_FILE"
+fi
+
 log "Done. Reboot to start the kiosk: sudo reboot"
 echo "After reboot the display shows its IP + a pairing QR code until you pair it"
 echo "from the control app (Home / Settings -> Add a screen)."
