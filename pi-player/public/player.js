@@ -53,6 +53,27 @@ function teardownStage() {
   }
 }
 
+// Preloading ------------------------------------------------------------------
+// Warms the browser's cache for the *next* item in rotation while the current one is
+// still showing, so by the time playItem() actually switches to it, the fetch+decode
+// is already done instead of happening cold in front of the viewer — visible as a
+// brief flash of #stage's black background while an <img> loads fresh. Doesn't touch
+// the "hard cut, no crossfade" swap itself, just makes the swap fast.
+const preloaded = new Map(); // item id -> Image, kept alive so it isn't GC'd mid-load
+const PRELOAD_CACHE_LIMIT = 5; // bounded so a long-running rotation doesn't accumulate forever
+
+function preloadUpcoming(index) {
+  if (activeItems.length < 2) return; // nothing else to get ahead of
+  const next = activeItems[(index + 1) % activeItems.length];
+  if (!next || next.type !== 'image' || preloaded.has(next.id)) return;
+  const img = new Image();
+  img.src = next.url;
+  preloaded.set(next.id, img);
+  if (preloaded.size > PRELOAD_CACHE_LIMIT) {
+    preloaded.delete(preloaded.keys().next().value);
+  }
+}
+
 function scheduleAdvance(seconds, myGeneration) {
   advanceTimer = setTimeout(() => {
     if (myGeneration !== generation) return;
@@ -100,6 +121,7 @@ async function playPdf(item, myGeneration) {
 function playItem(index) {
   const myGeneration = generation;
   teardownStage();
+  preloadUpcoming(index);
   const item = activeItems[index];
   if (!item) {
     const empty = document.createElement('div');

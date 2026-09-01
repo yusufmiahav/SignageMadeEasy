@@ -31,7 +31,7 @@ log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  cage curl ca-certificates git rsync
+  cage curl ca-certificates git rsync plymouth plymouth-themes
 
 # ydotool/ydotoold (used to warp the cursor off-screen — see signage-kiosk.service,
 # the part actually confirmed on real hardware to hide it) aren't in every
@@ -203,6 +203,30 @@ cat > "$SIGNAGE_HOME/.icons/blank/index.theme" <<'EOF'
 Name=blank
 EOF
 chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$SIGNAGE_HOME/.icons"
+
+# ---------------------------------------------------------------------------
+log "Installing the SignageMadeEasy boot splash (Plymouth)"
+# Replaces the raw kernel/systemd boot text with a plain white screen, wordmark, and
+# small corner spinner — see assets/plymouth/signagemadeeasy.script. Its syntax was
+# checked against real, working Plymouth themes, but this sandbox has no way to
+# actually render a boot splash (no kernel framebuffer/DRM to test against), so this
+# still needs a real-hardware look before trusting it fully. Wrapped so a failure
+# here (initramfs tooling issue, disk space, etc.) can't take the rest of
+# provisioning down with it — same reasoning as the ydotool install above.
+mkdir -p /usr/share/plymouth/themes/signagemadeeasy
+cp "$APP_DIR/assets/plymouth/signagemadeeasy.plymouth" /usr/share/plymouth/themes/signagemadeeasy/
+cp "$APP_DIR/assets/plymouth/signagemadeeasy.script" /usr/share/plymouth/themes/signagemadeeasy/
+if plymouth-set-default-theme signagemadeeasy -R; then
+  CMDLINE_FILE=/boot/firmware/cmdline.txt
+  [[ -f "$CMDLINE_FILE" ]] || CMDLINE_FILE=/boot/cmdline.txt
+  if [[ -f "$CMDLINE_FILE" ]] && ! grep -q '\bsplash\b' "$CMDLINE_FILE"; then
+    # Single line, space-appended — cmdline.txt must never contain a newline.
+    sed -i 's/$/ splash quiet/' "$CMDLINE_FILE"
+  fi
+else
+  echo "Failed to set the boot splash theme — skipping. The kiosk itself is" >&2
+  echo "unaffected; boot will just show the default console text instead." >&2
+fi
 
 # ---------------------------------------------------------------------------
 log "Installing systemd units"

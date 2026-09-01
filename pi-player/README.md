@@ -118,6 +118,23 @@ reboot button whenever the on-disk setting and what's actually running at the
 moment disagree. Check `vcgencmd get_throttled` and `vcgencmd measure_temp`
 before and after to see whether it actually helped your specific setup.
 
+## Boot splash
+
+Raw kernel/systemd boot text is replaced with a plain white screen, the
+"SignageMadeEasy" wordmark, and a small spinner in the corner (`assets/plymouth/`) —
+installed as a Plymouth theme and set as default automatically by `provision.sh`,
+with `splash quiet` added to the kernel command line so the console text is actually
+suppressed rather than just shown behind the splash. Its syntax was checked against
+real, working Plymouth themes, but **this hasn't been confirmed on real hardware** —
+there's no way to render a boot splash in a sandbox with no kernel framebuffer. If it
+looks wrong, doesn't appear, or (worse) affects boot reliability, revert with:
+
+```bash
+sudo plymouth-set-default-theme pix -R   # or whatever theme `plymouth-set-default-theme --list` shows was default before
+sudo sed -i 's/ splash quiet//' /boot/firmware/cmdline.txt   # or /boot/cmdline.txt
+sudo reboot
+```
+
 ## Local development / testing (not on real Pi hardware)
 
 ```bash
