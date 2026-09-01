@@ -7,6 +7,7 @@ import { UPLOADS_DIR } from '../db.js';
 import * as store from '../store.js';
 import { countPdfPages } from '../pdfPages.js';
 import { getVideoDuration } from '../videoDuration.js';
+import { capVideoResolution } from '../videoTranscode.js';
 
 export const libraryRouter = Router();
 
@@ -41,11 +42,19 @@ libraryRouter.post('/image', upload.single('file'), (req, res) => {
 
 libraryRouter.post('/video', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file is required' });
+  // Runs before duration/size are read: a Pi 3B+ can't reliably decode full 1080p
+  // source video in real time (confirmed on real hardware — see videoTranscode.ts),
+  // so every upload is capped here once rather than relying on it being pre-encoded
+  // correctly by hand. Re-encoding a large video takes real time on the NAS; the
+  // upload response waits for it rather than serving the oversized original in the
+  // meantime.
+  await capVideoResolution(req.file.path);
   const duration = await getVideoDuration(req.file.path);
+  const size = fs.statSync(req.file.path).size; // req.file.size is the pre-transcode size
   const item = store.addLibraryItem({
     name: req.file.originalname,
     type: 'video',
-    size: formatBytes(req.file.size),
+    size: formatBytes(size),
     duration,
     thumb: `/uploads/${req.file.filename}`,
   });

@@ -44,6 +44,19 @@ player service, pair it from the control app's Settings/Home "Add a screen" dial
 Scan network, Scan QR, or Enter IP all end up calling this hub's `/api/devices/pair`,
 which reaches the Pi directly to complete the handshake.
 
+## Video uploads are capped at 1280px wide automatically
+
+Confirmed on real Pi 3B+ hardware: a 1920x1080 H.264 source dropped roughly 65% of
+frames even with hardware decode active, the display already at its correct native
+resolution, and heat/bitrate ruled out — the constraint is decode throughput at the
+*source* resolution, not display output. Every video upload is re-encoded down to
+1280px wide (preserving aspect ratio) if it's larger, via `ffmpeg`/`ffprobe` (already
+in the hub's Docker image); anything already at or under that width is left alone
+untouched. Override with `SIGNAGE_MAX_VIDEO_WIDTH` if you're on more capable hardware
+(Pi 4/5) or need to lower it further. A large source video takes real time to
+re-encode on upload — the NAS is far more capable than the Pi this protects, but it's
+not instant.
+
 ## API surface
 
 Mirrors `../src/api/client.ts`'s `SignageApiClient` method-for-method under `/api/library`,
