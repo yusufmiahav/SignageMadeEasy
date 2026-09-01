@@ -358,6 +358,16 @@ body {
   background: color-mix(in srgb, var(--color-bg) 65%, transparent);
 }
 
+/* — download badge on thumbnails — */
+.thumb-download {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 24px;
+  height: 24px;
+  background: color-mix(in srgb, var(--color-bg) 65%, transparent);
+}
+
 .type-tag {
   position: absolute;
   top: 4px;

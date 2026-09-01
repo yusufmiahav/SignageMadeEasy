@@ -18,6 +18,16 @@ const TYPE_LABEL: Record<LibraryItem['type'], string> = {
   clock: 'Clock',
 };
 
+// Announcements and clocks have no underlying file — nothing to download for
+// those. Video downloads the original upload (fullUrl), not whichever capped/full
+// copy a given screen happens to be playing, since "download the uploaded content"
+// means the source file, not a resolution-specific derivative of it.
+function downloadUrlFor(item: LibraryItem): string | undefined {
+  if (item.type === 'video') return item.fullUrl ?? item.thumb;
+  if (item.type === 'image' || item.type === 'pdf') return item.thumb;
+  return undefined;
+}
+
 function metaText(item: LibraryItem): string {
   switch (item.type) {
     case 'image':
@@ -45,6 +55,7 @@ interface LibraryCardProps {
 export function LibraryCard({ item, onRemove, onRename, dragHandleProps, isDragging }: LibraryCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
+  const downloadUrl = downloadUrlFor(item);
 
   const startEdit = () => {
     setName(item.name);
@@ -93,6 +104,19 @@ export function LibraryCard({ item, onRemove, onRename, dragHandleProps, isDragg
         <button type="button" className="btn btn-ghost btn-icon thumb-remove" aria-label="Remove" onClick={() => onRemove(item.id)}>
           <Icon name="x" size={12} />
         </button>
+        {downloadUrl && (
+          <a
+            className="btn btn-ghost btn-icon thumb-download"
+            aria-label="Download"
+            title="Download the uploaded file"
+            href={downloadUrl}
+            download={item.name}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Icon name="download" size={12} />
+          </a>
+        )}
       </div>
       {editing ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
