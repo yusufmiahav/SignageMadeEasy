@@ -1,8 +1,8 @@
 import { Icon } from '../components/icons/Icon';
 import { DeviceCard } from '../components/DeviceCard';
 import type { AppState } from '../hooks/useAppState';
-import { activeAnnouncementId, activeContentIds, nowPlayingName } from '../api/resolve';
-import type { Device } from '../api/types';
+import { activeAnnouncementId, activeContentIds, nowPlayingItem, nowPlayingName } from '../api/resolve';
+import type { Device, LibraryItem } from '../api/types';
 
 interface HomeScreenProps {
   app: AppState;
@@ -14,6 +14,7 @@ interface HomeScreenProps {
   onForceAnnouncementAllScreens: () => void;
   onMoveDevice: (device: Device) => void;
   onPickAnnouncement: (device: Device) => void;
+  onPreviewContent: (item: LibraryItem) => void;
 }
 
 export function HomeScreen({
@@ -26,6 +27,7 @@ export function HomeScreen({
   onForceAnnouncementAllScreens,
   onMoveDevice,
   onPickAnnouncement,
+  onPreviewContent,
 }: HomeScreenProps) {
   const { groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality, setForcedContent, setForcedAnnouncement } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
@@ -119,6 +121,7 @@ export function HomeScreen({
                       key={device.id}
                       device={device}
                       nowPlaying={nowPlayingName(group, libraryById)}
+                      nowPlayingItem={nowPlayingItem(group, libraryById)}
                       announcement={device.announcementId ? libraryById.get(device.announcementId) : undefined}
                       onRename={renameDevice}
                       onRestart={restartDevice}
@@ -127,6 +130,7 @@ export function HomeScreen({
                       onPickAnnouncement={onPickAnnouncement}
                       onToggleAnnouncement={toggleDeviceAnnouncement}
                       onSetVideoQuality={setDeviceVideoQuality}
+                      onPreview={onPreviewContent}
                     />
                   ))}
                 </div>

@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, AppData, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -320,6 +320,16 @@ class LocalStoreClient implements SignageApiClient {
   async setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device) device.videoQuality = videoQuality;
+    this.persist();
+  }
+
+  // ---- Backup / restore ----
+  async exportBackup(): Promise<Backup> {
+    return { version: 1, exportedAt: new Date().toISOString(), library: [...this.data.library], groups: [...this.data.groups], devices: [...this.data.devices] };
+  }
+
+  async importBackup(backup: Backup): Promise<void> {
+    this.data = { library: backup.library, groups: backup.groups, devices: backup.devices };
     this.persist();
   }
 

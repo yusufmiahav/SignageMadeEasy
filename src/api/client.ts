@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -61,6 +61,11 @@ export interface SignageApiClient {
 
   // Pairing helpers (simulated placeholders until the hub can do a real LAN scan)
   scanNetwork(): Promise<DiscoveredDevice[]>;
+
+  // Backup / restore — everything except the uploaded media files themselves.
+  exportBackup(): Promise<Backup>;
+  /** Wipes and replaces everything currently saved with the backup's contents. */
+  importBackup(backup: Backup): Promise<void>;
 }
 
 // Setting VITE_API_BASE_URL at build time (even to an empty string, for a same-origin

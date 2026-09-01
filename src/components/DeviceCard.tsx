@@ -5,6 +5,7 @@ import type { Device, LibraryItem } from '../api/types';
 interface DeviceCardProps {
   device: Device;
   nowPlaying: string;
+  nowPlayingItem: LibraryItem | undefined;
   announcement: LibraryItem | undefined;
   onRename: (id: string, name: string) => void;
   onRestart: (device: Device) => void;
@@ -13,11 +14,13 @@ interface DeviceCardProps {
   onPickAnnouncement: (device: Device) => void;
   onToggleAnnouncement: (id: string) => void;
   onSetVideoQuality: (id: string, videoQuality: 'auto' | 'full') => void;
+  onPreview: (item: LibraryItem) => void;
 }
 
 export function DeviceCard({
   device,
   nowPlaying,
+  nowPlayingItem,
   announcement,
   onRename,
   onRestart,
@@ -26,6 +29,7 @@ export function DeviceCard({
   onPickAnnouncement,
   onToggleAnnouncement,
   onSetVideoQuality,
+  onPreview,
 }: DeviceCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(device.name);
@@ -41,9 +45,29 @@ export function DeviceCard({
 
   return (
     <div className="card">
-      <div className="preview-box">
+      <div
+        className="preview-box"
+        style={
+          nowPlayingItem?.type === 'image' && nowPlayingItem.thumb
+            ? { backgroundImage: `url(${nowPlayingItem.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+            : undefined
+        }
+      >
         <span className="tag tag-outline dims-tag">1920×1080</span>
-        <span className="preview-box-label">{nowPlaying}</span>
+        {!(nowPlayingItem?.type === 'image' && nowPlayingItem.thumb) && (
+          <span className="preview-box-label">{nowPlaying}</span>
+        )}
+        {nowPlayingItem && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon thumb-remove"
+            aria-label="Preview content"
+            title="Preview what's currently showing"
+            onClick={() => onPreview(nowPlayingItem)}
+          >
+            <Icon name="eye" size={13} />
+          </button>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span className={`status-dot ${device.status}`} style={{ marginTop: editing ? 0 : 3, alignSelf: 'flex-start' }} />
