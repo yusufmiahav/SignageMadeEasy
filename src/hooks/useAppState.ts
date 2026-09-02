@@ -53,8 +53,9 @@ export function useAppState() {
   // going offline, or a schedule's start/end time passing - so the one-time load
   // above isn't enough; without this, the UI only ever catches up on those after
   // some unrelated action happens to trigger its own refreshDevices()/refreshGroups()
-  // call, or the page is manually reloaded. 10s errs toward the hub's own 45s
-  // online/offline window (see ONLINE_WINDOW_MS) without polling too aggressively.
+  // call, or the page is manually reloaded. 4s keeps total worst-case lag (this poll
+  // plus the hub's own 12s online/offline window — see ONLINE_WINDOW_MS) close to the
+  // Pi's 5s heartbeat interval instead of compounding into tens of seconds.
   // Also picks up a video's transcodeStatus flipping from 'processing' to 'done'/'failed'
   // once the hub's background capping job finishes (see hub/src/routes/library.ts) —
   // otherwise the Library screen's "Decoding…" badge would only ever clear on some
@@ -64,7 +65,7 @@ export function useAppState() {
       void refreshDevices();
       void refreshGroups();
       void refreshLibrary();
-    }, 10_000);
+    }, 4_000);
     return () => clearInterval(id);
   }, [refreshDevices, refreshGroups, refreshLibrary]);
 

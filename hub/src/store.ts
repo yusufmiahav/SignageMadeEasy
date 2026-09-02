@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
 import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, PlayerState, ScheduleEvent } from './types.js';
 
-const ONLINE_WINDOW_MS = 45_000;
+// The Pi heartbeats every 5s (pi-player/src/poller.ts's POLL_INTERVAL_MS) — this
+// window needs to be a few multiples of that so one dropped heartbeat (WiFi jitter)
+// doesn't flip a screen to "Offline" and back on its own, but not so wide that a
+// real disconnect takes forever to show up. 12s tolerates one missed heartbeat.
+const ONLINE_WINDOW_MS = 12_000;
 
 function uid(prefix: string): string {
   return `${prefix}${randomUUID().replace(/-/g, '').slice(0, 16)}`;
