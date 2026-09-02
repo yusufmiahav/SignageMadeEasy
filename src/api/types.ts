@@ -35,6 +35,16 @@ export interface ScheduleEvent {
   /** ISO date, e.g. "2026-08-28" */
   end: string;
   libIds: string[];
+  /**
+   * 24h "HH:MM", e.g. "09:00". Set together with endTime to restrict this event to a
+   * daily time window within [start, end] — outside that window the default playlist
+   * plays as usual. Unset on both (the default): the event runs all day, every day in
+   * range, same as before this field existed. Doesn't support a window that crosses
+   * midnight (e.g. 22:00–02:00).
+   */
+  startTime?: string;
+  /** 24h "HH:MM", e.g. "17:00" — see startTime. */
+  endTime?: string;
 }
 
 export interface AnnouncementSchedule {

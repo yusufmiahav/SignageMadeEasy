@@ -193,7 +193,10 @@ export function useAppState() {
     const group = groups.find((g) => g.id === groupId);
     const event = group?.events.find((e) => e.id === eventId);
     if (!event) return;
-    await api.addEvent(groupId, { name: `${event.name} (copy)`, start: event.start, end: event.end, libIds: [...event.libIds] });
+    await api.addEvent(groupId, {
+      name: `${event.name} (copy)`, start: event.start, end: event.end, libIds: [...event.libIds],
+      startTime: event.startTime, endTime: event.endTime,
+    });
     await refreshGroups();
     showToast('Event duplicated');
   }, [groups, refreshGroups, showToast]);

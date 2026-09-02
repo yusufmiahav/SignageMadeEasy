@@ -65,11 +65,14 @@ groupsRouter.post('/:id/playlist/:libId/reorder', (req, res) => {
 });
 
 groupsRouter.post('/:id/events', (req, res) => {
-  const { name, start, end, libIds } = req.body ?? {};
+  const { name, start, end, libIds, startTime, endTime } = req.body ?? {};
   if (typeof name !== 'string' || typeof start !== 'string' || typeof end !== 'string' || !Array.isArray(libIds)) {
     return res.status(400).json({ error: 'name, start, end, libIds are required' });
   }
-  res.status(201).json(store.addEvent(req.params.id, { name, start, end, libIds }));
+  if ((startTime !== undefined && typeof startTime !== 'string') || (endTime !== undefined && typeof endTime !== 'string')) {
+    return res.status(400).json({ error: 'startTime/endTime must be strings when provided' });
+  }
+  res.status(201).json(store.addEvent(req.params.id, { name, start, end, libIds, startTime, endTime }));
 });
 
 groupsRouter.delete('/:id/events/:eventId', (req, res) => {

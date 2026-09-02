@@ -28,6 +28,7 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onPrevie
   const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id ?? '');
   const [calMonthOffset, setCalMonthOffset] = useState(0);
   const [selectedCalDate, setSelectedCalDate] = useState<string | null>(null);
+  const [eventsExpanded, setEventsExpanded] = useState(false);
 
   const libraryById = new Map(library.map((item) => [item.id, item]));
   const effectiveGroupId = groups.some((g) => g.id === selectedGroupId) ? selectedGroupId : (groups[0]?.id ?? '');
@@ -59,6 +60,16 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onPrevie
     .map((id) => libraryById.get(id))
     .filter((i): i is NonNullable<typeof i> => !!i);
 
+  // A heads-up independent of eventsExpanded/the calendar selection: is there an
+  // event scheduled for TODAY specifically (regardless of whether its time window,
+  // if any, has started yet)? Uses today's real date, not whatever day is selected
+  // in the calendar below.
+  const todayForBanner = todayISO();
+  const nowForBanner = new Date();
+  const hhmmNow = `${pad2(nowForBanner.getHours())}:${pad2(nowForBanner.getMinutes())}`;
+  const todaysEvent = selectedGroup.events.find((e) => todayForBanner >= e.start && todayForBanner <= e.end);
+  const todaysEventIsLive = !!todaysEvent && (!todaysEvent.startTime || !todaysEvent.endTime || (hhmmNow >= todaysEvent.startTime && hhmmNow <= todaysEvent.endTime));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <h1 style={{ margin: 0 }}>Schedule</h1>
@@ -72,8 +83,19 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onPrevie
         ))}
       </div>
 
+      {todaysEvent && (
+        <div className="dialog-warning">
+          <Icon name="alertTriangle" size={16} />
+          <span>
+            {todaysEvent.startTime && todaysEvent.endTime
+              ? `! EVENT TODAY AT ${todaysEvent.startTime}–${todaysEvent.endTime} "${todaysEvent.name}" ${todaysEventIsLive ? 'is playing' : 'will play'} !`
+              : `! EVENT TODAY — "${todaysEvent.name}" is playing all day !`}
+          </span>
+        </div>
+      )}
+
       <div
-        className={`preview-box${active.kind === 'forced' ? ' preview-box-forced' : ''}`}
+        className={`preview-box preview-box-compact${active.kind === 'forced' ? ' preview-box-forced' : ''}`}
         style={
           nowPlayingItem?.type === 'image' && nowPlayingItem.thumb
             ? { backgroundImage: `url(${nowPlayingItem.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
@@ -166,14 +188,28 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onPrevie
 
         {selectedGroup.events.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-            {selectedGroup.events.map((ev) => (
-              <EventRow
-                key={ev.id}
-                event={ev}
-                onRemove={() => removeEvent(selectedGroup.id, ev.id)}
-                onDuplicate={() => duplicateEvent(selectedGroup.id, ev.id)}
-              />
-            ))}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ fontSize: 12, padding: '4px 6px', alignSelf: 'flex-start', gap: 6 }}
+              aria-expanded={eventsExpanded}
+              onClick={() => setEventsExpanded((v) => !v)}
+            >
+              <Icon name={eventsExpanded ? 'chevronUp' : 'chevronDown'} size={13} />
+              All events ({selectedGroup.events.length})
+            </button>
+            {eventsExpanded && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {selectedGroup.events.map((ev) => (
+                  <EventRow
+                    key={ev.id}
+                    event={ev}
+                    onRemove={() => removeEvent(selectedGroup.id, ev.id)}
+                    onDuplicate={() => duplicateEvent(selectedGroup.id, ev.id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

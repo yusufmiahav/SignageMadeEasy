@@ -19,17 +19,25 @@ function toISODate(d: Date): string {
  *    even forced content (an emergency override).
  * 2. forcedContentId, if set — that single item, shown until cleared.
  * 3. An event whose date range includes today — that event's item set,
- *    replacing the default playlist entirely for the range.
+ *    replacing the default playlist entirely for the range. If the event also has
+ *    a startTime/endTime, it only applies during that daily window; outside it,
+ *    the default playlist plays as usual (doesn't support crossing midnight).
  * 4. Otherwise the location's defaultPlaylist, looping.
  */
-export function activeContentIds(group: Group, today: string = toISODate(new Date())): ActiveContent {
+export function activeContentIds(group: Group, now: Date = new Date()): ActiveContent {
   if (group.blackout) {
     return { ids: [], kind: 'blackout', label: 'Blackout' };
   }
   if (group.forcedContentId) {
     return { ids: [group.forcedContentId], kind: 'forced', label: 'Forced' };
   }
-  const event = group.events.find((e) => today >= e.start && today <= e.end);
+  const today = toISODate(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const event = group.events.find((e) => {
+    if (today < e.start || today > e.end) return false;
+    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
+    return true;
+  });
   if (event) {
     return { ids: event.libIds, kind: 'event', label: event.name };
   }
