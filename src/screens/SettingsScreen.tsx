@@ -33,7 +33,7 @@ export function SettingsScreen({
   hideAnnouncementRow,
   onSetHideAnnouncementRow,
 }: SettingsScreenProps) {
-  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, showToast, exportBackup, importBackup } = app;
+  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, showToast, exportBackup, importBackup, safetyHold, setSafetyHold } = app;
   const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' } | null>(null);
   const [editingName, setEditingName] = useState('');
   const miscDevices = devices.filter((d) => !d.groupId);
@@ -147,6 +147,30 @@ export function SettingsScreen({
               type="checkbox"
               checked={!hideAnnouncementRow}
               onChange={(e) => onSetHideAnnouncementRow(!e.target.checked)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Reliability</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>
+            Safety hold
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
+              Assigned by the hub: every screen keeps caching and showing its last-known content if it loses touch
+              with the hub, instead of going blank. On by default — turn off to have a disconnected screen show
+              nothing instead.
+            </span>
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={safetyHold}
+              onChange={(e) => void setSafetyHold(e.target.checked)}
             />
             <span className="toggle-track">
               <span className="toggle-dot" />

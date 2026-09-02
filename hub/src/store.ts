@@ -338,6 +338,28 @@ export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnost
   );
 }
 
+// ---- Settings (hub-wide, readable by both the control app and every Pi) ----
+
+function getSetting(key: string): string | null {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+function setSetting(key: string, value: string): void {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
+}
+
+// Defaults to true — matches this project's original, always-on behavior (a Pi
+// already caches its last-resolved content and keeps showing it through a
+// disconnect) for every hub that predates this being a toggle at all.
+export function getSafetyHold(): boolean {
+  return getSetting('safetyHold') !== '0';
+}
+
+export function setSafetyHold(enabled: boolean): void {
+  setSetting('safetyHold', enabled ? '1' : '0');
+}
+
 // ---- Content resolution (mirrors src/api/resolve.ts) ----
 
 function toISODate(d: Date): string {
@@ -415,11 +437,13 @@ export function getPlayerState(deviceId: string): PlayerState | null {
       ...(item.type === 'pdf' && { pageCount: item.pageCount ?? 1 }),
     }));
 
+  const safetyHold = getSafetyHold();
+
   // Blackout means a genuinely blank screen — even the announcement ticker goes
   // dark, since the whole point is an emergency "nothing shows here" state, not
   // just swapping out the main content.
   if (active.kind === 'blackout') {
-    return { kind: 'blackout', label: active.label, items: [], announcement: { on: false, text: null } };
+    return { kind: 'blackout', label: active.label, items: [], announcement: { on: false, text: null }, safetyHold };
   }
 
   // Location-level forced/scheduled announcement overrides this device's own manual
@@ -435,6 +459,7 @@ export function getPlayerState(deviceId: string): PlayerState | null {
     label: active.label,
     items,
     announcement: { on: announcementOn && !!announcement, text: announcement?.text ?? null },
+    safetyHold,
   };
 }
 
