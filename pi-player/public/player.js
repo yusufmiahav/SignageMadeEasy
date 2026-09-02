@@ -33,6 +33,7 @@ function showScreen(name) {
 // instead of restarting it from scratch on every tick.
 let playlistKey = null;
 let activeItems = [];
+let activeKind = 'default'; // 'blackout' | 'forced' | 'event' | 'default' — see playItem's !item branch
 let currentIndex = 0;
 let advanceTimer = null;
 let clockTimer = null; // the 'clock' item's setInterval — not a <video>/<canvas>, so teardownStage's generic child.remove() wouldn't stop it on its own.
@@ -124,10 +125,17 @@ function playItem(index) {
   preloadUpcoming(index);
   const item = activeItems[index];
   if (!item) {
-    const empty = document.createElement('div');
-    empty.className = 'empty';
-    empty.textContent = 'No content scheduled';
-    stage.appendChild(empty);
+    // Both a genuinely empty default playlist and an active blackout resolve to no
+    // items, but they need to look different: blackout is a deliberate emergency
+    // "nothing shows here" state (see hub/src/store.ts's activeContentIds), so it
+    // stays plain black with no text — the "empty" message is only for the
+    // unconfigured case, where a visible hint actually helps whoever's looking at it.
+    if (activeKind !== 'blackout') {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'No content scheduled';
+      stage.appendChild(empty);
+    }
     return;
   }
 
@@ -244,11 +252,16 @@ function renderPlayerState(state) {
   ticker.hidden = !state.announcement.on;
   tickerText.textContent = state.announcement.text ?? '';
 
-  const key = state.items.map((i) => i.id).join(',');
+  // Includes kind, not just item ids: an empty defaultPlaylist and an active
+  // blackout both resolve to zero items (same id-based key otherwise), but
+  // render differently — see playItem's !item branch — so a transition between
+  // the two has to be detected here too, not just a change in the item list.
+  const key = `${state.kind}:${state.items.map((i) => i.id).join(',')}`;
   if (key === playlistKey) return; // same playlist as last poll — leave the current item alone
 
   playlistKey = key;
   activeItems = state.items;
+  activeKind = state.kind;
   currentIndex = 0;
   generation++;
   playItem(0);
@@ -262,7 +275,7 @@ function renderPlayerState(state) {
 // duplicate. Only shown when there's genuinely no hub content to fall back on
 // (see pollOnce below) — the moment the hub has real state again, it wins.
 function localContentState(item) {
-  return { items: [item], announcement: { on: false, text: null } };
+  return { kind: 'default', items: [item], announcement: { on: false, text: null } };
 }
 
 async function pollOnce() {

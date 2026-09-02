@@ -17,9 +17,13 @@ import { ForceAnnouncementDialog } from './components/dialogs/ForceAnnouncementD
 import { AddAnnouncementScheduleDialog } from './components/dialogs/AddAnnouncementScheduleDialog';
 import { MoveDeviceDialog } from './components/dialogs/MoveDeviceDialog';
 import { ForceContentDialog } from './components/dialogs/ForceContentDialog';
+import { BlackoutDialog } from './components/dialogs/BlackoutDialog';
+import { UploadContentDialog } from './components/dialogs/UploadContentDialog';
 import { ContentPreviewDialog } from './components/dialogs/ContentPreviewDialog';
 import { LoginScreen } from './screens/LoginScreen';
 import { useAppState } from './hooks/useAppState';
+import { useTheme } from './hooks/useTheme';
+import { useUiSettings } from './hooks/useUiSettings';
 import { checkAuthStatus } from './api/auth';
 import type { Device, LibraryItem } from './api/types';
 
@@ -27,6 +31,7 @@ type DialogState =
   | { type: 'pair' }
   | { type: 'addChooser' }
   | { type: 'addLocation' }
+  | { type: 'uploadContent' }
   | { type: 'addContent'; groupId: string }
   | { type: 'addEvent'; groupId: string }
   | { type: 'addAnnouncement' }
@@ -35,6 +40,7 @@ type DialogState =
   /** `groupId: null` means the global "force on every screen" action from the Home tab. */
   | { type: 'forceContent'; groupId: string | null }
   | { type: 'forceAnnouncement'; groupId: string | null }
+  | { type: 'blackout'; groupId: string | null }
   | { type: 'addAnnouncementSchedule'; groupId: string }
   | { type: 'preview'; item: LibraryItem }
   | null;
@@ -45,6 +51,9 @@ export default function App() {
   // just 401 (see hub/src/auth.ts) and leave useAppState's initial Promise.all stuck
   // rejected, with app.loaded never flipping true.
   const [authed, setAuthed] = useState<boolean | null>(null);
+  // Mounted here, not inside AuthenticatedApp, so dark mode applies to the login
+  // screen too — not just after signing in.
+  const theme = useTheme();
 
   useEffect(() => {
     void checkAuthStatus().then(setAuthed);
@@ -53,11 +62,12 @@ export default function App() {
   if (authed === null) return null;
   if (!authed) return <LoginScreen onSuccess={() => setAuthed(true)} />;
 
-  return <AuthenticatedApp onLogout={() => setAuthed(false)} />;
+  return <AuthenticatedApp onLogout={() => setAuthed(false)} theme={theme} />;
 }
 
-function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
+function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: ReturnType<typeof useTheme> }) {
   const app = useAppState();
+  const uiSettings = useUiSettings();
   const [tab, setTab] = useState<Tab>('home');
   const [dialog, setDialog] = useState<DialogState>(null);
 
@@ -77,9 +87,13 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
             onForceContentAllScreens={() => setDialog({ type: 'forceContent', groupId: null })}
             onForceAnnouncement={(groupId) => setDialog({ type: 'forceAnnouncement', groupId })}
             onForceAnnouncementAllScreens={() => setDialog({ type: 'forceAnnouncement', groupId: null })}
+            onOpenBlackout={(groupId) => setDialog({ type: 'blackout', groupId })}
+            onOpenBlackoutAllScreens={() => setDialog({ type: 'blackout', groupId: null })}
             onMoveDevice={(device) => setDialog({ type: 'moveDevice', device })}
             onPickAnnouncement={(device) => setDialog({ type: 'announcementPicker', device })}
             onPreviewContent={(item) => setDialog({ type: 'preview', item })}
+            advancedDeviceInfo={uiSettings.advancedDeviceInfo}
+            hideAnnouncementRow={uiSettings.hideAnnouncementRow}
           />
         )}
         {tab === 'library' && (
@@ -100,7 +114,18 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
             onOpenAddSchedule={(groupId) => setDialog({ type: 'addAnnouncementSchedule', groupId })}
           />
         )}
-        {tab === 'settings' && <SettingsScreen app={app} onLogout={onLogout} />}
+        {tab === 'settings' && (
+          <SettingsScreen
+            app={app}
+            onLogout={onLogout}
+            theme={theme.theme}
+            onSetTheme={theme.setTheme}
+            advancedDeviceInfo={uiSettings.advancedDeviceInfo}
+            onSetAdvancedDeviceInfo={uiSettings.setAdvancedDeviceInfo}
+            hideAnnouncementRow={uiSettings.hideAnnouncementRow}
+            onSetHideAnnouncementRow={uiSettings.setHideAnnouncementRow}
+          />
+        )}
       </AppShell>
 
       {dialog?.type === 'pair' && <PairDeviceDialog app={app} onClose={closeDialog} />}
@@ -108,10 +133,12 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
         <AddChooserDialog
           onChooseScreen={() => setDialog({ type: 'pair' })}
           onChooseLocation={() => setDialog({ type: 'addLocation' })}
+          onChooseContent={() => setDialog({ type: 'uploadContent' })}
           onClose={closeDialog}
         />
       )}
       {dialog?.type === 'addLocation' && <AddLocationDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'uploadContent' && <UploadContentDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'addContent' && <AddContentDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
       {dialog?.type === 'addEvent' && <AddEventDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
       {dialog?.type === 'addAnnouncement' && <AddAnnouncementDialog app={app} onClose={closeDialog} />}
@@ -121,6 +148,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
         <ForceContentDialog
           app={app}
           scopeLabel={dialog.groupId ? 'this location' : 'every screen'}
+          isGlobal={dialog.groupId === null}
           currentId={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.forcedContentId ?? null) : null}
           onConfirm={(libId) => (dialog.groupId ? app.setForcedContent(dialog.groupId, libId) : app.forceContentAllScreens(libId))}
           onClose={closeDialog}
@@ -130,10 +158,19 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
         <ForceAnnouncementDialog
           app={app}
           scopeLabel={dialog.groupId ? 'this location' : 'every screen'}
+          isGlobal={dialog.groupId === null}
           currentId={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.forcedAnnouncementId ?? null) : null}
           onConfirm={(announcementId) =>
             dialog.groupId ? app.setForcedAnnouncement(dialog.groupId, announcementId) : app.forceAnnouncementAllScreens(announcementId)
           }
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'blackout' && (
+        <BlackoutDialog
+          scopeLabel={dialog.groupId ? 'this location' : 'every screen'}
+          current={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.blackout ?? false) : false}
+          onConfirm={(blackout) => (dialog.groupId ? app.setGroupBlackout(dialog.groupId, blackout) : app.blackoutAllScreens(blackout))}
           onClose={closeDialog}
         />
       )}

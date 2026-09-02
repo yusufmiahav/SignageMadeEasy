@@ -6,8 +6,11 @@ html, body, #root {
   height: 100%;
 }
 
+/* var(--color-bg), not the fixed --color-neutral-200 ramp — the page background needs
+   to repaint under dark mode; the neutral ramp is reserved for badges/chips that stay
+   fixed light-on-dark regardless of theme (see app.css's dark-mode block below). */
 body {
-  background: var(--color-neutral-200);
+  background: var(--color-bg);
 }
 
 .app-shell {
@@ -414,4 +417,82 @@ body {
   font-size: 9px;
   border-color: var(--color-bg);
   color: var(--color-bg);
+}
+
+/* — "affects every screen" actions: force content/announcement all-screens and
+   blackout all-screens. Deliberately not the same color as .btn-primary (which
+   already means "the main affirmative action on this screen") or .btn-secondary
+   (routine, low-stakes) — amber reads as "this is bigger than it looks" without
+   implying an error the way a red/accent button would. — */
+.btn-warning { background: #f5a623; color: #2d2100; border-color: #f5a623; }
+.btn-warning:hover { background: #e0961a; border-color: #e0961a; }
+.btn-warning:active { background: #c9860f; border-color: #c9860f; }
+.tag-warning { background: #fdf0d5; color: #6b4a00; }
+
+/* — a dialog-level callout for an action whose blast radius is easy to
+   underestimate (every screen, not just the one you're looking at) — used by
+   ForceContentDialog/ForceAnnouncementDialog when scope is global, and always in
+   BlackoutDialog. Distinct from .dialog-body's plain explanatory text: this is
+   "read this before you click Apply," not background info. — */
+.dialog-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: var(--space-2) var(--space-3);
+  background: #fdf0d5;
+  color: #6b4a00;
+  border: 1px solid #f5a623;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.dialog-warning svg { flex-shrink: 0; margin-top: 1px; }
+
+/* — Library multi-select mode: a checkbox overlay on each card plus a sticky
+   action bar, mirroring how the drag handle is layered onto LibraryCard without
+   disturbing its normal layout. — */
+.select-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  flex-wrap: wrap;
+}
+.card-select-checkbox {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--color-bg);
+  background: color-mix(in srgb, var(--color-bg) 55%, transparent);
+  z-index: 2;
+}
+.card-select-checkbox:checked {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Dark mode — toggled by SettingsScreen via [data-theme] on <html>, persisted
+   in localStorage (see hooks/useTheme.ts). Only the "ground" tokens (surface
+   colors, text, dividers, shadows) are overridden — the neutral/accent tonal
+   ramps modernist.css defines stay as-is, since they're used for small chip/tag
+   backgrounds (tag-neutral, tag-accent, etc.) that are designed to read as
+   light-on-dark badges regardless of page theme, the same way most dark-mode
+   UIs keep badge colors fixed rather than inverting every ramp.
+   ══════════════════════════════════════════════════════════════════════ */
+:root[data-theme='dark'] {
+  --color-bg: #17161a;
+  --color-surface: #232127;
+  --color-text: #f1efef;
+  --color-divider: color-mix(in srgb, #f1efef 22%, transparent);
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #000 45%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #000 50%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #000 60%, transparent);
 }

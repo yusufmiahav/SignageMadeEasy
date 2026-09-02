@@ -23,6 +23,8 @@ export interface LibraryItem {
    * the original, same as 'skipped'.
    */
   transcodeStatus?: 'processing' | 'done' | 'skipped' | 'failed';
+  /** Free-form labels for search/filtering in the Library screen. Empty array, never undefined. */
+  tags: string[];
 }
 
 export interface ScheduleEvent {
@@ -58,6 +60,8 @@ export interface Group {
   forcedAnnouncementId: string | null;
   /** Date+time windows during which an announcement is shown on every screen at this location, regardless of each screen's own manual toggle. */
   announcementSchedules: AnnouncementSchedule[];
+  /** Emergency override: every screen at this location goes to a plain black screen, above even forcedContentId. */
+  blackout: boolean;
 }
 
 export type DeviceStatus = 'online' | 'offline';

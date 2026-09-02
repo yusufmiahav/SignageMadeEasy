@@ -118,7 +118,7 @@ libraryRouter.post('/clock', (req, res) => {
 });
 
 libraryRouter.patch('/:id', (req, res) => {
-  const { durationSec, name } = req.body ?? {};
+  const { durationSec, name, tags } = req.body ?? {};
   if (durationSec !== undefined) {
     if (typeof durationSec !== 'number' || !Number.isFinite(durationSec) || durationSec < 1) {
       return res.status(400).json({ error: 'durationSec must be a positive number' });
@@ -128,6 +128,12 @@ libraryRouter.patch('/:id', (req, res) => {
   if (typeof name === 'string') {
     if (!name.trim()) return res.status(400).json({ error: 'name cannot be empty' });
     store.renameLibraryItem(req.params.id, name.trim());
+  }
+  if (tags !== undefined) {
+    if (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string')) {
+      return res.status(400).json({ error: 'tags must be an array of strings' });
+    }
+    store.setLibraryItemTags(req.params.id, tags);
   }
   res.status(204).end();
 });

@@ -5,9 +5,10 @@ import { formatRange } from '../utils/format';
 interface EventRowProps {
   event: ScheduleEvent;
   onRemove: () => void;
+  onDuplicate: () => void;
 }
 
-export function EventRow({ event, onRemove }: EventRowProps) {
+export function EventRow({ event, onRemove, onDuplicate }: EventRowProps) {
   const count = event.libIds.length;
   return (
     <div className="card" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: '8px 10px' }}>
@@ -17,6 +18,9 @@ export function EventRow({ event, onRemove }: EventRowProps) {
           {formatRange(event.start, event.end)} · {count} item{count === 1 ? '' : 's'}
         </div>
       </div>
+      <button type="button" className="btn btn-ghost btn-icon" aria-label="Duplicate event" onClick={onDuplicate}>
+        <Icon name="copy" size={13} />
+      </button>
       <button type="button" className="btn btn-ghost btn-icon" aria-label="Delete event" onClick={onRemove}>
         <Icon name="trash" size={13} />
       </button>

@@ -85,7 +85,7 @@ class LocalStoreClient implements SignageApiClient {
 
   async addImage(file: File): Promise<LibraryItem> {
     const thumb = await readImageThumb(file);
-    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'image', size: formatBytes(file.size), thumb };
+    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'image', size: formatBytes(file.size), thumb, tags: [] };
     this.data.library.push(item);
     this.persist();
     return item;
@@ -93,31 +93,37 @@ class LocalStoreClient implements SignageApiClient {
 
   async addVideo(file: File): Promise<LibraryItem> {
     const duration = await readVideoDuration(file);
-    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'video', size: formatBytes(file.size), duration };
+    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'video', size: formatBytes(file.size), duration, tags: [] };
     this.data.library.push(item);
     this.persist();
     return item;
   }
 
   async addPdf(file: File): Promise<LibraryItem> {
-    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'pdf', size: formatBytes(file.size) };
+    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'pdf', size: formatBytes(file.size), tags: [] };
     this.data.library.push(item);
     this.persist();
     return item;
   }
 
   async addAnnouncement(name: string, text: string): Promise<LibraryItem> {
-    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'Announcement', type: 'announcement', text };
+    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'Announcement', type: 'announcement', text, tags: [] };
     this.data.library.push(item);
     this.persist();
     return item;
   }
 
   async addClock(name: string): Promise<LibraryItem> {
-    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'Clock', type: 'clock' };
+    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'Clock', type: 'clock', tags: [] };
     this.data.library.push(item);
     this.persist();
     return item;
+  }
+
+  async setLibraryItemTags(id: string, tags: string[]): Promise<void> {
+    const item = this.data.library.find((i) => i.id === id);
+    if (item) item.tags = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
+    this.persist();
   }
 
   async setItemDuration(id: string, durationSec: number): Promise<void> {
@@ -166,7 +172,7 @@ class LocalStoreClient implements SignageApiClient {
   async addGroup(name: string): Promise<Group> {
     const group: Group = {
       id: uid('g'), name: name.trim() || 'New location', defaultPlaylist: [], events: [],
-      forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [],
+      forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [], blackout: false,
     };
     this.data.groups.push(group);
     this.persist();
@@ -184,6 +190,20 @@ class LocalStoreClient implements SignageApiClient {
     this.data.groups = this.data.groups.filter((g) => g.id !== id);
     this.persist();
     return true;
+  }
+
+  async reorderGroups(ids: string[]): Promise<void> {
+    const byId = new Map(this.data.groups.map((g) => [g.id, g]));
+    const reordered = ids.map((id) => byId.get(id)).filter((g): g is Group => !!g);
+    const remaining = this.data.groups.filter((g) => !ids.includes(g.id));
+    this.data.groups = [...reordered, ...remaining];
+    this.persist();
+  }
+
+  async setGroupBlackout(groupId: string, blackout: boolean): Promise<void> {
+    const group = this.data.groups.find((g) => g.id === groupId);
+    if (group) group.blackout = blackout;
+    this.persist();
   }
 
   async setDefaultPlaylist(groupId: string, libIds: string[]): Promise<void> {

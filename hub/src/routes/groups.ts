@@ -13,6 +13,18 @@ groupsRouter.post('/', (req, res) => {
   res.status(201).json(store.addGroup(name));
 });
 
+// Registered before /:id routes below — a literal "reorder" segment here would
+// otherwise never be reachable if a param route matched it first, though none
+// currently do (mirrors library.ts's own reorder route for the same reason).
+groupsRouter.put('/reorder', (req, res) => {
+  const { ids } = req.body ?? {};
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
+    return res.status(400).json({ error: 'ids must be an array of strings' });
+  }
+  store.reorderGroups(ids);
+  res.status(204).end();
+});
+
 groupsRouter.patch('/:id', (req, res) => {
   const { name } = req.body ?? {};
   if (typeof name !== 'string') return res.status(400).json({ error: 'name is required' });
@@ -74,6 +86,13 @@ groupsRouter.put('/:id/forced', (req, res) => {
 groupsRouter.put('/:id/forced-announcement', (req, res) => {
   const { announcementId } = req.body ?? {};
   store.setForcedAnnouncement(req.params.id, announcementId ?? null);
+  res.status(204).end();
+});
+
+groupsRouter.put('/:id/blackout', (req, res) => {
+  const { blackout } = req.body ?? {};
+  if (typeof blackout !== 'boolean') return res.status(400).json({ error: 'blackout must be a boolean' });
+  store.setGroupBlackout(req.params.id, blackout);
   res.status(204).end();
 });
 
