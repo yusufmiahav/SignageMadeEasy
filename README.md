@@ -150,6 +150,28 @@ removing the serial console entry, which `provision.sh` now does automatically.
 This trades away UART-cable boot debugging, which isn't used on a deployed
 kiosk with HDMI + SSH available. Re-run `provision.sh` and reboot to pick it up.
 
+**Screen stays blank/frozen after boot even though `signage-kiosk.service` shows
+"active (running)"** with a real cage/Chromium process tree using real CPU —
+`journalctl -u signage-kiosk.service -b` shows a tight, unending loop of
+`[backend/drm/atomic.c] connector HDMI-A-1: Atomic commit failed: Permission
+denied` (and often `[libseat] Could not close device: Unknown object
+'/org/freedesktop/login1/session/_N'`). This surfaced only *after* the boot
+splash fix above started working: cage was racing Plymouth for the display and
+losing. `plymouth-quit.service` only *signals* Plymouth to start quitting —
+asynchronous, doesn't block — while `plymouth-quit-wait.service` is what
+actually blocks until Plymouth's process has genuinely exited and released DRM
+master; `signage-kiosk.service` was ordered after the former but not the
+latter, so cage could (and did) start before Plymouth had actually let go of
+the display, then silently retried forever without ever presenting a frame
+(cage's own unit never registers as failed, so `Restart=always` never
+triggers — only a manual `systemctl restart signage-kiosk.service`, which
+opens a fresh session, worked around it without fixing the root cause). Before
+the Plymouth fix this race didn't exist: the old plain-text fallback never
+touched DRM, so cage was always the only client. Fixed by adding
+`plymouth-quit-wait.service` to the unit's `After=` — the same ordering real
+desktop managers (gdm and friends) use for this exact handoff. Re-run
+`provision.sh` and reboot to pick it up.
+
 **Deleting a screen in the control app doesn't disconnect it / the Pi still shows
 "connected".** Fixed in the hub/Pi-player pairing logic — the hub now pushes an
 immediate unpair to the Pi, and the Pi's own poller self-unpairs within one cycle
