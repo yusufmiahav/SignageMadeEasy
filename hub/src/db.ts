@@ -149,5 +149,50 @@ const eventCols = (db.prepare("PRAGMA table_info(events)").all() as { name: stri
 if (!eventCols.includes('startTime')) db.exec('ALTER TABLE events ADD COLUMN startTime TEXT');
 if (!eventCols.includes('endTime')) db.exec('ALTER TABLE events ADD COLUMN endTime TEXT');
 
+// Same reasoning, for hubs deployed before a screen could be paired without a
+// location ("misc" screens, assignable later) — devices.groupId was NOT NULL from
+// launch, and CREATE TABLE IF NOT EXISTS above is a no-op on an existing database,
+// so every database (including a brand-new one, since that CREATE TABLE still
+// declares it NOT NULL) needs this rebuilt once. SQLite has no ALTER COLUMN to just
+// drop a NOT NULL constraint, so the whole table is recreated — the notnull check
+// below makes this run exactly once per database. ON DELETE SET NULL (was CASCADE)
+// as part of the same rebuild means deleting a location un-assigns its screens
+// instead of deleting them.
+const devicesGroupIdCol = (db.prepare("PRAGMA table_info(devices)").all() as { name: string; notnull: number }[]).find((c) => c.name === 'groupId');
+if (devicesGroupIdCol?.notnull === 1) {
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE devices_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        ip TEXT NOT NULL,
+        mac TEXT,
+        groupId TEXT REFERENCES groups_(id) ON DELETE SET NULL,
+        announcementId TEXT,
+        announcementOn INTEGER NOT NULL DEFAULT 0,
+        lastSeenAt INTEGER,
+        videoQuality TEXT NOT NULL DEFAULT 'auto',
+        tempC REAL,
+        throttled TEXT,
+        uptimeSec INTEGER,
+        diskFreeMb INTEGER,
+        diskTotalMb INTEGER
+      );
+      INSERT INTO devices_new (id, name, ip, mac, groupId, announcementId, announcementOn, lastSeenAt, videoQuality, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb)
+        SELECT id, name, ip, mac, groupId, announcementId, announcementOn, lastSeenAt, videoQuality, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb FROM devices;
+      DROP TABLE devices;
+      ALTER TABLE devices_new RENAME TO devices;
+    `);
+  })();
+}
+
+// Same reasoning, for the misc-screen force-content/blackout controls that fill in
+// for the location-level ones an ungrouped screen doesn't have (its own manual
+// announcementId/announcementOn already covers "force announcement" — see
+// activeContentIdsForDevice in store.ts).
+const deviceCols2 = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceCols2.includes('forcedContentId')) db.exec('ALTER TABLE devices ADD COLUMN forcedContentId TEXT');
+if (!deviceCols2.includes('blackout')) db.exec('ALTER TABLE devices ADD COLUMN blackout INTEGER NOT NULL DEFAULT 0');
+
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.

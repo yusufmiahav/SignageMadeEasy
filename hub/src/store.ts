@@ -239,12 +239,13 @@ export function removeAnnouncementSchedule(groupId: string, scheduleId: string):
 // ---- Devices ----
 
 interface DeviceRow {
-  id: string; name: string; ip: string; mac: string | null; groupId: string; announcementId: string | null; announcementOn: number;
+  id: string; name: string; ip: string; mac: string | null; groupId: string | null; announcementId: string | null; announcementOn: number;
   videoQuality: Device['videoQuality']; lastSeenAt: number | null;
   tempC: number | null; throttled: string | null; uptimeSec: number | null; diskFreeMb: number | null; diskTotalMb: number | null;
+  forcedContentId: string | null; blackout: number;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, forcedContentId, blackout';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -256,6 +257,7 @@ function rowToDevice(r: DeviceRow): Device {
     announcementId: r.announcementId, announcementOn: !!r.announcementOn, videoQuality: r.videoQuality,
     status: statusFor(r.lastSeenAt), lastSeenAt: r.lastSeenAt ?? undefined,
     tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
+    forcedContentId: r.forcedContentId, blackout: !!r.blackout,
   };
 }
 
@@ -269,12 +271,23 @@ export function getDevice(id: string): Device | null {
   return row ? rowToDevice(row) : null;
 }
 
-export function pairDevice(input: { name: string; ip: string; mac?: string | null; groupId: string; status?: DeviceStatus }): Device {
+export function pairDevice(input: { name: string; ip: string; mac?: string | null; groupId: string | null; status?: DeviceStatus }): Device {
   const id = uid('d');
   const lastSeenAt = input.status === 'offline' ? null : Date.now();
   const mac = input.mac ?? null;
   db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt) VALUES (?,?,?,?,?,?,0,?,?)').run(id, input.name, input.ip, mac, input.groupId, null, 'auto', lastSeenAt);
-  return { id, name: input.name, ip: input.ip, mac, groupId: input.groupId, announcementId: null, announcementOn: false, videoQuality: 'auto', status: statusFor(lastSeenAt) };
+  return {
+    id, name: input.name, ip: input.ip, mac, groupId: input.groupId, announcementId: null, announcementOn: false,
+    videoQuality: 'auto', status: statusFor(lastSeenAt), forcedContentId: null, blackout: false,
+  };
+}
+
+export function setDeviceForcedContent(id: string, libId: string | null): void {
+  db.prepare('UPDATE devices SET forcedContentId = ? WHERE id = ?').run(libId, id);
+}
+
+export function setDeviceBlackout(id: string, blackout: boolean): void {
+  db.prepare('UPDATE devices SET blackout = ? WHERE id = ?').run(blackout ? 1 : 0, id);
 }
 
 export function setDeviceVideoQuality(id: string, videoQuality: Device['videoQuality']): void {
@@ -286,7 +299,7 @@ export function renameDevice(id: string, name: string): void {
   db.prepare('UPDATE devices SET name = ? WHERE id = ?').run(name.trim(), id);
 }
 
-export function moveDevice(id: string, groupId: string): void {
+export function moveDevice(id: string, groupId: string | null): void {
   db.prepare('UPDATE devices SET groupId = ? WHERE id = ?').run(groupId, id);
 }
 
@@ -367,13 +380,22 @@ export function activeAnnouncementId(group: Group, now: Date = new Date()): stri
   return active?.announcementId ?? null;
 }
 
+// A screen not assigned to any location has no schedule/default playlist to fall
+// back on — just its own forcedContentId/blackout, the misc-screen equivalents of
+// a location's controls (see Device.forcedContentId's comment in types.ts).
+function activeContentIdsForDevice(device: Device): { ids: string[]; kind: 'blackout' | 'forced' | 'default'; label: string } {
+  if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
+  if (device.forcedContentId) return { ids: [device.forcedContentId], kind: 'forced', label: 'Forced' };
+  return { ids: [], kind: 'default', label: 'No content' };
+}
+
 export function getPlayerState(deviceId: string): PlayerState | null {
   const device = getDevice(deviceId);
   if (!device) return null;
-  const group = getGroup(device.groupId);
-  if (!group) return null;
+  const group = device.groupId ? getGroup(device.groupId) : null;
+  if (device.groupId && !group) return null;
 
-  const active = activeContentIds(group);
+  const active = group ? activeContentIds(group) : activeContentIdsForDevice(device);
   const libraryById = new Map(listLibrary().map((item) => [item.id, item]));
   const items = active.ids
     .map((id) => libraryById.get(id))
@@ -398,8 +420,9 @@ export function getPlayerState(deviceId: string): PlayerState | null {
 
   // Location-level forced/scheduled announcement overrides this device's own manual
   // toggle when active; otherwise the device's own announcementId/announcementOn
-  // applies exactly as before.
-  const locationAnnouncementId = activeAnnouncementId(group);
+  // applies exactly as before. No location at all (group is null) means there's
+  // nothing to override with — the device's own toggle is the only source.
+  const locationAnnouncementId = group ? activeAnnouncementId(group) : null;
   const announcementId = locationAnnouncementId ?? device.announcementId;
   const announcementOn = locationAnnouncementId != null || device.announcementOn;
   const announcement = announcementId ? libraryById.get(announcementId) : undefined;
@@ -493,13 +516,14 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   });
 
   const insertDevice = db.prepare(
-    'INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt) ' +
-    'VALUES (@id,@name,@ip,@mac,@groupId,@announcementId,@announcementOn,@videoQuality,NULL)',
+    'INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedContentId, blackout) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedContentId,@blackout)',
   );
   for (const device of backup.devices) {
     insertDevice.run({
       id: device.id, name: device.name, ip: device.ip, mac: device.mac, groupId: device.groupId,
       announcementId: device.announcementId, announcementOn: device.announcementOn ? 1 : 0, videoQuality: device.videoQuality,
+      forcedContentId: device.forcedContentId ?? null, blackout: device.blackout ? 1 : 0,
     });
   }
 });

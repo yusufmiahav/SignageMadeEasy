@@ -35,8 +35,8 @@ devicesRouter.get('/', (_req, res) => {
 
 devicesRouter.post('/pair', async (req, res) => {
   const { name, ip, groupId, skipHandshake } = req.body ?? {};
-  if (typeof ip !== 'string' || typeof groupId !== 'string') {
-    return res.status(400).json({ error: 'ip and groupId are required' });
+  if (typeof ip !== 'string' || (typeof groupId !== 'string' && groupId !== null)) {
+    return res.status(400).json({ error: 'ip is required; groupId must be a string or null (no location)' });
   }
   if (store.listDevices().some((d) => d.ip === ip)) {
     return res.status(409).json({ error: `A screen is already paired at ${ip}` });
@@ -76,7 +76,9 @@ devicesRouter.post('/pair', async (req, res) => {
 devicesRouter.patch('/:id', (req, res) => {
   const { name, groupId, videoQuality } = req.body ?? {};
   if (typeof name === 'string') store.renameDevice(req.params.id, name);
-  if (typeof groupId === 'string') store.moveDevice(req.params.id, groupId);
+  // groupId: null moves the device to "no location" — distinct from omitting the
+  // key entirely, which leaves its current location untouched.
+  if (typeof groupId === 'string' || groupId === null) store.moveDevice(req.params.id, groupId);
   if (videoQuality === 'auto' || videoQuality === 'full') store.setDeviceVideoQuality(req.params.id, videoQuality);
   res.status(204).end();
 });
@@ -111,5 +113,21 @@ devicesRouter.put('/:id/announcement', (req, res) => {
 
 devicesRouter.post('/:id/announcement/toggle', (req, res) => {
   store.toggleDeviceAnnouncement(req.params.id);
+  res.status(204).end();
+});
+
+// Misc-screen (no location) equivalents of a location's forced-content/blackout
+// controls — see Device.forcedContentId's comment in types.ts.
+devicesRouter.put('/:id/forced', (req, res) => {
+  const { libId } = req.body ?? {};
+  if (libId !== null && typeof libId !== 'string') return res.status(400).json({ error: 'libId must be a string or null' });
+  store.setDeviceForcedContent(req.params.id, libId);
+  res.status(204).end();
+});
+
+devicesRouter.put('/:id/blackout', (req, res) => {
+  const { blackout } = req.body ?? {};
+  if (typeof blackout !== 'boolean') return res.status(400).json({ error: 'blackout must be a boolean' });
+  store.setDeviceBlackout(req.params.id, blackout);
   res.status(204).end();
 });

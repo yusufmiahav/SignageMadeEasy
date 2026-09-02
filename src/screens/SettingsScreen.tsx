@@ -33,9 +33,10 @@ export function SettingsScreen({
   hideAnnouncementRow,
   onSetHideAnnouncementRow,
 }: SettingsScreenProps) {
-  const { groups, devices, renameGroup, deleteGroup, showToast, exportBackup, importBackup } = app;
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, showToast, exportBackup, importBackup } = app;
+  const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' } | null>(null);
   const [editingName, setEditingName] = useState('');
+  const miscDevices = devices.filter((d) => !d.groupId);
   const [restoring, setRestoring] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -85,13 +86,16 @@ export function SettingsScreen({
     }
   };
 
-  const startEdit = (id: string, name: string) => {
-    setEditingGroupId(id);
+  const startEdit = (id: string, name: string, kind: 'group' | 'device') => {
+    setEditing({ id, kind });
     setEditingName(name);
   };
   const save = () => {
-    if (editingGroupId) renameGroup(editingGroupId, editingName);
-    setEditingGroupId(null);
+    if (editing) {
+      if (editing.kind === 'group') renameGroup(editing.id, editingName);
+      else renameDevice(editing.id, editingName);
+    }
+    setEditing(null);
   };
 
   return (
@@ -152,10 +156,10 @@ export function SettingsScreen({
       </div>
 
       <div className="card" style={{ gap: 8 }}>
-        <div className="card-kicker">Locations</div>
+        <div className="card-kicker">Locations & Screens</div>
         {groups.map((group) => {
           const count = devices.filter((d) => d.groupId === group.id).length;
-          const isEditing = group.id === editingGroupId;
+          const isEditing = editing?.kind === 'group' && editing.id === group.id;
           const cannotDelete = count > 0;
           return (
             <div key={group.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
@@ -169,18 +173,19 @@ export function SettingsScreen({
                   autoFocus
                 />
               ) : (
-                <>
-                  <span style={{ flex: 1, fontSize: 13 }}>{group.name}</span>
-                  <span className="tag tag-neutral">{count} screen{count === 1 ? '' : 's'}</span>
-                </>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13 }}>{group.name}</div>
+                  <div className="text-muted" style={{ fontSize: 11 }}>Location</div>
+                </div>
               )}
+              {!isEditing && <span className="tag tag-neutral">{count} screen{count === 1 ? '' : 's'}</span>}
               {isEditing ? (
                 <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
                   <Icon name="check" size={13} />
                 </button>
               ) : (
                 <>
-                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(group.id, group.name)}>
+                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(group.id, group.name, 'group')}>
                     <Icon name="pencil" size={13} />
                   </button>
                   <button
@@ -191,6 +196,42 @@ export function SettingsScreen({
                     title={cannotDelete ? 'Remove its screens first' : 'Delete location'}
                     onClick={() => deleteGroup(group.id)}
                   >
+                    <Icon name="trash" size={13} />
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })}
+        {miscDevices.map((device) => {
+          const isEditing = editing?.kind === 'device' && editing.id === device.id;
+          return (
+            <div key={device.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)' }}>
+              {isEditing ? (
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && save()}
+                  autoFocus
+                />
+              ) : (
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13 }}>{device.name}</div>
+                  <div className="text-muted" style={{ fontSize: 11 }}>Screen · no location</div>
+                </div>
+              )}
+              {isEditing ? (
+                <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
+                  <Icon name="check" size={13} />
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(device.id, device.name, 'device')}>
+                    <Icon name="pencil" size={13} />
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeDevice(device.id)}>
                     <Icon name="trash" size={13} />
                   </button>
                 </>

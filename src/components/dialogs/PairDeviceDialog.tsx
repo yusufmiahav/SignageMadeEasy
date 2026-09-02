@@ -6,6 +6,25 @@ import type { AppState } from '../../hooks/useAppState';
 
 type PairMode = 'scan' | 'qr' | 'manual';
 
+const NO_LOCATION = '__none__';
+const LAST_LOCATION_KEY = 'signagemadeeasy.lastPairLocation';
+
+function lastPairedLocation(): string {
+  try {
+    return localStorage.getItem(LAST_LOCATION_KEY) ?? NO_LOCATION;
+  } catch {
+    return NO_LOCATION;
+  }
+}
+
+function rememberPairedLocation(groupId: string): void {
+  try {
+    localStorage.setItem(LAST_LOCATION_KEY, groupId);
+  } catch {
+    // Best-effort — next pairing just won't default to this choice.
+  }
+}
+
 interface PairDeviceDialogProps {
   app: AppState;
   onClose: () => void;
@@ -13,7 +32,14 @@ interface PairDeviceDialogProps {
 
 export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   const { groups, addGroup, pairDevice, scanNetwork, showToast } = app;
-  const [groupId, setGroupId] = useState(groups[0]?.id ?? '__new__');
+  // Remembers whatever was picked last time (including "no location") rather than
+  // always defaulting to the first location — a location shouldn't be forced on a
+  // screen just because it's the first one in the list; "no location, assign later"
+  // is the actual default until someone chooses something else.
+  const [groupId, setGroupId] = useState(() => {
+    const last = lastPairedLocation();
+    return last === NO_LOCATION || groups.some((g) => g.id === last) ? last : NO_LOCATION;
+  });
   const [newGroupName, setNewGroupName] = useState('');
   const [mode, setMode] = useState<PairMode>('scan');
   const [scanning, setScanning] = useState(false);
@@ -33,10 +59,14 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
 
   const isNewGroup = groupId === '__new__';
 
-  const resolveGroupId = async (): Promise<string> => {
-    if (!isNewGroup) return groupId;
-    const group = await addGroup(newGroupName);
-    return group.id;
+  const resolveGroupId = async (): Promise<string | null> => {
+    if (isNewGroup) {
+      const group = await addGroup(newGroupName);
+      rememberPairedLocation(group.id);
+      return group.id;
+    }
+    rememberPairedLocation(groupId);
+    return groupId === NO_LOCATION ? null : groupId;
   };
 
   const changeMode = (m: PairMode) => {
@@ -96,6 +126,7 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
       <div className="field">
         <label htmlFor="pair-location">Location</label>
         <select className="input" id="pair-location" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+          <option value={NO_LOCATION}>No location (can be assigned later)</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>{g.name}</option>
           ))}

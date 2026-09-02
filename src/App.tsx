@@ -41,6 +41,10 @@ type DialogState =
   | { type: 'forceContent'; groupId: string | null }
   | { type: 'forceAnnouncement'; groupId: string | null }
   | { type: 'blackout'; groupId: string | null }
+  /** Same three actions, scoped to a single misc screen (no location) instead of a location. */
+  | { type: 'forceContentDevice'; deviceId: string }
+  | { type: 'forceAnnouncementDevice'; deviceId: string }
+  | { type: 'blackoutDevice'; deviceId: string }
   | { type: 'addAnnouncementSchedule'; groupId: string }
   | { type: 'preview'; item: LibraryItem }
   | null;
@@ -89,6 +93,9 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onForceAnnouncementAllScreens={() => setDialog({ type: 'forceAnnouncement', groupId: null })}
             onOpenBlackout={(groupId) => setDialog({ type: 'blackout', groupId })}
             onOpenBlackoutAllScreens={() => setDialog({ type: 'blackout', groupId: null })}
+            onForceContentForDevice={(deviceId) => setDialog({ type: 'forceContentDevice', deviceId })}
+            onForceAnnouncementForDevice={(deviceId) => setDialog({ type: 'forceAnnouncementDevice', deviceId })}
+            onOpenBlackoutForDevice={(deviceId) => setDialog({ type: 'blackoutDevice', deviceId })}
             onMoveDevice={(device) => setDialog({ type: 'moveDevice', device })}
             onPickAnnouncement={(device) => setDialog({ type: 'announcementPicker', device })}
             onPreviewContent={(item) => setDialog({ type: 'preview', item })}
@@ -171,6 +178,34 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
           scopeLabel={dialog.groupId ? 'this location' : 'every screen'}
           current={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.blackout ?? false) : false}
           onConfirm={(blackout) => (dialog.groupId ? app.setGroupBlackout(dialog.groupId, blackout) : app.blackoutAllScreens(blackout))}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'forceContentDevice' && (
+        <ForceContentDialog
+          app={app}
+          scopeLabel="this screen"
+          isGlobal={false}
+          currentId={app.devices.find((d) => d.id === dialog.deviceId)?.forcedContentId ?? null}
+          onConfirm={(libId) => app.setDeviceForcedContent(dialog.deviceId, libId)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'forceAnnouncementDevice' && (
+        <ForceAnnouncementDialog
+          app={app}
+          scopeLabel="this screen"
+          isGlobal={false}
+          currentId={app.devices.find((d) => d.id === dialog.deviceId)?.announcementId ?? null}
+          onConfirm={(announcementId) => app.setDeviceAnnouncement(dialog.deviceId, announcementId)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'blackoutDevice' && (
+        <BlackoutDialog
+          scopeLabel="this screen"
+          current={app.devices.find((d) => d.id === dialog.deviceId)?.blackout ?? false}
+          onConfirm={(blackout) => app.setDeviceBlackout(dialog.deviceId, blackout)}
           onClose={closeDialog}
         />
       )}
