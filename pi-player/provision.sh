@@ -104,6 +104,23 @@ if ! id "$SIGNAGE_USER" >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
+log "Enabling linger for $SIGNAGE_USER"
+# Root cause of a real-hardware crash-loop confirmed via journalctl: cage
+# failed with "XDG_RUNTIME_DIR is not set" on the first 2-3 boot attempts,
+# self-healing only because Restart=always kept buying time. An After=
+# ordering on systemd-logind.service/dbus.service alone wasn't enough — that
+# unit being "active" doesn't mean logind has finished registering *this*
+# session yet, and the existing ExecStartPre bus-socket check in
+# signage-kiosk.service can pass instantly by observing its own just-opened
+# session rather than actually waiting for one. Linger sidesteps the race
+# entirely instead of trying to win it: it tells logind to create
+# /run/user/<uid> (and its D-Bus session bus) at boot, before any login
+# session exists at all, so it's already there and stable by the time
+# signage-kiosk.service starts. Idempotent — enabling linger for an
+# already-lingering user is a harmless no-op.
+loginctl enable-linger "$SIGNAGE_USER"
+
+# ---------------------------------------------------------------------------
 log "Granting $SIGNAGE_USER passwordless nmcli access (Wi-Fi fallback hotspot — see pi-player/src/wifiManager.ts)"
 # The player agent runs as $SIGNAGE_USER, not root, but reconfiguring Wi-Fi
 # (starting a fallback hotspot, connecting to a newly-entered network) needs

@@ -105,18 +105,31 @@ compositor with a real "hide the cursor" feature (e.g. `labwc`, instead of
 not pursued for this project since the corner cursor is a minor cosmetic
 issue, not a functional one.
 
-**The kiosk service shows "Failed to start" once or twice right after boot, then
-recovers on its own within ~30s** (`journalctl -u signage-kiosk.service -b` shows
-`XDG_RUNTIME_DIR is not set in the environment`). A startup race: `pam_systemd`/
-logind hadn't finished setting up the signage user's session by the time cage's
-first attempt or two ran. Fixed via an `ExecStartPre` in `signage-kiosk.service`
-that waits (up to 10s) for `pam_systemd`'s own `/run/user/<uid>/bus` to actually
-exist before starting cage — re-run `provision.sh` and reboot to pick it up. (An
-earlier attempt at this fix pointed `XDG_RUNTIME_DIR` at a directory systemd
-created itself instead of waiting for the real one — don't do that: cage's
-`libseat` needs the *actual* pam_systemd-managed runtime directory specifically,
-since that's where the D-Bus session socket it uses to reach logind lives;
-pointing it elsewhere breaks device access entirely with no self-healing.)
+**The kiosk service shows "Failed to start" once or twice (sometimes more) right
+after boot, then recovers on its own** (`journalctl -u signage-kiosk.service -b`
+shows `XDG_RUNTIME_DIR is not set in the environment`). A startup race:
+`pam_systemd`/logind hadn't finished setting up the signage user's session by the
+time cage's first attempt or two ran. Two earlier fix attempts here were each
+confirmed insufficient on real hardware before landing on the real one:
+
+- Pointing `XDG_RUNTIME_DIR` at a directory systemd created itself, instead of
+  waiting for the real one — broke device access entirely with no self-healing:
+  cage's `libseat` needs the *actual* pam_systemd-managed runtime directory
+  specifically, since that's where the D-Bus session socket it uses to reach
+  logind lives.
+- An `ExecStartPre` wait for `pam_systemd`'s own `/run/user/<uid>/bus` to exist,
+  plus ordering the unit after `systemd-logind.service`/`dbus.service` — reduced
+  but didn't eliminate the race: those units being "active" doesn't mean logind
+  has finished registering *this specific* new session yet, and the bus-socket
+  check could pass near-instantly by observing its own just-opened session
+  rather than proving pam_systemd's separate env injection had actually landed.
+
+The actual fix: `provision.sh` now runs `loginctl enable-linger signage`, which
+makes logind create `/run/user/<uid>` (and its D-Bus session) at boot, before any
+login session exists at all — no race to lose. `signage-kiosk.service`'s
+`ExecStart` also now exports `XDG_RUNTIME_DIR` explicitly from that same real
+path rather than trusting `pam_systemd`'s per-invocation injection to land in
+time. Re-run `provision.sh` and reboot to pick it up.
 
 **Deleting a screen in the control app doesn't disconnect it / the Pi still shows
 "connected".** Fixed in the hub/Pi-player pairing logic — the hub now pushes an
