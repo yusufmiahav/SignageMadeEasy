@@ -9,12 +9,19 @@ import { devicesRouter } from './routes/devices.js';
 import { playerRouter } from './routes/player.js';
 import { scanRouter } from './routes/scan.js';
 import { backupRouter } from './routes/backup.js';
+import { authRouter } from './routes/auth.js';
+import { requireAuth } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createApp() {
   const app = express();
-  app.use(cors());
+  // credentials: true (needed for the session cookie) requires an explicit origin
+  // rather than cors()'s default wildcard — origin: true reflects the request's own
+  // Origin header, which covers both the same-origin production deployment (hub
+  // serves the control app itself) and the cross-origin dev setup (vite dev server
+  // on a different port than the hub).
+  app.use(cors({ origin: true, credentials: true }));
   // A backup export/import (see routes/backup.ts) is pure JSON metadata, no binary,
   // but a large library/device count could still exceed express's 100kb default —
   // raised generously since every other route here sends tiny bodies anyway.
@@ -22,12 +29,16 @@ export function createApp() {
 
   app.use('/uploads', express.static(UPLOADS_DIR));
 
-  app.use('/api/library', libraryRouter);
-  app.use('/api/groups', groupsRouter);
+  // Only the management API below needs a login — the Pi-facing routes
+  // (playerRouter, and devicesRouter's own heartbeat route specifically) have no
+  // login flow and stay open, same reasoning as devices.ts's heartbeat placement.
+  app.use('/api/auth', authRouter);
+  app.use('/api/library', requireAuth, libraryRouter);
+  app.use('/api/groups', requireAuth, groupsRouter);
   app.use('/api/devices', devicesRouter);
   app.use('/api/player', playerRouter);
-  app.use('/api/scan', scanRouter);
-  app.use('/api/backup', backupRouter);
+  app.use('/api/scan', requireAuth, scanRouter);
+  app.use('/api/backup', requireAuth, backupRouter);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import * as store from '../store.js';
 import * as piAgent from '../piAgent.js';
+import { requireAuth } from '../auth.js';
 
 export const devicesRouter = Router();
 
@@ -13,6 +14,20 @@ export const devicesRouter = Router();
 function publicHubUrl(req: Request): string {
   return process.env.SIGNAGE_PUBLIC_HUB_URL ?? `${req.protocol}://${req.get('host')}`;
 }
+
+// The Pi's own poller calls this autonomously every ~5s with no login flow — it must
+// stay reachable without a session, so it's registered before the requireAuth gate
+// below rather than being just another route this router happens to protect.
+devicesRouter.post('/:id/heartbeat', (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  const ip = (req.body?.ip as string | undefined) ?? req.ip ?? device.ip;
+  const { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb } = req.body ?? {};
+  store.recordHeartbeat(req.params.id, ip, { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb });
+  res.status(204).end();
+});
+
+devicesRouter.use(requireAuth);
 
 devicesRouter.get('/', (_req, res) => {
   res.json(store.listDevices());
@@ -96,14 +111,5 @@ devicesRouter.put('/:id/announcement', (req, res) => {
 
 devicesRouter.post('/:id/announcement/toggle', (req, res) => {
   store.toggleDeviceAnnouncement(req.params.id);
-  res.status(204).end();
-});
-
-devicesRouter.post('/:id/heartbeat', (req, res) => {
-  const device = store.getDevice(req.params.id);
-  if (!device) return res.status(404).json({ error: 'not found' });
-  const ip = (req.body?.ip as string | undefined) ?? req.ip ?? device.ip;
-  const { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb } = req.body ?? {};
-  store.recordHeartbeat(req.params.id, ip, { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb });
   res.status(204).end();
 });

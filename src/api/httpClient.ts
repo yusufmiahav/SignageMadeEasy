@@ -6,6 +6,10 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
+    // Needed for the session cookie (see hub/src/auth.ts) — the default 'same-origin'
+    // credentials mode won't send it in dev, where the control app and hub run on
+    // different ports/origins.
+    credentials: 'include',
     headers: init?.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json', ...init.headers } : init?.headers,
   });
   if (!res.ok) {
@@ -29,6 +33,7 @@ function uploadFile(path: string, file: File, onProgress?: (pct: number) => void
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${BASE_URL}${path}`);
+    xhr.withCredentials = true; // send the session cookie — see request()'s credentials: 'include'
     xhr.upload.onprogress = (e) => {
       if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     };
@@ -69,7 +74,7 @@ export const httpClient: SignageApiClient = {
   addGroup: (name) => request<Group>('/api/groups', { method: 'POST', ...json({ name }) }),
   renameGroup: (id, name) => request<void>(`/api/groups/${id}`, { method: 'PATCH', ...json({ name }) }),
   deleteGroup: async (id) => {
-    const res = await fetch(`${BASE_URL}/api/groups/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${BASE_URL}/api/groups/${id}`, { method: 'DELETE', credentials: 'include' });
     if (res.status === 409) return false;
     if (!res.ok) throw new Error(`DELETE /api/groups/${id} failed: ${res.status}`);
     return true;

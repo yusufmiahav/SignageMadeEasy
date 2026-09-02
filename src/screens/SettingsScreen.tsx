@@ -3,9 +3,11 @@ import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
 import type { Backup } from '../api/types';
 import { copyText } from '../utils/clipboard';
+import { authGateEnabled, logout } from '../api/auth';
 
 interface SettingsScreenProps {
   app: AppState;
+  onLogout: () => void;
 }
 
 function isBackup(value: unknown): value is Backup {
@@ -14,7 +16,7 @@ function isBackup(value: unknown): value is Backup {
   return Array.isArray(v.library) && Array.isArray(v.groups) && Array.isArray(v.devices);
 }
 
-export function SettingsScreen({ app }: SettingsScreenProps) {
+export function SettingsScreen({ app, onLogout }: SettingsScreenProps) {
   const { groups, devices, renameGroup, deleteGroup, showToast, exportBackup, importBackup } = app;
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -212,6 +214,19 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
             : 'Standalone mode — content is saved in this browser only. Deploy the hub to manage screens from any device on your network.'}
         </p>
         <p className="card-body text-muted" style={{ fontSize: 12 }}>Created by Yusuf Miah with Claude.</p>
+        {authGateEnabled && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ alignSelf: 'flex-start', marginTop: 4 }}
+            onClick={() => {
+              void logout();
+              onLogout();
+            }}
+          >
+            Log out
+          </button>
+        )}
       </div>
     </div>
   );

@@ -25,6 +25,27 @@ macvlan network bound to your LAN interface instead.
 Everything persists under `hub/data/` (bind-mounted): `signage.db` (SQLite) and
 `uploads/` (the media library). Back that directory up; that's the whole hub's state.
 
+## Login PIN
+
+The control app asks for a PIN before showing or changing anything on this hub — a
+single shared PIN, not per-user accounts, since this is a small LAN control panel
+rather than a multi-tenant system. **Defaults to `Abc123`** if you don't set
+anything, so a fresh hub is usable immediately.
+
+**Change it** by setting `SIGNAGE_PIN` on the hub container (see `docker-compose.yml`,
+already there commented in with the default value) — edit that line and
+`docker compose -f hub/docker-compose.yml up -d --build` again to apply it. Anyone
+already logged in stays logged in until they log out; the new PIN only applies to
+the next login.
+
+This only gates the management API (library, groups, screens, network scan, backup)
+— it does **not** encrypt traffic. Over plain HTTP (the default LAN deployment,
+before you set up HTTPS) the PIN and session cookie both travel in the clear, so
+anyone on the same network with a packet sniffer could capture them; this is a lock
+on the front door, not a wall around the building. Put the hub behind HTTPS (a
+reverse proxy with a self-signed or real certificate) before relying on this PIN to
+keep out anyone more determined than a casual LAN user.
+
 **Multi-homed NAS (more than one network)**: when pairing a screen, the hub tells it
 which address to poll based on whatever host the *browser* used to reach the hub —
 fine on a single-subnet LAN, but if your NAS has multiple NICs (e.g. one on

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppShell, type Tab } from './components/layout/AppShell';
 import { HomeScreen } from './screens/HomeScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
@@ -18,7 +18,9 @@ import { AddAnnouncementScheduleDialog } from './components/dialogs/AddAnnouncem
 import { MoveDeviceDialog } from './components/dialogs/MoveDeviceDialog';
 import { ForceContentDialog } from './components/dialogs/ForceContentDialog';
 import { ContentPreviewDialog } from './components/dialogs/ContentPreviewDialog';
+import { LoginScreen } from './screens/LoginScreen';
 import { useAppState } from './hooks/useAppState';
+import { checkAuthStatus } from './api/auth';
 import type { Device, LibraryItem } from './api/types';
 
 type DialogState =
@@ -38,6 +40,23 @@ type DialogState =
   | null;
 
 export default function App() {
+  // Gated a level above useAppState (rather than inside it) so an unauthenticated
+  // session never even starts fetching library/groups/devices — those calls would
+  // just 401 (see hub/src/auth.ts) and leave useAppState's initial Promise.all stuck
+  // rejected, with app.loaded never flipping true.
+  const [authed, setAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void checkAuthStatus().then(setAuthed);
+  }, []);
+
+  if (authed === null) return null;
+  if (!authed) return <LoginScreen onSuccess={() => setAuthed(true)} />;
+
+  return <AuthenticatedApp onLogout={() => setAuthed(false)} />;
+}
+
+function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   const app = useAppState();
   const [tab, setTab] = useState<Tab>('home');
   const [dialog, setDialog] = useState<DialogState>(null);
@@ -81,7 +100,7 @@ export default function App() {
             onOpenAddSchedule={(groupId) => setDialog({ type: 'addAnnouncementSchedule', groupId })}
           />
         )}
-        {tab === 'settings' && <SettingsScreen app={app} />}
+        {tab === 'settings' && <SettingsScreen app={app} onLogout={onLogout} />}
       </AppShell>
 
       {dialog?.type === 'pair' && <PairDeviceDialog app={app} onClose={closeDialog} />}
