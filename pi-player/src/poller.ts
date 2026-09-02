@@ -1,6 +1,7 @@
 import { clearConfig, loadConfig } from './config.js';
 import { getLocalIp } from './localIp.js';
 import * as mediaCache from './mediaCache.js';
+import * as diagnostics from './diagnostics.js';
 import type { PlayerState } from './types.js';
 
 const POLL_INTERVAL_MS = 5000;
@@ -42,10 +43,13 @@ async function tick(): Promise<void> {
   }
 
   // Heartbeat is best-effort and independent of whether the state fetch above succeeded.
+  // Diagnostics (temp/throttled/uptime/disk) piggyback on this same tick rather than
+  // a separate poll loop — see diagnostics.ts.
+  const diag = await diagnostics.collect();
   fetch(`${config.hubUrl}/api/devices/${config.deviceId}/heartbeat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ip }),
+    body: JSON.stringify({ ip, ...diag }),
     signal: AbortSignal.timeout(4000),
   }).catch(() => {});
 }

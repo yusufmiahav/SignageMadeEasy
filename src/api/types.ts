@@ -79,6 +79,13 @@ export interface Device {
    * display where the cap buys nothing.
    */
   videoQuality: 'auto' | 'full';
+  /** Reported by the Pi's own poller alongside every heartbeat — undefined for a device that's never sent one yet, or any device in standalone/localStorage mode (no real Pi to ask). */
+  tempC?: number | null;
+  /** Raw hex string from `vcgencmd get_throttled` — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot." */
+  throttled?: string | null;
+  uptimeSec?: number | null;
+  diskFreeMb?: number | null;
+  diskTotalMb?: number | null;
 }
 
 export interface AppData {

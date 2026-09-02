@@ -107,5 +107,16 @@ if (!hasSortOrder) {
   rows.forEach((r, i) => setOrder.run(i, r.id));
 }
 
+// Same reasoning, for hubs deployed before per-heartbeat diagnostics existed —
+// reported by the Pi's own poller (see pi-player/src/diagnostics.ts) alongside every
+// heartbeat; null for a device that's never sent one yet (old firmware, or offline
+// since before this shipped).
+const deviceCols = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceCols.includes('tempC')) db.exec('ALTER TABLE devices ADD COLUMN tempC REAL');
+if (!deviceCols.includes('throttled')) db.exec('ALTER TABLE devices ADD COLUMN throttled TEXT');
+if (!deviceCols.includes('uptimeSec')) db.exec('ALTER TABLE devices ADD COLUMN uptimeSec INTEGER');
+if (!deviceCols.includes('diskFreeMb')) db.exec('ALTER TABLE devices ADD COLUMN diskFreeMb INTEGER');
+if (!deviceCols.includes('diskTotalMb')) db.exec('ALTER TABLE devices ADD COLUMN diskTotalMb INTEGER');
+
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.

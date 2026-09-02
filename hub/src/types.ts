@@ -84,6 +84,13 @@ export interface Device {
   videoQuality: 'auto' | 'full';
   /** ms since epoch of the last heartbeat received. Not exposed to the control app. */
   lastSeenAt?: number;
+  /** Reported by the Pi's own poller alongside every heartbeat (pi-player/src/diagnostics.ts) — undefined for a device that's never sent one yet. */
+  tempC?: number | null;
+  /** Raw hex string from `vcgencmd get_throttled` — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot." */
+  throttled?: string | null;
+  uptimeSec?: number | null;
+  diskFreeMb?: number | null;
+  diskTotalMb?: number | null;
 }
 
 export interface DiscoveredDevice {

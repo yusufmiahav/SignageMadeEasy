@@ -103,6 +103,7 @@ devicesRouter.post('/:id/heartbeat', (req, res) => {
   const device = store.getDevice(req.params.id);
   if (!device) return res.status(404).json({ error: 'not found' });
   const ip = (req.body?.ip as string | undefined) ?? req.ip ?? device.ip;
-  store.recordHeartbeat(req.params.id, ip);
+  const { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb } = req.body ?? {};
+  store.recordHeartbeat(req.params.id, ip, { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb });
   res.status(204).end();
 });

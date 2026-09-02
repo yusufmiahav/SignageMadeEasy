@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
-import type { AnnouncementSchedule, Device, DeviceStatus, DiscoveredDevice, Group, LibraryItem, PlayerState, ScheduleEvent } from './types.js';
+import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, PlayerState, ScheduleEvent } from './types.js';
 
 const ONLINE_WINDOW_MS = 45_000;
 
@@ -212,7 +212,13 @@ export function removeAnnouncementSchedule(groupId: string, scheduleId: string):
 
 // ---- Devices ----
 
-interface DeviceRow { id: string; name: string; ip: string; mac: string | null; groupId: string; announcementId: string | null; announcementOn: number; videoQuality: Device['videoQuality']; lastSeenAt: number | null }
+interface DeviceRow {
+  id: string; name: string; ip: string; mac: string | null; groupId: string; announcementId: string | null; announcementOn: number;
+  videoQuality: Device['videoQuality']; lastSeenAt: number | null;
+  tempC: number | null; throttled: string | null; uptimeSec: number | null; diskFreeMb: number | null; diskTotalMb: number | null;
+}
+
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -223,16 +229,17 @@ function rowToDevice(r: DeviceRow): Device {
     id: r.id, name: r.name, ip: r.ip, mac: r.mac, groupId: r.groupId,
     announcementId: r.announcementId, announcementOn: !!r.announcementOn, videoQuality: r.videoQuality,
     status: statusFor(r.lastSeenAt), lastSeenAt: r.lastSeenAt ?? undefined,
+    tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
   };
 }
 
 export function listDevices(): Device[] {
-  const rows = db.prepare('SELECT id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt FROM devices ORDER BY rowid ASC').all() as DeviceRow[];
+  const rows = db.prepare(`SELECT ${DEVICE_COLUMNS} FROM devices ORDER BY rowid ASC`).all() as DeviceRow[];
   return rows.map(rowToDevice);
 }
 
 export function getDevice(id: string): Device | null {
-  const row = db.prepare('SELECT id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt FROM devices WHERE id = ?').get(id) as DeviceRow | undefined;
+  const row = db.prepare(`SELECT ${DEVICE_COLUMNS} FROM devices WHERE id = ?`).get(id) as DeviceRow | undefined;
   return row ? rowToDevice(row) : null;
 }
 
@@ -272,18 +279,20 @@ export function toggleDeviceAnnouncement(id: string): void {
   }
 }
 
-export function recordHeartbeat(id: string, ip: string): void {
-  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ? WHERE id = ?').run(Date.now(), ip, id);
+export interface HeartbeatDiagnostics {
+  tempC?: number | null;
+  throttled?: string | null;
+  uptimeSec?: number | null;
+  diskFreeMb?: number | null;
+  diskTotalMb?: number | null;
 }
 
-// ---- Pairing helper (simulated placeholder for a real LAN scan) ----
-
-export function scanNetwork(): DiscoveredDevice[] {
-  const randOctet = () => 20 + Math.floor(Math.random() * 200);
-  return [
-    { id: uid('n'), name: 'New Display', ip: `192.168.1.${randOctet()}` },
-    { id: uid('n'), name: 'New Display', ip: `192.168.1.${randOctet()}` },
-  ];
+export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnostics): void {
+  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ? WHERE id = ?').run(
+    Date.now(), ip,
+    diag?.tempC ?? null, diag?.throttled ?? null, diag?.uptimeSec ?? null, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null,
+    id,
+  );
 }
 
 // ---- Content resolution (mirrors src/api/resolve.ts) ----

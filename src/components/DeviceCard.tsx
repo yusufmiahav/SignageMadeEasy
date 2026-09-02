@@ -2,6 +2,25 @@ import { useState } from 'react';
 import { Icon } from './icons/Icon';
 import type { Device, LibraryItem } from '../api/types';
 
+// Bits 0-3 of vcgencmd's get_throttled bitmask are current-state (under-voltage,
+// arm-freq-capped, throttled, soft-temp-limit); bits 16-19 are "has happened since
+// boot" versions of the same. Only the current-state bits are actionable right now —
+// something that happened once at boot and hasn't recurred isn't worth a persistent
+// warning badge.
+function isCurrentlyThrottled(throttled: string | null | undefined): boolean {
+  if (!throttled) return false;
+  return (Number.parseInt(throttled, 16) & 0xf) !== 0;
+}
+
+function formatUptime(sec: number): string {
+  const days = Math.floor(sec / 86400);
+  const hours = Math.floor((sec % 86400) / 3600);
+  const mins = Math.floor((sec % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
 interface DeviceCardProps {
   device: Device;
   nowPlaying: string;
@@ -119,6 +138,19 @@ export function DeviceCard({
         {device.mac && <span className="tag tag-neutral">{device.mac}</span>}
         <span className="tag tag-neutral">{device.status === 'online' ? 'Online' : 'Offline'}</span>
       </div>
+      {(device.tempC != null || device.uptimeSec != null || device.diskFreeMb != null) && (
+        <div className="text-muted" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
+          {device.tempC != null && (
+            <span style={isCurrentlyThrottled(device.throttled) ? { color: 'var(--color-danger, #c0392b)', fontWeight: 600 } : undefined}>
+              {device.tempC.toFixed(0)}°C{isCurrentlyThrottled(device.throttled) ? ' · Throttling' : ''}
+            </span>
+          )}
+          {device.uptimeSec != null && <span>Up {formatUptime(device.uptimeSec)}</span>}
+          {device.diskFreeMb != null && device.diskTotalMb != null && (
+            <span>{(device.diskFreeMb / 1024).toFixed(1)} / {(device.diskTotalMb / 1024).toFixed(1)} GB free</span>
+          )}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <Icon name="video" size={12} style={{ opacity: 0.6, flexShrink: 0 }} />
         <select
