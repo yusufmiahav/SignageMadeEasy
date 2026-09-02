@@ -33,6 +33,20 @@ devicesRouter.get('/', (_req, res) => {
   res.json(store.listDevices());
 });
 
+// Registered before /:id routes below — a literal "reorder" segment here would
+// otherwise never be reachable if a param route matched it first (mirrors
+// groups.ts's own reorder route for the same reason). `ids` must be the complete
+// set of devices in one scope (one location, or the misc/no-location list) — see
+// store.reorderDevices's comment.
+devicesRouter.put('/reorder', (req, res) => {
+  const { ids } = req.body ?? {};
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
+    return res.status(400).json({ error: 'ids must be an array of strings' });
+  }
+  store.reorderDevices(ids);
+  res.status(204).end();
+});
+
 devicesRouter.post('/pair', async (req, res) => {
   const { name, ip, groupId, skipHandshake } = req.body ?? {};
   if (typeof ip !== 'string' || (typeof groupId !== 'string' && groupId !== null)) {

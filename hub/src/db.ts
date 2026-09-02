@@ -194,6 +194,19 @@ const deviceCols2 = (db.prepare("PRAGMA table_info(devices)").all() as { name: s
 if (!deviceCols2.includes('forcedContentId')) db.exec('ALTER TABLE devices ADD COLUMN forcedContentId TEXT');
 if (!deviceCols2.includes('blackout')) db.exec('ALTER TABLE devices ADD COLUMN blackout INTEGER NOT NULL DEFAULT 0');
 
+// Same reasoning, for hubs deployed before screens (within a location, or among
+// the misc/no-location list) supported reordering with up/down arrows on
+// Settings/Home — every existing row keeps its current rowid-based (insertion)
+// order so nothing visibly reshuffles the first time this runs. Never exposed on
+// the Device type itself (same as groups_.sortOrder isn't on Group) — purely an
+// internal ordering the API applies via listDevices()'s ORDER BY.
+if (!deviceCols2.includes('sortOrder')) {
+  db.exec('ALTER TABLE devices ADD COLUMN sortOrder INTEGER');
+  const rows = db.prepare('SELECT id FROM devices ORDER BY rowid ASC').all() as { id: string }[];
+  const setOrder = db.prepare('UPDATE devices SET sortOrder = ? WHERE id = ?');
+  rows.forEach((r, i) => setOrder.run(i, r.id));
+}
+
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's

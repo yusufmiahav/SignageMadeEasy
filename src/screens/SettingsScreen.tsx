@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
 import type { Theme } from '../hooks/useTheme';
-import type { Backup } from '../api/types';
+import type { Backup, Device } from '../api/types';
 import { copyText } from '../utils/clipboard';
 import { authGateEnabled, logout } from '../api/auth';
 
@@ -33,7 +33,7 @@ export function SettingsScreen({
   hideAnnouncementRow,
   onSetHideAnnouncementRow,
 }: SettingsScreenProps) {
-  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, showToast, exportBackup, importBackup, safetyHold, setSafetyHold } = app;
+  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, reorderDevices, showToast, exportBackup, importBackup, safetyHold, setSafetyHold } = app;
   const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' } | null>(null);
   const [editingName, setEditingName] = useState('');
   const miscDevices = devices.filter((d) => !d.groupId);
@@ -96,6 +96,79 @@ export function SettingsScreen({
       else renameDevice(editing.id, editingName);
     }
     setEditing(null);
+  };
+
+  // `scopeDevices` is one location's (or the misc list's) screens in their current
+  // display order — reorderDevices expects the complete reordered set for that one
+  // scope, so this swaps within the scope's own id list and sends the whole thing back.
+  const moveDeviceInScope = (scopeDevices: Device[], deviceId: string, direction: 'up' | 'down') => {
+    const idx = scopeDevices.findIndex((d) => d.id === deviceId);
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || swapWith < 0 || swapWith >= scopeDevices.length) return;
+    const ids = scopeDevices.map((d) => d.id);
+    [ids[idx], ids[swapWith]] = [ids[swapWith], ids[idx]];
+    void reorderDevices(ids);
+  };
+
+  // Shared row renderer for a screen nested under its location (or the misc list) —
+  // `scope` is that one location's/list's screens in display order, used both to know
+  // whether the up/down arrows are at a boundary and as the reorder payload.
+  const renderScreenRow = (device: Device, scope: Device[], idx: number) => {
+    const isEditing = editing?.kind === 'device' && editing.id === device.id;
+    return (
+      <div
+        key={device.id}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px', borderTop: '1px solid var(--color-divider)' }}
+      >
+        {isEditing ? (
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            value={editingName}
+            onChange={(e) => setEditingName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            autoFocus
+          />
+        ) : (
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13 }}>{device.name}</div>
+            <div className="text-muted" style={{ fontSize: 11 }}>Screen</div>
+          </div>
+        )}
+        {isEditing ? (
+          <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
+            <Icon name="check" size={13} />
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon"
+              aria-label="Move up"
+              disabled={idx === 0}
+              onClick={() => moveDeviceInScope(scope, device.id, 'up')}
+            >
+              <Icon name="chevronUp" size={13} />
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon"
+              aria-label="Move down"
+              disabled={idx === scope.length - 1}
+              onClick={() => moveDeviceInScope(scope, device.id, 'down')}
+            >
+              <Icon name="chevronDown" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(device.id, device.name, 'device')}>
+              <Icon name="pencil" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeDevice(device.id)}>
+              <Icon name="trash" size={13} />
+            </button>
+          </>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -182,87 +255,62 @@ export function SettingsScreen({
       <div className="card" style={{ gap: 8 }}>
         <div className="card-kicker">Locations & Screens</div>
         {groups.map((group) => {
-          const count = devices.filter((d) => d.groupId === group.id).length;
+          const screens = devices.filter((d) => d.groupId === group.id);
           const isEditing = editing?.kind === 'group' && editing.id === group.id;
-          const cannotDelete = count > 0;
+          const cannotDelete = screens.length > 0;
           return (
-            <div key={group.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-              {isEditing ? (
-                <input
-                  className="input"
-                  style={{ flex: 1 }}
-                  value={editingName}
-                  onChange={(e) => setEditingName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && save()}
-                  autoFocus
-                />
-              ) : (
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13 }}>{group.name}</div>
-                  <div className="text-muted" style={{ fontSize: 11 }}>Location</div>
-                </div>
-              )}
-              {!isEditing && <span className="tag tag-neutral">{count} screen{count === 1 ? '' : 's'}</span>}
-              {isEditing ? (
-                <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
-                  <Icon name="check" size={13} />
-                </button>
-              ) : (
-                <>
-                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(group.id, group.name, 'group')}>
-                    <Icon name="pencil" size={13} />
+            <div key={group.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                {isEditing ? (
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && save()}
+                    autoFocus
+                  />
+                ) : (
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13 }}>{group.name}</div>
+                    <div className="text-muted" style={{ fontSize: 11 }}>Location</div>
+                  </div>
+                )}
+                {!isEditing && <span className="tag tag-neutral">{screens.length} screen{screens.length === 1 ? '' : 's'}</span>}
+                {isEditing ? (
+                  <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
+                    <Icon name="check" size={13} />
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-icon"
-                    aria-label="Delete"
-                    disabled={cannotDelete}
-                    title={cannotDelete ? 'Remove its screens first' : 'Delete location'}
-                    onClick={() => deleteGroup(group.id)}
-                  >
-                    <Icon name="trash" size={13} />
-                  </button>
-                </>
-              )}
+                ) : (
+                  <>
+                    <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(group.id, group.name, 'group')}>
+                      <Icon name="pencil" size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-icon"
+                      aria-label="Delete"
+                      disabled={cannotDelete}
+                      title={cannotDelete ? 'Remove its screens first' : 'Delete location'}
+                      onClick={() => deleteGroup(group.id)}
+                    >
+                      <Icon name="trash" size={13} />
+                    </button>
+                  </>
+                )}
+              </div>
+              {screens.map((device, idx) => renderScreenRow(device, screens, idx))}
             </div>
           );
         })}
-        {miscDevices.map((device) => {
-          const isEditing = editing?.kind === 'device' && editing.id === device.id;
-          return (
-            <div key={device.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)' }}>
-              {isEditing ? (
-                <input
-                  className="input"
-                  style={{ flex: 1 }}
-                  value={editingName}
-                  onChange={(e) => setEditingName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && save()}
-                  autoFocus
-                />
-              ) : (
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13 }}>{device.name}</div>
-                  <div className="text-muted" style={{ fontSize: 11 }}>Screen · no location</div>
-                </div>
-              )}
-              {isEditing ? (
-                <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
-                  <Icon name="check" size={13} />
-                </button>
-              ) : (
-                <>
-                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(device.id, device.name, 'device')}>
-                    <Icon name="pencil" size={13} />
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeDevice(device.id)}>
-                    <Icon name="trash" size={13} />
-                  </button>
-                </>
-              )}
+        {miscDevices.length > 0 && (
+          <div>
+            <div style={{ padding: '4px 0' }}>
+              <div className="text-muted" style={{ fontSize: 11 }}>No location</div>
             </div>
-          );
-        })}
+            {miscDevices.map((device, idx) => renderScreenRow(device, miscDevices, idx))}
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ gap: 8 }}>

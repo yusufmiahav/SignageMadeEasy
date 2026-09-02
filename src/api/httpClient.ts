@@ -100,6 +100,7 @@ export const httpClient: SignageApiClient = {
   pairDevice: (input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }) =>
     request<Device>('/api/devices/pair', { method: 'POST', ...json(input) }),
   renameDevice: (id, name) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ name }) }),
+  reorderDevices: (ids) => request<void>('/api/devices/reorder', { method: 'PUT', ...json({ ids }) }),
   moveDevice: (id, groupId) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ groupId }) }),
   removeDevice: (id) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
