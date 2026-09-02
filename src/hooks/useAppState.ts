@@ -72,20 +72,23 @@ export function useAppState() {
   const addImage = useCallback(async (file: File, onProgress?: (pct: number) => void) => {
     const item = await api.addImage(file, onProgress);
     await refreshLibrary();
+    showToast(`${item.name} added`);
     return item;
-  }, [refreshLibrary]);
+  }, [refreshLibrary, showToast]);
 
   const addVideo = useCallback(async (file: File, onProgress?: (pct: number) => void) => {
     const item = await api.addVideo(file, onProgress);
     await refreshLibrary();
+    showToast(`${item.name} added`);
     return item;
-  }, [refreshLibrary]);
+  }, [refreshLibrary, showToast]);
 
   const addPdf = useCallback(async (file: File, onProgress?: (pct: number) => void) => {
     const item = await api.addPdf(file, onProgress);
     await refreshLibrary();
+    showToast(`${item.name} added`);
     return item;
-  }, [refreshLibrary]);
+  }, [refreshLibrary, showToast]);
 
   const addAnnouncement = useCallback(async (name: string, text: string) => {
     const item = await api.addAnnouncement(name, text);
