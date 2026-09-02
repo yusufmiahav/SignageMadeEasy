@@ -318,6 +318,8 @@ class LocalStoreClient implements SignageApiClient {
       videoQuality: 'auto',
       forcedContentId: null,
       blackout: false,
+      defaultPlaylist: [],
+      events: [],
     };
     this.data.devices.push(device);
     this.persist();
@@ -358,6 +360,50 @@ class LocalStoreClient implements SignageApiClient {
   async setDeviceBlackout(id: string, blackout: boolean): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device) device.blackout = blackout;
+    this.persist();
+  }
+
+  async setDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    if (device) device.defaultPlaylist = libIds;
+    this.persist();
+  }
+
+  async addToDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    if (device) device.defaultPlaylist = [...device.defaultPlaylist, ...libIds.filter((id) => !device.defaultPlaylist.includes(id))];
+    this.persist();
+  }
+
+  async removeFromDeviceDefaultPlaylist(deviceId: string, libId: string): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    if (device) device.defaultPlaylist = device.defaultPlaylist.filter((id) => id !== libId);
+    this.persist();
+  }
+
+  async reorderDeviceDefaultPlaylist(deviceId: string, libId: string, direction: 'up' | 'down'): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    if (!device) return;
+    const idx = device.defaultPlaylist.indexOf(libId);
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || swapWith < 0 || swapWith >= device.defaultPlaylist.length) return;
+    const list = [...device.defaultPlaylist];
+    [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
+    device.defaultPlaylist = list;
+    this.persist();
+  }
+
+  async addDeviceEvent(deviceId: string, event: Omit<ScheduleEvent, 'id'>): Promise<ScheduleEvent> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    const ev: ScheduleEvent = { id: uid('e'), ...event };
+    if (device) device.events.push(ev);
+    this.persist();
+    return ev;
+  }
+
+  async removeDeviceEvent(deviceId: string, eventId: string): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    if (device) device.events = device.events.filter((e) => e.id !== eventId);
     this.persist();
   }
 

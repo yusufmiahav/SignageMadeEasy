@@ -109,6 +109,13 @@ export const httpClient: SignageApiClient = {
   setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),
   setDeviceForcedContent: (id, libId) => request<void>(`/api/devices/${id}/forced`, { method: 'PUT', ...json({ libId }) }),
   setDeviceBlackout: (id, blackout) => request<void>(`/api/devices/${id}/blackout`, { method: 'PUT', ...json({ blackout }) }),
+  setDeviceDefaultPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/playlist`, { method: 'PUT', ...json({ libIds }) }),
+  addToDeviceDefaultPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/playlist`, { method: 'POST', ...json({ libIds }) }),
+  removeFromDeviceDefaultPlaylist: (deviceId, libId) => request<void>(`/api/devices/${deviceId}/playlist/${libId}`, { method: 'DELETE' }),
+  reorderDeviceDefaultPlaylist: (deviceId, libId, direction) =>
+    request<void>(`/api/devices/${deviceId}/playlist/${libId}/reorder`, { method: 'POST', ...json({ direction }) }),
+  addDeviceEvent: (deviceId, event) => request<ScheduleEvent>(`/api/devices/${deviceId}/events`, { method: 'POST', ...json(event) }),
+  removeDeviceEvent: (deviceId, eventId) => request<void>(`/api/devices/${deviceId}/events/${eventId}`, { method: 'DELETE' }),
 
   // Pairing helpers
   scanNetwork: () => request<DiscoveredDevice[]>('/api/scan'),

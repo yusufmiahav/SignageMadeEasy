@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DialogShell } from './DialogShell';
 import type { AppState } from '../../hooks/useAppState';
+import type { ScheduleEvent } from '../../api/types';
 
 const TYPE_LABEL: Record<string, string> = { image: 'Image', video: 'Video', pdf: 'PDF', announcement: 'Announcement' };
 
@@ -11,12 +12,12 @@ function todayISO(): string {
 
 interface AddEventDialogProps {
   app: AppState;
-  groupId: string;
+  onConfirm: (event: Omit<ScheduleEvent, 'id'>) => Promise<unknown>;
   onClose: () => void;
 }
 
-export function AddEventDialog({ app, groupId, onClose }: AddEventDialogProps) {
-  const { library, addEvent } = app;
+export function AddEventDialog({ app, onConfirm, onClose }: AddEventDialogProps) {
+  const { library } = app;
   const [name, setName] = useState('');
   const [start, setStart] = useState(todayISO());
   const [end, setEnd] = useState(todayISO());
@@ -36,7 +37,7 @@ export function AddEventDialog({ app, groupId, onClose }: AddEventDialogProps) {
   const confirm = async () => {
     if (!name.trim() || !start || !end) return;
     if (!allDay && (!startTime || !endTime)) return;
-    await addEvent(groupId, {
+    await onConfirm({
       name: name.trim(), start, end, libIds: Array.from(checked),
       startTime: allDay ? undefined : startTime,
       endTime: allDay ? undefined : endTime,

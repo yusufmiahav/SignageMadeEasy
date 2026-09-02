@@ -59,13 +59,24 @@ export function nowPlayingItem(group: Group, libraryById: Map<string, LibraryIte
 }
 
 /**
- * A screen with no location has no schedule/default playlist to fall back on —
- * just its own forcedContentId/blackout, the misc-screen equivalents of a
- * location's controls (mirrors hub/src/store.ts's activeContentIdsForDevice).
+ * A screen with no location has no location-level schedule to fall back on, but
+ * does have its own — forcedContentId/blackout (the misc-screen equivalents of a
+ * location's controls), then its own events/defaultPlaylist, same priority order
+ * and time-window matching as activeContentIds above (mirrors
+ * hub/src/store.ts's activeContentIdsForDevice).
  */
-export function activeContentIdsForDevice(device: Device): ActiveContent {
+export function activeContentIdsForDevice(device: Device, now: Date = new Date()): ActiveContent {
   if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
   if (device.forcedContentId) return { ids: [device.forcedContentId], kind: 'forced', label: 'Forced' };
+  const today = toISODate(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const event = device.events.find((e) => {
+    if (today < e.start || today > e.end) return false;
+    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
+    return true;
+  });
+  if (event) return { ids: event.libIds, kind: 'event', label: event.name };
+  if (device.defaultPlaylist.length > 0) return { ids: device.defaultPlaylist, kind: 'default', label: 'Default playlist' };
   return { ids: [], kind: 'default', label: 'No content' };
 }
 
@@ -82,6 +93,13 @@ export function itemsForDate(group: Group, date: string): { ids: string[]; kind:
   const event = group.events.find((e) => date >= e.start && date <= e.end);
   if (event) return { ids: event.libIds, kind: 'event', label: event.name };
   return { ids: group.defaultPlaylist, kind: 'default', label: 'Default playlist' };
+}
+
+/** Mirrors itemsForDate — see Device.events' comment in types.ts. */
+export function itemsForDateForDevice(device: Device, date: string): { ids: string[]; kind: 'event' | 'default'; label: string } {
+  const event = device.events.find((e) => date >= e.start && date <= e.end);
+  if (event) return { ids: event.libIds, kind: 'event', label: event.name };
+  return { ids: device.defaultPlaylist, kind: 'default', label: 'Default playlist' };
 }
 
 // Mirrors hub/src/store.ts's activeAnnouncementId exactly — see its comment for the

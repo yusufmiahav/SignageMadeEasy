@@ -71,6 +71,13 @@ export interface SignageApiClient {
   setDeviceForcedContent(id: string, libId: string | null): Promise<void>;
   /** Misc-screen (no location) equivalent of setGroupBlackout — only meaningful while the device has no groupId. */
   setDeviceBlackout(id: string, blackout: boolean): Promise<void>;
+  /** Misc-screen (no location) equivalents of the location-level default-playlist/event methods above — only meaningful while the device has no groupId. */
+  setDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void>;
+  addToDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void>;
+  removeFromDeviceDefaultPlaylist(deviceId: string, libId: string): Promise<void>;
+  reorderDeviceDefaultPlaylist(deviceId: string, libId: string, direction: 'up' | 'down'): Promise<void>;
+  addDeviceEvent(deviceId: string, event: Omit<ScheduleEvent, 'id'>): Promise<ScheduleEvent>;
+  removeDeviceEvent(deviceId: string, eventId: string): Promise<void>;
 
   // Pairing helpers (simulated placeholders until the hub can do a real LAN scan)
   scanNetwork(): Promise<DiscoveredDevice[]>;

@@ -145,3 +145,48 @@ devicesRouter.put('/:id/blackout', (req, res) => {
   store.setDeviceBlackout(req.params.id, blackout);
   res.status(204).end();
 });
+
+// Misc-screen (no location) equivalents of a location's default-playlist/events
+// scheduling — see Device.defaultPlaylist/events' comments in types.ts. Mirror
+// groups.ts's own playlist/event routes exactly, scoped to a device instead.
+devicesRouter.put('/:id/playlist', (req, res) => {
+  const { libIds } = req.body ?? {};
+  if (!Array.isArray(libIds)) return res.status(400).json({ error: 'libIds must be an array' });
+  store.setDeviceDefaultPlaylist(req.params.id, libIds);
+  res.status(204).end();
+});
+
+devicesRouter.post('/:id/playlist', (req, res) => {
+  const { libIds } = req.body ?? {};
+  if (!Array.isArray(libIds)) return res.status(400).json({ error: 'libIds must be an array' });
+  store.addToDeviceDefaultPlaylist(req.params.id, libIds);
+  res.status(204).end();
+});
+
+devicesRouter.delete('/:id/playlist/:libId', (req, res) => {
+  store.removeFromDeviceDefaultPlaylist(req.params.id, req.params.libId);
+  res.status(204).end();
+});
+
+devicesRouter.post('/:id/playlist/:libId/reorder', (req, res) => {
+  const { direction } = req.body ?? {};
+  if (direction !== 'up' && direction !== 'down') return res.status(400).json({ error: 'direction must be "up" or "down"' });
+  store.reorderDeviceDefaultPlaylist(req.params.id, req.params.libId, direction);
+  res.status(204).end();
+});
+
+devicesRouter.post('/:id/events', (req, res) => {
+  const { name, start, end, libIds, startTime, endTime } = req.body ?? {};
+  if (typeof name !== 'string' || typeof start !== 'string' || typeof end !== 'string' || !Array.isArray(libIds)) {
+    return res.status(400).json({ error: 'name, start, end, libIds are required' });
+  }
+  if ((startTime !== undefined && typeof startTime !== 'string') || (endTime !== undefined && typeof endTime !== 'string')) {
+    return res.status(400).json({ error: 'startTime/endTime must be strings when provided' });
+  }
+  res.status(201).json(store.addDeviceEvent(req.params.id, { name, start, end, libIds, startTime, endTime }));
+});
+
+devicesRouter.delete('/:id/events/:eventId', (req, res) => {
+  store.removeDeviceEvent(req.params.id, req.params.eventId);
+  res.status(204).end();
+});

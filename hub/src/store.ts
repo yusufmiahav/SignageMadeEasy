@@ -95,6 +95,13 @@ export function removeLibraryItem(id: string): void {
   }
   db.prepare('DELETE FROM announcement_schedules WHERE announcementId = ?').run(id);
   db.prepare('UPDATE devices SET announcementId = NULL, announcementOn = 0 WHERE announcementId = ?').run(id);
+  db.prepare('UPDATE devices SET forcedContentId = NULL WHERE forcedContentId = ?').run(id);
+  const devicesWithPlaylist = db.prepare('SELECT id, defaultPlaylist FROM devices').all() as { id: string; defaultPlaylist: string }[];
+  const updateDevicePlaylist = db.prepare('UPDATE devices SET defaultPlaylist = ? WHERE id = ?');
+  for (const d of devicesWithPlaylist) {
+    const playlist: string[] = JSON.parse(d.defaultPlaylist);
+    if (playlist.includes(id)) updateDevicePlaylist.run(JSON.stringify(playlist.filter((x) => x !== id)), d.id);
+  }
   db.prepare('DELETE FROM library WHERE id = ?').run(id);
 }
 
@@ -115,11 +122,20 @@ export function setLibraryItemTags(id: string, tags: string[]): void {
 
 interface GroupRow { id: string; name: string; defaultPlaylist: string; forcedContentId: string | null; forcedAnnouncementId: string | null; blackout: number }
 const GROUP_COLUMNS = 'id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId, blackout';
-interface EventRow { id: string; groupId: string; name: string; start: string; end: string; libIds: string; startTime: string | null; endTime: string | null }
+interface EventRow { id: string; groupId: string | null; deviceId: string | null; name: string; start: string; end: string; libIds: string; startTime: string | null; endTime: string | null }
 interface AnnouncementScheduleRow { id: string; groupId: string; announcementId: string; startDate: string; endDate: string; startTime: string; endTime: string }
 
 function eventsForGroup(groupId: string): ScheduleEvent[] {
-  const rows = db.prepare('SELECT id, groupId, name, start, end, libIds, startTime, endTime FROM events WHERE groupId = ? ORDER BY start ASC').all(groupId) as EventRow[];
+  const rows = db.prepare('SELECT id, groupId, deviceId, name, start, end, libIds, startTime, endTime FROM events WHERE groupId = ? ORDER BY start ASC').all(groupId) as EventRow[];
+  return rows.map((r) => ({
+    id: r.id, name: r.name, start: r.start, end: r.end, libIds: JSON.parse(r.libIds),
+    startTime: r.startTime ?? undefined, endTime: r.endTime ?? undefined,
+  }));
+}
+
+/** Mirrors eventsForGroup — see Device.events' comment in types.ts. */
+function eventsForDevice(deviceId: string): ScheduleEvent[] {
+  const rows = db.prepare('SELECT id, groupId, deviceId, name, start, end, libIds, startTime, endTime FROM events WHERE deviceId = ? ORDER BY start ASC').all(deviceId) as EventRow[];
   return rows.map((r) => ({
     id: r.id, name: r.name, start: r.start, end: r.end, libIds: JSON.parse(r.libIds),
     startTime: r.startTime ?? undefined, endTime: r.endTime ?? undefined,
@@ -211,7 +227,7 @@ export function reorderDefaultPlaylist(groupId: string, libId: string, direction
 
 export function addEvent(groupId: string, event: Omit<ScheduleEvent, 'id'>): ScheduleEvent {
   const id = uid('e');
-  db.prepare('INSERT INTO events (id, groupId, name, start, end, libIds, startTime, endTime) VALUES (?,?,?,?,?,?,?,?)').run(
+  db.prepare('INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime) VALUES (?,?,NULL,?,?,?,?,?,?)').run(
     id, groupId, event.name, event.start, event.end, JSON.stringify(event.libIds), event.startTime ?? null, event.endTime ?? null,
   );
   return { id, ...event };
@@ -246,10 +262,10 @@ interface DeviceRow {
   id: string; name: string; ip: string; mac: string | null; groupId: string | null; announcementId: string | null; announcementOn: number;
   videoQuality: Device['videoQuality']; lastSeenAt: number | null;
   tempC: number | null; throttled: string | null; uptimeSec: number | null; diskFreeMb: number | null; diskTotalMb: number | null;
-  forcedContentId: string | null; blackout: number;
+  forcedContentId: string | null; blackout: number; defaultPlaylist: string;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, forcedContentId, blackout';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, forcedContentId, blackout, defaultPlaylist';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -262,6 +278,7 @@ function rowToDevice(r: DeviceRow): Device {
     status: statusFor(r.lastSeenAt), lastSeenAt: r.lastSeenAt ?? undefined,
     tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
     forcedContentId: r.forcedContentId, blackout: !!r.blackout,
+    defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForDevice(r.id),
   };
 }
 
@@ -288,6 +305,7 @@ export function pairDevice(input: { name: string; ip: string; mac?: string | nul
   return {
     id, name: input.name, ip: input.ip, mac, groupId: input.groupId, announcementId: null, announcementOn: false,
     videoQuality: 'auto', status: statusFor(lastSeenAt), forcedContentId: null, blackout: false,
+    defaultPlaylist: [], events: [],
   };
 }
 
@@ -297,6 +315,47 @@ export function setDeviceForcedContent(id: string, libId: string | null): void {
 
 export function setDeviceBlackout(id: string, blackout: boolean): void {
   db.prepare('UPDATE devices SET blackout = ? WHERE id = ?').run(blackout ? 1 : 0, id);
+}
+
+export function setDeviceDefaultPlaylist(deviceId: string, libIds: string[]): void {
+  db.prepare('UPDATE devices SET defaultPlaylist = ? WHERE id = ?').run(JSON.stringify(libIds), deviceId);
+}
+
+export function addToDeviceDefaultPlaylist(deviceId: string, libIds: string[]): void {
+  const device = getDevice(deviceId);
+  if (!device) return;
+  const merged = [...device.defaultPlaylist, ...libIds.filter((id) => !device.defaultPlaylist.includes(id))];
+  setDeviceDefaultPlaylist(deviceId, merged);
+}
+
+export function removeFromDeviceDefaultPlaylist(deviceId: string, libId: string): void {
+  const device = getDevice(deviceId);
+  if (!device) return;
+  setDeviceDefaultPlaylist(deviceId, device.defaultPlaylist.filter((id) => id !== libId));
+}
+
+export function reorderDeviceDefaultPlaylist(deviceId: string, libId: string, direction: 'up' | 'down'): void {
+  const device = getDevice(deviceId);
+  if (!device) return;
+  const idx = device.defaultPlaylist.indexOf(libId);
+  const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+  if (idx < 0 || swapWith < 0 || swapWith >= device.defaultPlaylist.length) return;
+  const list = [...device.defaultPlaylist];
+  [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
+  setDeviceDefaultPlaylist(deviceId, list);
+}
+
+/** Mirrors addEvent/removeEvent — see Device.events' comment in types.ts. */
+export function addDeviceEvent(deviceId: string, event: Omit<ScheduleEvent, 'id'>): ScheduleEvent {
+  const id = uid('e');
+  db.prepare('INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime) VALUES (?,NULL,?,?,?,?,?,?,?)').run(
+    id, deviceId, event.name, event.start, event.end, JSON.stringify(event.libIds), event.startTime ?? null, event.endTime ?? null,
+  );
+  return { id, ...event };
+}
+
+export function removeDeviceEvent(deviceId: string, eventId: string): void {
+  db.prepare('DELETE FROM events WHERE id = ? AND deviceId = ?').run(eventId, deviceId);
 }
 
 export function setDeviceVideoQuality(id: string, videoQuality: Device['videoQuality']): void {
@@ -428,12 +487,23 @@ export function activeAnnouncementId(group: Group, now: Date = new Date()): stri
   return active?.announcementId ?? null;
 }
 
-// A screen not assigned to any location has no schedule/default playlist to fall
-// back on — just its own forcedContentId/blackout, the misc-screen equivalents of
-// a location's controls (see Device.forcedContentId's comment in types.ts).
-function activeContentIdsForDevice(device: Device): { ids: string[]; kind: 'blackout' | 'forced' | 'default'; label: string } {
+// A screen not assigned to any location has no location-level schedule to fall back
+// on, but does have its own — forcedContentId/blackout (the misc-screen equivalents
+// of a location's controls, see Device.forcedContentId's comment in types.ts), then
+// its own events/defaultPlaylist, same priority order and time-window matching as
+// activeContentIds above.
+function activeContentIdsForDevice(device: Device, now: Date = new Date()): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
   if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
   if (device.forcedContentId) return { ids: [device.forcedContentId], kind: 'forced', label: 'Forced' };
+  const today = toISODate(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const event = device.events.find((e) => {
+    if (today < e.start || today > e.end) return false;
+    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
+    return true;
+  });
+  if (event) return { ids: event.libIds, kind: 'event', label: event.name };
+  if (device.defaultPlaylist.length > 0) return { ids: device.defaultPlaylist, kind: 'default', label: 'Default playlist' };
   return { ids: [], kind: 'default', label: 'No content' };
 }
 
@@ -541,7 +611,7 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
     'INSERT INTO groups_ (id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId, sortOrder, blackout) VALUES (@id,@name,@defaultPlaylist,@forcedContentId,@forcedAnnouncementId,@sortOrder,@blackout)',
   );
   const insertEvent = db.prepare(
-    'INSERT INTO events (id, groupId, name, start, end, libIds, startTime, endTime) VALUES (@id,@groupId,@name,@start,@end,@libIds,@startTime,@endTime)',
+    'INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime) VALUES (@id,@groupId,@deviceId,@name,@start,@end,@libIds,@startTime,@endTime)',
   );
   const insertAnnSchedule = db.prepare(
     'INSERT INTO announcement_schedules (id, groupId, announcementId, startDate, endDate, startTime, endTime) VALUES (@id,@groupId,@announcementId,@startDate,@endDate,@startTime,@endTime)',
@@ -554,7 +624,7 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
     });
     for (const event of group.events) {
       insertEvent.run({
-        id: event.id, groupId: group.id, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds),
+        id: event.id, groupId: group.id, deviceId: null, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds),
         startTime: event.startTime ?? null, endTime: event.endTime ?? null,
       });
     }
@@ -567,14 +637,21 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   });
 
   const insertDevice = db.prepare(
-    'INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedContentId, blackout) ' +
-    'VALUES (@id,@name,@ip,@mac,@groupId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedContentId,@blackout)',
+    'INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedContentId, blackout, defaultPlaylist, sortOrder) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedContentId,@blackout,@defaultPlaylist,@sortOrder)',
   );
-  for (const device of backup.devices) {
+  backup.devices.forEach((device, i) => {
     insertDevice.run({
       id: device.id, name: device.name, ip: device.ip, mac: device.mac, groupId: device.groupId,
       announcementId: device.announcementId, announcementOn: device.announcementOn ? 1 : 0, videoQuality: device.videoQuality,
       forcedContentId: device.forcedContentId ?? null, blackout: device.blackout ? 1 : 0,
+      defaultPlaylist: JSON.stringify(device.defaultPlaylist ?? []), sortOrder: i,
     });
-  }
+    for (const event of device.events ?? []) {
+      insertEvent.run({
+        id: event.id, groupId: null, deviceId: device.id, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds),
+        startTime: event.startTime ?? null, endTime: event.endTime ?? null,
+      });
+    }
+  });
 });

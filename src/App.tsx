@@ -34,6 +34,9 @@ type DialogState =
   | { type: 'uploadContent' }
   | { type: 'addContent'; groupId: string }
   | { type: 'addEvent'; groupId: string }
+  /** Same two dialogs, scoped to a single misc screen (no location) instead of a location. */
+  | { type: 'addContentDevice'; deviceId: string }
+  | { type: 'addEventDevice'; deviceId: string }
   | { type: 'addAnnouncement' }
   | { type: 'announcementPicker'; device: Device }
   | { type: 'moveDevice'; device: Device }
@@ -111,6 +114,8 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             app={app}
             onOpenAddContent={(groupId) => setDialog({ type: 'addContent', groupId })}
             onOpenAddEvent={(groupId) => setDialog({ type: 'addEvent', groupId })}
+            onOpenAddContentDevice={(deviceId) => setDialog({ type: 'addContentDevice', deviceId })}
+            onOpenAddEventDevice={(deviceId) => setDialog({ type: 'addEventDevice', deviceId })}
             onPreviewContent={(item) => setDialog({ type: 'preview', item })}
           />
         )}
@@ -146,8 +151,28 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       )}
       {dialog?.type === 'addLocation' && <AddLocationDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'uploadContent' && <UploadContentDialog app={app} onClose={closeDialog} />}
-      {dialog?.type === 'addContent' && <AddContentDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
-      {dialog?.type === 'addEvent' && <AddEventDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
+      {dialog?.type === 'addContent' && (
+        <AddContentDialog
+          app={app}
+          alreadyIncludedIds={app.groups.find((g) => g.id === dialog.groupId)?.defaultPlaylist ?? []}
+          onConfirm={(ids) => app.addToDefaultPlaylist(dialog.groupId, ids)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'addEvent' && (
+        <AddEventDialog app={app} onConfirm={(event) => app.addEvent(dialog.groupId, event)} onClose={closeDialog} />
+      )}
+      {dialog?.type === 'addContentDevice' && (
+        <AddContentDialog
+          app={app}
+          alreadyIncludedIds={app.devices.find((d) => d.id === dialog.deviceId)?.defaultPlaylist ?? []}
+          onConfirm={(ids) => app.addToDeviceDefaultPlaylist(dialog.deviceId, ids)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'addEventDevice' && (
+        <AddEventDialog app={app} onConfirm={(event) => app.addDeviceEvent(dialog.deviceId, event)} onClose={closeDialog} />
+      )}
       {dialog?.type === 'addAnnouncement' && <AddAnnouncementDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'announcementPicker' && <AnnouncementPickerDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'moveDevice' && <MoveDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
