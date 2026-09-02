@@ -58,6 +58,8 @@ export interface SignageApiClient {
   /** `groupId: null` pairs it with no location yet ("misc" screen, assignable later). */
   pairDevice(input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }): Promise<Device>;
   renameDevice(id: string, name: string): Promise<void>;
+  /** Persists a reorder of screens shown under one location (or the misc/no-location list) on Settings/Home/Schedule — the complete new display order for that one scope, not a global list. */
+  reorderDevices(ids: string[]): Promise<void>;
   /** `groupId: null` unassigns it — a legitimate end state, not just an intermediate one. */
   moveDevice(id: string, groupId: string | null): Promise<void>;
   removeDevice(id: string): Promise<void>;

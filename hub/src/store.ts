@@ -266,7 +266,7 @@ function rowToDevice(r: DeviceRow): Device {
 }
 
 export function listDevices(): Device[] {
-  const rows = db.prepare(`SELECT ${DEVICE_COLUMNS} FROM devices ORDER BY rowid ASC`).all() as DeviceRow[];
+  const rows = db.prepare(`SELECT ${DEVICE_COLUMNS} FROM devices ORDER BY sortOrder ASC, rowid ASC`).all() as DeviceRow[];
   return rows.map(rowToDevice);
 }
 
@@ -279,7 +279,12 @@ export function pairDevice(input: { name: string; ip: string; mac?: string | nul
   const id = uid('d');
   const lastSeenAt = input.status === 'offline' ? null : Date.now();
   const mac = input.mac ?? null;
-  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt) VALUES (?,?,?,?,?,?,0,?,?)').run(id, input.name, input.ip, mac, input.groupId, null, 'auto', lastSeenAt);
+  // Scoped to this device's own location (or the misc/no-location bucket, via IS —
+  // SQLite's null-safe equality — for a null groupId) since sortOrder is only ever
+  // compared within that scope; MAX ignores other locations' devices entirely, so a
+  // new screen always lands last in ITS list, not last globally.
+  const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM devices WHERE groupId IS ?').get(input.groupId) as { n: number }).n;
+  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, sortOrder) VALUES (?,?,?,?,?,?,0,?,?,?)').run(id, input.name, input.ip, mac, input.groupId, null, 'auto', lastSeenAt, nextOrder);
   return {
     id, name: input.name, ip: input.ip, mac, groupId: input.groupId, announcementId: null, announcementOn: false,
     videoQuality: 'auto', status: statusFor(lastSeenAt), forcedContentId: null, blackout: false,
@@ -298,13 +303,30 @@ export function setDeviceVideoQuality(id: string, videoQuality: Device['videoQua
   db.prepare('UPDATE devices SET videoQuality = ? WHERE id = ?').run(videoQuality, id);
 }
 
+/**
+ * Persists a reorder of screens shown under one location (or the misc/no-location
+ * list) on Settings/Home — unlike reorderLibrary/reorderGroups, `ids` is expected to
+ * already be the complete set of devices in that one scope, not a global list, so
+ * there's no "remaining" bucket to append: sortOrder only ever gets compared within
+ * a single groupId anyway (see listDevices' ORDER BY), so devices outside `ids`
+ * belong to a different scope entirely and must not be touched here.
+ */
+export const reorderDevices = db.transaction((ids: string[]): void => {
+  const setOrder = db.prepare('UPDATE devices SET sortOrder = ? WHERE id = ?');
+  ids.forEach((id, i) => setOrder.run(i, id));
+});
+
 export function renameDevice(id: string, name: string): void {
   if (!name.trim()) return;
   db.prepare('UPDATE devices SET name = ? WHERE id = ?').run(name.trim(), id);
 }
 
 export function moveDevice(id: string, groupId: string | null): void {
-  db.prepare('UPDATE devices SET groupId = ? WHERE id = ?').run(groupId, id);
+  // Lands last in the target location's (or misc list's) own order, same reasoning
+  // as pairDevice's nextOrder — its old sortOrder value is meaningless once it's
+  // scoped to a different groupId bucket.
+  const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM devices WHERE groupId IS ?').get(groupId) as { n: number }).n;
+  db.prepare('UPDATE devices SET groupId = ?, sortOrder = ? WHERE id = ?').run(groupId, nextOrder, id);
 }
 
 export function removeDevice(id: string): void {

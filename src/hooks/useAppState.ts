@@ -302,6 +302,11 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
+  const reorderDevices = useCallback(async (ids: string[]) => {
+    await api.reorderDevices(ids);
+    await refreshDevices();
+  }, [refreshDevices]);
+
   const setDeviceForcedContent = useCallback(async (id: string, libId: string | null) => {
     await api.setDeviceForcedContent(id, libId);
     await refreshDevices();
@@ -386,6 +391,7 @@ export function useAppState() {
     pairDevice,
     renameDevice,
     moveDevice,
+    reorderDevices,
     removeDevice,
     restartDevice,
     setDeviceAnnouncement,

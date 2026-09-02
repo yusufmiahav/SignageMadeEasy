@@ -336,6 +336,19 @@ class LocalStoreClient implements SignageApiClient {
     this.persist();
   }
 
+  // `ids` is expected to be the complete set of devices in one scope (one location, or
+  // the misc/no-location list) — same contract as the hub's store.reorderDevices. Slot
+  // each id from the reorder into that device's old array position so devices outside
+  // this scope (a different location entirely) keep their own position untouched.
+  async reorderDevices(ids: string[]): Promise<void> {
+    const byId = new Map(this.data.devices.map((d) => [d.id, d]));
+    const idSet = new Set(ids);
+    const reordered = ids.map((id) => byId.get(id)).filter((d): d is Device => !!d);
+    let cursor = 0;
+    this.data.devices = this.data.devices.map((d) => (idSet.has(d.id) ? reordered[cursor++] : d));
+    this.persist();
+  }
+
   async setDeviceForcedContent(id: string, libId: string | null): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device) device.forcedContentId = libId;
