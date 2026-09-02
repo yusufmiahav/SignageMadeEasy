@@ -131,6 +131,25 @@ login session exists at all — no race to lose. `signage-kiosk.service`'s
 path rather than trusting `pam_systemd`'s per-invocation injection to land in
 time. Re-run `provision.sh` and reboot to pick it up.
 
+**The boot splash never appears — you just see plain `[ OK ] Starting...` text
+scrolling instead**, even though the theme is installed and set as default,
+`splash quiet` is present in `cmdline.txt`, `dtoverlay=vc4-kms-v3d` is present,
+and `journalctl -u plymouth-start.service` shows a clean start with no errors.
+Root-caused via `plymouth.debug=file:/var/log/plymouth-debug.log` on the kernel
+command line (temporary, real-hardware-only diagnostic) and reading the
+resulting log: Plymouth detected a serial console (`/dev/ttyS0`, alongside the
+real HDMI `/dev/tty1`) and logged `"serial consoles detected, managing them
+with details forced"` — it hardcodes a fallback to its plain-text "details"
+plugin whenever a serial console is present, regardless of what theme is
+configured. That plain-text output *is* the `[ OK ] Starting...` text you're
+seeing; every other prerequisite was genuinely fine, Plymouth just never loaded
+our theme at all. Raspberry Pi OS's default `cmdline.txt` sets `console=serial0,...`
+(or `ttyS0`/`ttyAMA0` depending on model/overlay) alongside `console=tty1`
+together, and this isn't something `plymouthd.conf` can override — the fix is
+removing the serial console entry, which `provision.sh` now does automatically.
+This trades away UART-cable boot debugging, which isn't used on a deployed
+kiosk with HDMI + SSH available. Re-run `provision.sh` and reboot to pick it up.
+
 **Deleting a screen in the control app doesn't disconnect it / the Pi still shows
 "connected".** Fixed in the hub/Pi-player pairing logic — the hub now pushes an
 immediate unpair to the Pi, and the Pi's own poller self-unpairs within one cycle
