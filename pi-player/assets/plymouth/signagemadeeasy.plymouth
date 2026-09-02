@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=SignageMadeEasy
+Description=SignageMadeEasy boot splash — white background, wordmark, small corner spinner
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/signagemadeeasy
+ScriptFile=/usr/share/plymouth/themes/signagemadeeasy/signagemadeeasy.script

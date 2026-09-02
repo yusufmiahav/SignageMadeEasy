@@ -14,6 +14,15 @@ export interface LibraryItem {
   thumb?: string;
   /** Message body. Announcements only. */
   text?: string;
+  /** Videos only — the original, untouched upload. `thumb` holds the resolution-capped copy once one exists (see transcodeStatus); screens set to "full resolution" (Device.videoQuality) are served this instead. */
+  fullUrl?: string;
+  /**
+   * Videos only. 'processing': the hub is capping this video in the background right
+   * now — 'done': a capped copy exists. 'skipped': the source was already small
+   * enough, nothing to wait for. 'failed': capping errored; playback falls back to
+   * the original, same as 'skipped'.
+   */
+  transcodeStatus?: 'processing' | 'done' | 'skipped' | 'failed';
 }
 
 export interface ScheduleEvent {
@@ -57,13 +66,38 @@ export interface Device {
   id: string;
   name: string;
   ip: string;
+  /** Captured once at pairing time from the Pi's own agent. Null for a screen paired before this existed, one paired while offline, or any device in standalone/localStorage mode (no real Pi to ask). */
+  mac: string | null;
   status: DeviceStatus;
   groupId: string;
   announcementId: string | null;
   announcementOn: boolean;
+  /**
+   * Which copy of a video this screen is served. 'auto' (default): the resolution-capped
+   * copy, sized for a Pi 3B+'s hardware decoder — right for most screens. 'full': always
+   * the original upload, for a screen on more capable hardware (Pi 4/5) or a lower-res
+   * display where the cap buys nothing.
+   */
+  videoQuality: 'auto' | 'full';
+  /** Reported by the Pi's own poller alongside every heartbeat — undefined for a device that's never sent one yet, or any device in standalone/localStorage mode (no real Pi to ask). */
+  tempC?: number | null;
+  /** Raw hex string from `vcgencmd get_throttled` — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot." */
+  throttled?: string | null;
+  uptimeSec?: number | null;
+  diskFreeMb?: number | null;
+  diskTotalMb?: number | null;
 }
 
 export interface AppData {
+  library: LibraryItem[];
+  groups: Group[];
+  devices: Device[];
+}
+
+/** A full config snapshot — everything except the uploaded media files themselves (not JSON-portable). See Settings → Device inventory / backup. */
+export interface Backup {
+  version: 1;
+  exportedAt: string;
   library: LibraryItem[];
   groups: Group[];
   devices: Device[];

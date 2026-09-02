@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, AppData, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -132,6 +132,14 @@ class LocalStoreClient implements SignageApiClient {
     this.persist();
   }
 
+  async reorderLibrary(ids: string[]): Promise<void> {
+    const byId = new Map(this.data.library.map((item) => [item.id, item]));
+    const reordered = ids.map((id) => byId.get(id)).filter((i): i is LibraryItem => !!i);
+    const remaining = this.data.library.filter((item) => !ids.includes(item.id));
+    this.data.library = [...reordered, ...remaining];
+    this.persist();
+  }
+
   async removeLibraryItem(id: string): Promise<void> {
     this.data.library = this.data.library.filter((i) => i.id !== id);
     for (const g of this.data.groups) {
@@ -261,10 +269,12 @@ class LocalStoreClient implements SignageApiClient {
       id: uid('d'),
       name: input.name,
       ip: input.ip,
+      mac: null,
       status: input.status ?? 'online',
       groupId: input.groupId,
       announcementId: null,
       announcementOn: false,
+      videoQuality: 'auto',
     };
     this.data.devices.push(device);
     this.persist();
@@ -304,6 +314,22 @@ class LocalStoreClient implements SignageApiClient {
   async toggleDeviceAnnouncement(id: string): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device && device.announcementId) device.announcementOn = !device.announcementOn;
+    this.persist();
+  }
+
+  async setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === id);
+    if (device) device.videoQuality = videoQuality;
+    this.persist();
+  }
+
+  // ---- Backup / restore ----
+  async exportBackup(): Promise<Backup> {
+    return { version: 1, exportedAt: new Date().toISOString(), library: [...this.data.library], groups: [...this.data.groups], devices: [...this.data.devices] };
+  }
+
+  async importBackup(backup: Backup): Promise<void> {
+    this.data = { library: backup.library, groups: backup.groups, devices: backup.devices };
     this.persist();
   }
 

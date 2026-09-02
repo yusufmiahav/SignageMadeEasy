@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppShell, type Tab } from './components/layout/AppShell';
 import { HomeScreen } from './screens/HomeScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
@@ -17,8 +17,11 @@ import { ForceAnnouncementDialog } from './components/dialogs/ForceAnnouncementD
 import { AddAnnouncementScheduleDialog } from './components/dialogs/AddAnnouncementScheduleDialog';
 import { MoveDeviceDialog } from './components/dialogs/MoveDeviceDialog';
 import { ForceContentDialog } from './components/dialogs/ForceContentDialog';
+import { ContentPreviewDialog } from './components/dialogs/ContentPreviewDialog';
+import { LoginScreen } from './screens/LoginScreen';
 import { useAppState } from './hooks/useAppState';
-import type { Device } from './api/types';
+import { checkAuthStatus } from './api/auth';
+import type { Device, LibraryItem } from './api/types';
 
 type DialogState =
   | { type: 'pair' }
@@ -33,9 +36,27 @@ type DialogState =
   | { type: 'forceContent'; groupId: string | null }
   | { type: 'forceAnnouncement'; groupId: string | null }
   | { type: 'addAnnouncementSchedule'; groupId: string }
+  | { type: 'preview'; item: LibraryItem }
   | null;
 
 export default function App() {
+  // Gated a level above useAppState (rather than inside it) so an unauthenticated
+  // session never even starts fetching library/groups/devices — those calls would
+  // just 401 (see hub/src/auth.ts) and leave useAppState's initial Promise.all stuck
+  // rejected, with app.loaded never flipping true.
+  const [authed, setAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void checkAuthStatus().then(setAuthed);
+  }, []);
+
+  if (authed === null) return null;
+  if (!authed) return <LoginScreen onSuccess={() => setAuthed(true)} />;
+
+  return <AuthenticatedApp onLogout={() => setAuthed(false)} />;
+}
+
+function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   const app = useAppState();
   const [tab, setTab] = useState<Tab>('home');
   const [dialog, setDialog] = useState<DialogState>(null);
@@ -58,6 +79,7 @@ export default function App() {
             onForceAnnouncementAllScreens={() => setDialog({ type: 'forceAnnouncement', groupId: null })}
             onMoveDevice={(device) => setDialog({ type: 'moveDevice', device })}
             onPickAnnouncement={(device) => setDialog({ type: 'announcementPicker', device })}
+            onPreviewContent={(item) => setDialog({ type: 'preview', item })}
           />
         )}
         {tab === 'library' && (
@@ -68,6 +90,7 @@ export default function App() {
             app={app}
             onOpenAddContent={(groupId) => setDialog({ type: 'addContent', groupId })}
             onOpenAddEvent={(groupId) => setDialog({ type: 'addEvent', groupId })}
+            onPreviewContent={(item) => setDialog({ type: 'preview', item })}
           />
         )}
         {tab === 'announcements' && (
@@ -77,7 +100,7 @@ export default function App() {
             onOpenAddSchedule={(groupId) => setDialog({ type: 'addAnnouncementSchedule', groupId })}
           />
         )}
-        {tab === 'settings' && <SettingsScreen app={app} />}
+        {tab === 'settings' && <SettingsScreen app={app} onLogout={onLogout} />}
       </AppShell>
 
       {dialog?.type === 'pair' && <PairDeviceDialog app={app} onClose={closeDialog} />}
@@ -115,6 +138,7 @@ export default function App() {
         />
       )}
       {dialog?.type === 'addAnnouncementSchedule' && <AddAnnouncementScheduleDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
+      {dialog?.type === 'preview' && <ContentPreviewDialog item={dialog.item} onClose={closeDialog} />}
 
       <Toast message={app.toast} />
     </>

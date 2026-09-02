@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { DialogShell } from './DialogShell';
 import { Icon } from '../icons/Icon';
+import { QrScanner } from '../QrScanner';
 import type { AppState } from '../../hooks/useAppState';
 
 type PairMode = 'scan' | 'qr' | 'manual';
@@ -18,6 +19,17 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   const [scanning, setScanning] = useState(false);
   const [discovered, setDiscovered] = useState<{ id: string; name: string; ip: string }[]>([]);
   const [manualIp, setManualIp] = useState('');
+  // Pairing can take a few seconds when the target IP is unreachable (the hub's own
+  // identify() call waits out a timeout before giving up and pairing offline — see
+  // hub/src/piAgent.ts) - most noticeable trying to pair a screen on a separate,
+  // unroutable IP network. Without this the button just sits there with no feedback,
+  // which reads as the UI having hung rather than as a normal, if slow, wait.
+  const [pairingIp, setPairingIp] = useState<string | null>(null);
+  // QrScanner calls onScan on every frame the code is still in view, not just once —
+  // this ref (synchronous, unlike the pairingIp state) stops a burst of frames
+  // decoded before the first pairFound() call's state update lands from firing
+  // pairDevice() more than once for the same scan.
+  const qrScanLockRef = useRef(false);
 
   const isNewGroup = groupId === '__new__';
 
@@ -43,30 +55,39 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   };
 
   const pairFound = async (found: { id: string; name: string; ip: string }) => {
-    const gid = await resolveGroupId();
+    setPairingIp(found.ip);
     try {
+      const gid = await resolveGroupId();
       await pairDevice({ name: found.name, ip: found.ip, groupId: gid });
       showToast(`Paired ${found.name}`);
       onClose();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not pair that display');
+    } finally {
+      setPairingIp(null);
     }
   };
 
-  const simulateQrScan = () => {
-    const ip = `192.168.1.${20 + Math.floor(Math.random() * 200)}`;
-    void pairFound({ id: 'qr', name: 'Scanned Display', ip });
+  const handleQrScan = (ip: string) => {
+    if (qrScanLockRef.current) return;
+    qrScanLockRef.current = true;
+    void pairFound({ id: 'qr', name: 'Scanned Display', ip }).finally(() => {
+      qrScanLockRef.current = false;
+    });
   };
 
   const connectManual = async () => {
     if (!manualIp) return;
-    const gid = await resolveGroupId();
+    setPairingIp(manualIp);
     try {
+      const gid = await resolveGroupId();
       await pairDevice({ name: 'Display', ip: manualIp, groupId: gid });
       showToast(`Connected to ${manualIp}`);
       onClose();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not pair that display');
+    } finally {
+      setPairingIp(null);
     }
   };
 
@@ -115,7 +136,9 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
                 <div style={{ fontWeight: 600, fontSize: 13 }}>{found.name}</div>
                 <div className="text-muted" style={{ fontSize: 12 }}>{found.ip}</div>
               </div>
-              <button type="button" className="btn btn-secondary" onClick={() => void pairFound(found)}>Pair</button>
+              <button type="button" className="btn btn-secondary" disabled={pairingIp === found.ip} onClick={() => void pairFound(found)}>
+                {pairingIp === found.ip ? 'Pairing…' : 'Pair'}
+              </button>
             </div>
           ))}
           <button type="button" className="btn btn-ghost" style={{ alignSelf: 'flex-start', marginTop: 6 }} onClick={startScan}>Scan again</button>
@@ -124,14 +147,10 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
 
       {mode === 'qr' && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '6px 0' }}>
-          <div className="qr-viewfinder">
-            <span className="qr-corner tl" />
-            <span className="qr-corner tr" />
-            <span className="qr-corner bl" />
-            <span className="qr-corner br" />
-          </div>
-          <p className="text-muted" style={{ margin: 0, textAlign: 'center', fontSize: 13 }}>Point your camera at the code shown on the display when it boots.</p>
-          <button type="button" className="btn btn-secondary" onClick={simulateQrScan}>Simulate scan</button>
+          <QrScanner onScan={handleQrScan} />
+          <p className="text-muted" style={{ margin: 0, textAlign: 'center', fontSize: 13 }}>
+            {pairingIp !== null ? 'Pairing…' : 'Point your camera at the code shown on the display when it boots.'}
+          </p>
         </div>
       )}
 
@@ -141,8 +160,13 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
             <label htmlFor="manual-ip">Display IP address</label>
             <input className="input" id="manual-ip" placeholder="192.168.1.42" value={manualIp} onChange={(e) => setManualIp(e.target.value)} />
           </div>
-          <button type="button" className="btn btn-primary btn-block" onClick={() => void connectManual()}>Connect</button>
-          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>This IP is shown on the display's screen right after it boots.</p>
+          <button type="button" className="btn btn-primary btn-block" disabled={pairingIp === manualIp && pairingIp !== null} onClick={() => void connectManual()}>
+            {pairingIp === manualIp && pairingIp !== null ? 'Connecting…' : 'Connect'}
+          </button>
+          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
+            This IP is shown on the display's screen right after it boots.
+            {pairingIp === manualIp && pairingIp !== null && ' Trying to reach it now — this can take a few seconds if it\'s unreachable.'}
+          </p>
         </>
       )}
     </DialogShell>

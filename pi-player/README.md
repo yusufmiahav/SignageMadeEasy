@@ -117,6 +117,41 @@ whatever was there before, and "Clear local content" removes it. The instant
 the hub has real content to serve again, the player switches back to it
 automatically; local content never needs to be manually turned off.
 
+## Static IP or DHCP
+
+Same setup page, an "IP address" section: DHCP (the default) or a static
+IP/gateway/DNS for whichever connection — ethernet or Wi-Fi — currently holds
+this Pi's default route. Applies immediately via `nmcli`, which can drop the
+page's own connection mid-request if you're viewing it over the same network
+being reconfigured — that's expected; reload at the new address if you set one.
+
+## Performance: running without a heatsink
+
+Also on the setup page, a "Performance" toggle caps the ARM clock to 1200MHz
+(`arm_freq` in `/boot/config.txt`/`/boot/firmware/config.txt`) to run cooler on
+a bare Pi 3B+ with no heatsink, at the cost of some CPU headroom. Only takes
+effect on reboot — the page shows a "Reboot required" prompt with a one-click
+reboot button whenever the on-disk setting and what's actually running at the
+moment disagree. Check `vcgencmd get_throttled` and `vcgencmd measure_temp`
+before and after to see whether it actually helped your specific setup.
+
+## Boot splash
+
+Raw kernel/systemd boot text is replaced with a plain white screen, the
+"SignageMadeEasy" wordmark, and a small spinner in the corner (`assets/plymouth/`) —
+installed as a Plymouth theme and set as default automatically by `provision.sh`,
+with `splash quiet` added to the kernel command line so the console text is actually
+suppressed rather than just shown behind the splash. Its syntax was checked against
+real, working Plymouth themes, but **this hasn't been confirmed on real hardware** —
+there's no way to render a boot splash in a sandbox with no kernel framebuffer. If it
+looks wrong, doesn't appear, or (worse) affects boot reliability, revert with:
+
+```bash
+sudo plymouth-set-default-theme pix -R   # or whatever theme `plymouth-set-default-theme --list` shows was default before
+sudo sed -i 's/ splash quiet//' /boot/firmware/cmdline.txt   # or /boot/cmdline.txt
+sudo reboot
+```
+
 ## Local development / testing (not on real Pi hardware)
 
 ```bash

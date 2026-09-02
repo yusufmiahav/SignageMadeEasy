@@ -31,7 +31,7 @@ log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  cage curl ca-certificates git rsync mpv
+  cage curl ca-certificates git rsync mpv plymouth plymouth-themes
 
 # ydotool/ydotoold (used to warp the cursor off-screen — see signage-kiosk.service,
 # the part actually confirmed on real hardware to hide it) aren't in every
@@ -125,6 +125,20 @@ rm -f "$SUDOERS_TMP"
 log "Fetching SignageMadeEasy"
 mkdir -p "$INSTALL_DIR"
 if [[ -d "$INSTALL_DIR/src/.git" ]]; then
+  # A pre-fix version of this script recursively chowned all of $INSTALL_DIR
+  # (src/ included) to $SIGNAGE_USER. That's since been narrowed below to leave
+  # src/ root-owned, but that narrowing can't undo ownership a Pi already picked
+  # up from an earlier bad run — and root's own `git pull` trips the same
+  # dubious-ownership safety check any other mismatched user would, permanently
+  # wedging every future re-run at this exact step (confirmed on real hardware:
+  # the checkout stayed on a commit from months earlier despite repeated
+  # re-provisioning). Both lines are idempotent and harmless when ownership is
+  # already correct, so they run unconditionally rather than only when something
+  # looks wrong.
+  chown -R root:root "$INSTALL_DIR/src"
+  if ! git config --global --get-all safe.directory | grep -qx "$INSTALL_DIR/src"; then
+    git config --global --add safe.directory "$INSTALL_DIR/src"
+  fi
   git -C "$INSTALL_DIR/src" pull --ff-only
 elif [[ -f "$(dirname "$0")/../pi-player/package.json" ]]; then
   # Already running from inside a checkout — use it directly rather than re-cloning.
@@ -133,8 +147,9 @@ else
   # --depth implies --single-branch unless told otherwise: without --no-single-branch
   # here, this clone only ever tracks whatever branch was checked out at clone time,
   # and a later `git fetch origin` + `git checkout <other-branch>` fails outright with
-  # "pathspec did not match" since the remote branch was never fetchable at all —
-  # confirmed on real hardware switching a provisioned Pi to a different branch.
+  # "pathspec did not match any file(s) known to git" since the remote branch was
+  # never fetchable at all — confirmed on a real Pi trying to switch onto a different
+  # branch after being provisioned once already.
   git clone --depth 1 --no-single-branch "$REPO_URL" "$INSTALL_DIR/src"
 fi
 
@@ -155,6 +170,36 @@ chown "$SIGNAGE_USER:$SIGNAGE_USER" "$INSTALL_DIR"
 chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$APP_DIR"
 
 # ---------------------------------------------------------------------------
+log "Installing the underclock toggle script (root-owned — see pi-player/src/underclock.ts)"
+# Deliberately NOT under $APP_DIR: that whole tree is chowned to $SIGNAGE_USER
+# above, and $SIGNAGE_USER can invoke this script via the sudoers grant below —
+# if $SIGNAGE_USER could also edit the script it runs as root, that grant would
+# be a straight path to arbitrary root access instead of the one fixed on/off
+# toggle it's meant to be.
+mkdir -p /opt/signage/bin
+install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/set-underclock.sh" /opt/signage/bin/set-underclock.sh
+
+# ---------------------------------------------------------------------------
+log "Granting $SIGNAGE_USER passwordless access to the underclock script and reboot"
+# Same reasoning and same visudo-validate-before-install pattern as the nmcli grant
+# above: narrow, specific, fixed commands only — never a blanket NOPASSWD:ALL.
+# reboot's real path varies across Raspberry Pi OS releases (merged-/usr or not) —
+# resolved here rather than hardcoded, same as $CHROMIUM_BIN above.
+REBOOT_BIN="$(command -v reboot)"
+SUDOERS_TMP="$(mktemp)"
+{
+  echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /opt/signage/bin/set-underclock.sh"
+  echo "$SIGNAGE_USER ALL=(root) NOPASSWD: $REBOOT_BIN"
+} > "$SUDOERS_TMP"
+if visudo -c -f "$SUDOERS_TMP" >/dev/null 2>&1; then
+  install -m 440 "$SUDOERS_TMP" /etc/sudoers.d/signage-underclock
+else
+  echo "Generated underclock sudoers rule failed validation — skipping. The" >&2
+  echo "underclock toggle and reboot-from-the-setup-page won't work without it." >&2
+fi
+rm -f "$SUDOERS_TMP"
+
+# ---------------------------------------------------------------------------
 log "Installing a blank cursor theme"
 # cage always draws *a* cursor with no direct API to suppress it — but it does
 # receive XCURSOR_THEME/XCURSOR_SIZE (confirmed via /proc/<pid>/environ on real
@@ -172,6 +217,30 @@ cat > "$SIGNAGE_HOME/.icons/blank/index.theme" <<'EOF'
 Name=blank
 EOF
 chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$SIGNAGE_HOME/.icons"
+
+# ---------------------------------------------------------------------------
+log "Installing the SignageMadeEasy boot splash (Plymouth)"
+# Replaces the raw kernel/systemd boot text with a plain white screen, wordmark, and
+# small corner spinner — see assets/plymouth/signagemadeeasy.script. Its syntax was
+# checked against real, working Plymouth themes, but this sandbox has no way to
+# actually render a boot splash (no kernel framebuffer/DRM to test against), so this
+# still needs a real-hardware look before trusting it fully. Wrapped so a failure
+# here (initramfs tooling issue, disk space, etc.) can't take the rest of
+# provisioning down with it — same reasoning as the ydotool install above.
+mkdir -p /usr/share/plymouth/themes/signagemadeeasy
+cp "$APP_DIR/assets/plymouth/signagemadeeasy.plymouth" /usr/share/plymouth/themes/signagemadeeasy/
+cp "$APP_DIR/assets/plymouth/signagemadeeasy.script" /usr/share/plymouth/themes/signagemadeeasy/
+if plymouth-set-default-theme signagemadeeasy -R; then
+  CMDLINE_FILE=/boot/firmware/cmdline.txt
+  [[ -f "$CMDLINE_FILE" ]] || CMDLINE_FILE=/boot/cmdline.txt
+  if [[ -f "$CMDLINE_FILE" ]] && ! grep -q '\bsplash\b' "$CMDLINE_FILE"; then
+    # Single line, space-appended — cmdline.txt must never contain a newline.
+    sed -i 's/$/ splash quiet/' "$CMDLINE_FILE"
+  fi
+else
+  echo "Failed to set the boot splash theme — skipping. The kiosk itself is" >&2
+  echo "unaffected; boot will just show the default console text instead." >&2
+fi
 
 # ---------------------------------------------------------------------------
 log "Installing systemd units"

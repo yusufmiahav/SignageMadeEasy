@@ -1,47 +1,128 @@
-import { useRef } from 'react';
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Icon } from '../components/icons/Icon';
 import { LibraryCard } from '../components/LibraryCard';
 import type { AppState } from '../hooks/useAppState';
+import type { LibraryItem } from '../api/types';
 
 interface LibraryScreenProps {
   app: AppState;
   onOpenAnnounceDialog: () => void;
 }
 
+interface InFlightUpload {
+  key: string;
+  name: string;
+  pct: number;
+}
+
 export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps) {
-  const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, renameLibraryItem } = app;
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, renameLibraryItem, reorderLibrary } = app;
+  const dropzoneInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
+  const [uploads, setUploads] = useState<InFlightUpload[]>([]);
 
-  const handleImages = async (files: FileList | null) => {
-    if (!files) return;
-    for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) await addImage(file);
+  // Tracks the raw upload transfer for each in-flight file (not the hub's own
+  // post-upload processing, e.g. video capping — that shows up as a "Decoding…"
+  // badge on the card itself once the item lands, via LibraryCard's transcodeStatus).
+  const trackUpload = async <T,>(file: File, upload: (file: File, onProgress: (pct: number) => void) => Promise<T>): Promise<T> => {
+    const key = `${file.name}-${file.size}-${Date.now()}`;
+    setUploads((prev) => [...prev, { key, name: file.name, pct: 0 }]);
+    try {
+      return await upload(file, (pct) => {
+        setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, pct } : u)));
+      });
+    } finally {
+      setUploads((prev) => prev.filter((u) => u.key !== key));
     }
   };
 
-  // Dropzone accepts both images and videos, one per file by MIME type — the
-  // dedicated "Add video" button/input still exists for a deliberate single-file
-  // pick, this just covers the drag-and-drop path too.
+  // Shared by both the dropzone's own drag-and-drop and its click-to-browse input
+  // (accept="image/*,video/*") — one file list, routed per file by MIME type, so
+  // "click to upload" actually offers the same two types the dropzone's own label
+  // promises instead of silently restricting to images.
   const handleDropped = async (files: FileList | null) => {
     if (!files) return;
     for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) await addImage(file);
-      else if (file.type.startsWith('video/')) await addVideo(file);
+      if (file.type.startsWith('image/')) await trackUpload(file, addImage);
+      else if (file.type.startsWith('video/')) await trackUpload(file, addVideo);
     }
+  };
+
+  // ---- Drag-to-reorder ----
+  // Pointer Events rather than native HTML5 drag-and-drop: the HTML5 DnD API
+  // (draggable + dragstart/dragover/drop) simply doesn't fire from touch input on
+  // mobile browsers at all, which made this unusable on a phone - Pointer Events
+  // fire uniformly for mouse, touch, and pen, so this one implementation covers
+  // both. Reorders live as the dragged card passes over another (classic
+  // "shift as you drag" list behavior), persisted once via reorderLibrary on
+  // release rather than on every intermediate shuffle. Which card is "under" the
+  // pointer is found via elementFromPoint + a data-library-id attribute on each
+  // card's root, since pointer capture keeps delivering move/up events to the
+  // handle that was originally grabbed regardless of where the pointer travels.
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
+  const draggedIdRef = useRef<string | null>(null);
+  // The source of truth for the in-progress order, updated synchronously in each
+  // handler body — NOT inside setDragOrder's functional updater. React 18's
+  // automatic batching only guarantees a functional updater runs by the time of the
+  // next render, not synchronously at call time; a burst of pointer events fired
+  // back-to-back with no render landing in between (confirmed directly: React 19
+  // batches these and defers the updater past the whole synchronous event chain, so
+  // mirroring the ref *inside* the updater ran too late for handleDragEnd to see it)
+  // needs a plain, immediately-updated ref instead. dragOrder (state) still exists
+  // purely to trigger the visual re-render during the drag.
+  const dragOrderRef = useRef<string[] | null>(null);
+  const orderedIds = dragOrder ?? library.map((item) => item.id);
+  const displayItems = orderedIds
+    .map((id) => library.find((item) => item.id === id))
+    .filter((item): item is LibraryItem => !!item);
+
+  const handleDragStart = (id: string) => {
+    draggedIdRef.current = id;
+    const initial = library.map((item) => item.id);
+    dragOrderRef.current = initial;
+    setDragOrder(initial);
+  };
+
+  const handleDragEnter = (overId: string) => {
+    const dragged = draggedIdRef.current;
+    if (!dragged || dragged === overId) return;
+    const current = dragOrderRef.current ?? library.map((item) => item.id);
+    const from = current.indexOf(dragged);
+    const to = current.indexOf(overId);
+    if (from === -1 || to === -1) return;
+    const next = [...current];
+    next.splice(from, 1);
+    next.splice(to, 0, dragged);
+    dragOrderRef.current = next;
+    setDragOrder(next);
+  };
+
+  const handleDragEnd = () => {
+    draggedIdRef.current = null;
+    if (dragOrderRef.current) void reorderLibrary(dragOrderRef.current);
+    dragOrderRef.current = null;
+    setDragOrder(null);
+  };
+
+  const handlePointerMove = (e: ReactPointerEvent) => {
+    if (!draggedIdRef.current) return;
+    e.preventDefault();
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const overId = (el?.closest('[data-library-id]') as HTMLElement | null)?.dataset.libraryId;
+    if (overId) handleDragEnter(overId);
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <input
-        ref={imageInputRef}
+        ref={dropzoneInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/*"
         multiple
         style={{ display: 'none' }}
         onChange={(e) => {
-          void handleImages(e.target.files);
+          void handleDropped(e.target.files);
           e.target.value = '';
         }}
       />
@@ -52,7 +133,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
         style={{ display: 'none' }}
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) void addVideo(file);
+          if (file) void trackUpload(file, addVideo);
           e.target.value = '';
         }}
       />
@@ -63,7 +144,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
         style={{ display: 'none' }}
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) void addPdf(file);
+          if (file) void trackUpload(file, addPdf);
           e.target.value = '';
         }}
       />
@@ -92,7 +173,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
 
       <div
         style={{ border: '2px dashed var(--color-divider)', padding: '22px 12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-        onClick={() => imageInputRef.current?.click()}
+        onClick={() => dropzoneInputRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
@@ -103,12 +184,44 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
         <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>Drag and drop images or videos here, or click to upload</p>
       </div>
 
+      {uploads.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {uploads.map((u) => (
+            <div key={u.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Uploading {u.name}…</span>
+                <span className="text-muted">{u.pct}%</span>
+              </div>
+              <div style={{ height: 4, borderRadius: 2, background: 'var(--color-divider)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${u.pct}%`, background: 'var(--color-accent)', borderRadius: 2, transition: 'width 150ms linear' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {library.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>No content yet.</p>
       ) : (
         <div className="library-grid">
-          {library.map((item) => (
-            <LibraryCard key={item.id} item={item} onRemove={removeLibraryItem} onRename={renameLibraryItem} />
+          {displayItems.map((item) => (
+            <LibraryCard
+              key={item.id}
+              item={item}
+              onRemove={removeLibraryItem}
+              onRename={renameLibraryItem}
+              isDragging={draggedIdRef.current === item.id}
+              dragHandleProps={{
+                onPointerDown: (e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  handleDragStart(item.id);
+                },
+                onPointerMove: handlePointerMove,
+                onPointerUp: handleDragEnd,
+                onPointerCancel: handleDragEnd,
+                style: { touchAction: 'none' },
+              }}
+            />
           ))}
         </div>
       )}

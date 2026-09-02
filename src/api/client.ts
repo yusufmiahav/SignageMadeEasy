@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -16,14 +16,17 @@ export interface DiscoveredDevice {
 export interface SignageApiClient {
   // Library
   listLibrary(): Promise<LibraryItem[]>;
-  addImage(file: File): Promise<LibraryItem>;
-  addVideo(file: File): Promise<LibraryItem>;
-  addPdf(file: File): Promise<LibraryItem>;
+  /** `onProgress` (0-100), where supported, reports the raw upload transfer — not the hub's own post-upload processing (e.g. video capping), which is tracked separately via the returned item's transcodeStatus. */
+  addImage(file: File, onProgress?: (pct: number) => void): Promise<LibraryItem>;
+  addVideo(file: File, onProgress?: (pct: number) => void): Promise<LibraryItem>;
+  addPdf(file: File, onProgress?: (pct: number) => void): Promise<LibraryItem>;
   addAnnouncement(name: string, text: string): Promise<LibraryItem>;
   /** Current time of day on a black background, rendered live on the Pi — no file involved. */
   addClock(name: string): Promise<LibraryItem>;
   removeLibraryItem(id: string): Promise<void>;
   renameLibraryItem(id: string, name: string): Promise<void>;
+  /** Persists a drag-and-drop reorder from the Library screen — the complete new display order. */
+  reorderLibrary(ids: string[]): Promise<void>;
   /** Images and clocks only — anything else is a server-side no-op. */
   setItemDuration(id: string, durationSec: number): Promise<void>;
 
@@ -54,9 +57,15 @@ export interface SignageApiClient {
   restartDevice(id: string): Promise<void>;
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
+  setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;
 
   // Pairing helpers (simulated placeholders until the hub can do a real LAN scan)
   scanNetwork(): Promise<DiscoveredDevice[]>;
+
+  // Backup / restore — everything except the uploaded media files themselves.
+  exportBackup(): Promise<Backup>;
+  /** Wipes and replaces everything currently saved with the backup's contents. */
+  importBackup(backup: Backup): Promise<void>;
 }
 
 // Setting VITE_API_BASE_URL at build time (even to an empty string, for a same-origin

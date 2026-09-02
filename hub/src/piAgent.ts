@@ -23,6 +23,7 @@ async function agentFetch(ip: string, path: string, init?: RequestInit, timeoutM
 export interface PiIdentity {
   hostname: string;
   paired: boolean;
+  mac: string | null;
 }
 
 export async function identify(ip: string, timeoutMs?: number): Promise<PiIdentity> {

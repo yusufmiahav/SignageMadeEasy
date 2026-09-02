@@ -7,6 +7,7 @@ import { UPLOADS_DIR } from '../db.js';
 import * as store from '../store.js';
 import { countPdfPages } from '../pdfPages.js';
 import { getVideoDuration } from '../videoDuration.js';
+import { needsCapping, transcodeToCapped } from '../videoTranscode.js';
 
 export const libraryRouter = Router();
 
@@ -28,6 +29,15 @@ libraryRouter.get('/', (_req, res) => {
   res.json(store.listLibrary());
 });
 
+libraryRouter.put('/reorder', (req, res) => {
+  const { ids } = req.body ?? {};
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+    return res.status(400).json({ error: 'ids must be an array of strings' });
+  }
+  store.reorderLibrary(ids);
+  res.status(204).end();
+});
+
 libraryRouter.post('/image', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file is required' });
   const item = store.addLibraryItem({
@@ -39,17 +49,43 @@ libraryRouter.post('/image', upload.single('file'), (req, res) => {
   res.status(201).json(item);
 });
 
+// Fire-and-forget: runs after the upload response has already gone out (see the
+// route below). A Pi 3B+ can't reliably decode full 1080p source video in real time
+// (confirmed on real hardware — see videoTranscode.ts), so every upload this large
+// gets a capped copy in the background rather than relying on it being pre-encoded
+// correctly by hand or making the uploader wait through a multi-minute re-encode
+// before the item even shows up in the library.
+function runCapInBackground(itemId: string, sourcePath: string, cappedPath: string): void {
+  void transcodeToCapped(sourcePath, cappedPath).then((ok) => {
+    if (ok) {
+      store.setVideoTranscodeResult(itemId, 'done', `/uploads/${path.basename(cappedPath)}`);
+    } else {
+      store.setVideoTranscodeResult(itemId, 'failed');
+    }
+  });
+}
+
 libraryRouter.post('/video', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file is required' });
   const duration = await getVideoDuration(req.file.path);
+  const fullUrl = `/uploads/${req.file.filename}`;
+  const shouldCap = await needsCapping(req.file.path);
   const item = store.addLibraryItem({
     name: req.file.originalname,
     type: 'video',
     size: formatBytes(req.file.size),
     duration,
-    thumb: `/uploads/${req.file.filename}`,
+    thumb: fullUrl, // fallback until (if) a capped copy lands, and the permanent value if capping is skipped/fails
+    fullUrl,
+    transcodeStatus: shouldCap ? 'processing' : 'skipped',
   });
   res.status(201).json(item);
+
+  if (shouldCap) {
+    const ext = path.extname(req.file.filename);
+    const cappedPath = path.join(UPLOADS_DIR, `${path.basename(req.file.filename, ext)}.capped${ext}`);
+    runCapInBackground(item.id, req.file.path, cappedPath);
+  }
 });
 
 libraryRouter.post('/pdf', upload.single('file'), (req, res) => {

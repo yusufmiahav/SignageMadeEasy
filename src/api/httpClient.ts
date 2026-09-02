@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -6,6 +6,10 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
+    // Needed for the session cookie (see hub/src/auth.ts) — the default 'same-origin'
+    // credentials mode won't send it in dev, where the control app and hub run on
+    // different ports/origins.
+    credentials: 'include',
     headers: init?.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json', ...init.headers } : init?.headers,
   });
   if (!res.ok) {
@@ -23,21 +27,45 @@ function json(body: unknown): RequestInit {
   return { body: JSON.stringify(body) };
 }
 
-async function uploadFile(path: string, file: File): Promise<LibraryItem> {
-  const form = new FormData();
-  form.append('file', file);
-  return request<LibraryItem>(path, { method: 'POST', body: form });
+// fetch() has no cross-browser way to observe upload (as opposed to download)
+// progress, so a real progress bar needs XMLHttpRequest for this one call.
+function uploadFile(path: string, file: File, onProgress?: (pct: number) => void): Promise<LibraryItem> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${BASE_URL}${path}`);
+    xhr.withCredentials = true; // send the session cookie — see request()'s credentials: 'include'
+    xhr.upload.onprogress = (e) => {
+      if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText) as LibraryItem);
+        return;
+      }
+      // Mirrors request()'s error handling: surface the hub's own { error: "..." }
+      // body where available rather than just a bare status code.
+      const body = (() => {
+        try { return JSON.parse(xhr.responseText) as { error?: string }; } catch { return null; }
+      })();
+      reject(new Error(body?.error || `POST ${path} failed: ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error(`POST ${path} failed: network error`));
+    const form = new FormData();
+    form.append('file', file);
+    xhr.send(form);
+  });
 }
 
 export const httpClient: SignageApiClient = {
   // Library
   listLibrary: () => request<LibraryItem[]>('/api/library'),
-  addImage: (file) => uploadFile('/api/library/image', file),
-  addVideo: (file) => uploadFile('/api/library/video', file),
-  addPdf: (file) => uploadFile('/api/library/pdf', file),
+  addImage: (file, onProgress) => uploadFile('/api/library/image', file, onProgress),
+  addVideo: (file, onProgress) => uploadFile('/api/library/video', file, onProgress),
+  addPdf: (file, onProgress) => uploadFile('/api/library/pdf', file, onProgress),
   addAnnouncement: (name, text) => request<LibraryItem>('/api/library/announcement', { method: 'POST', ...json({ name, text }) }),
   addClock: (name) => request<LibraryItem>('/api/library/clock', { method: 'POST', ...json({ name }) }),
   removeLibraryItem: (id) => request<void>(`/api/library/${id}`, { method: 'DELETE' }),
+  reorderLibrary: (ids) => request<void>('/api/library/reorder', { method: 'PUT', ...json({ ids }) }),
   setItemDuration: (id, durationSec) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ durationSec }) }),
   renameLibraryItem: (id, name) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ name }) }),
 
@@ -46,7 +74,7 @@ export const httpClient: SignageApiClient = {
   addGroup: (name) => request<Group>('/api/groups', { method: 'POST', ...json({ name }) }),
   renameGroup: (id, name) => request<void>(`/api/groups/${id}`, { method: 'PATCH', ...json({ name }) }),
   deleteGroup: async (id) => {
-    const res = await fetch(`${BASE_URL}/api/groups/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${BASE_URL}/api/groups/${id}`, { method: 'DELETE', credentials: 'include' });
     if (res.status === 409) return false;
     if (!res.ok) throw new Error(`DELETE /api/groups/${id} failed: ${res.status}`);
     return true;
@@ -74,7 +102,12 @@ export const httpClient: SignageApiClient = {
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
   setDeviceAnnouncement: (id, announcementId) => request<void>(`/api/devices/${id}/announcement`, { method: 'PUT', ...json({ announcementId }) }),
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
+  setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),
 
   // Pairing helpers
   scanNetwork: () => request<DiscoveredDevice[]>('/api/scan'),
+
+  // Backup / restore
+  exportBackup: () => request<Backup>('/api/backup'),
+  importBackup: (backup) => request<void>('/api/backup/restore', { method: 'POST', ...json(backup) }),
 };

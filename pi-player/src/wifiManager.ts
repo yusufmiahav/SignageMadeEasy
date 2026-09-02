@@ -26,7 +26,8 @@ let hotspotActive = false;
 let hotspotSsid: string | null = null;
 let consecutiveDisconnects = 0;
 
-async function nmcli(args: string[]): Promise<string> {
+/** Exported so staticIp.ts can reuse the exact same sudo/timeout wrapper instead of duplicating it — both modules only ever need this one grant (see provision.sh's NOPASSWD: /usr/bin/nmcli). */
+export async function nmcli(args: string[]): Promise<string> {
   const { stdout } = await execFile('sudo', ['nmcli', ...args], { timeout: 25_000 });
   return stdout;
 }

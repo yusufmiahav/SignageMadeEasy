@@ -1,15 +1,71 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
+import type { Backup } from '../api/types';
+import { copyText } from '../utils/clipboard';
+import { authGateEnabled, logout } from '../api/auth';
 
 interface SettingsScreenProps {
   app: AppState;
+  onLogout: () => void;
 }
 
-export function SettingsScreen({ app }: SettingsScreenProps) {
-  const { groups, devices, renameGroup, deleteGroup } = app;
+function isBackup(value: unknown): value is Backup {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return Array.isArray(v.library) && Array.isArray(v.groups) && Array.isArray(v.devices);
+}
+
+export function SettingsScreen({ app, onLogout }: SettingsScreenProps) {
+  const { groups, devices, renameGroup, deleteGroup, showToast, exportBackup, importBackup } = app;
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [restoring, setRestoring] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const devicesWithMac = devices.filter((d): d is typeof d & { mac: string } => !!d.mac);
+  const copyMacAddresses = async () => {
+    const text = devicesWithMac.map((d) => `${d.name}\t${d.mac}`).join('\n');
+    const ok = await copyText(text);
+    showToast(ok ? `Copied ${devicesWithMac.length} MAC address${devicesWithMac.length === 1 ? '' : 'es'}` : 'Could not copy — clipboard access denied');
+  };
+
+  const downloadBackup = async () => {
+    const backup = await exportBackup();
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `signagemadeeasy-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (file: File) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      showToast('Not a valid backup file — could not parse JSON');
+      return;
+    }
+    if (!isBackup(parsed)) {
+      showToast('Not a valid backup file — missing library/groups/devices');
+      return;
+    }
+    if (!window.confirm('This replaces everything currently saved — content, locations, and paired screens — with this backup. Continue?')) {
+      return;
+    }
+    setRestoring(true);
+    try {
+      await importBackup(parsed);
+      showToast('Backup restored — reloading…');
+      window.location.reload();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Restore failed');
+      setRestoring(false);
+    }
+  };
 
   const startEdit = (id: string, name: string) => {
     setEditingGroupId(id);
@@ -79,6 +135,57 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
         <p className="card-body">Screens must be on the same network to appear here.</p>
       </div>
 
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">IT</div>
+        <div className="card-title">Device inventory</div>
+        <p className="card-body">
+          Copies every paired screen's name and MAC address (tab-separated, one per line) —
+          for network whitelisting, asset tracking, or handing off to IT.
+        </p>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          style={{ alignSelf: 'flex-start' }}
+          disabled={devicesWithMac.length === 0}
+          onClick={() => void copyMacAddresses()}
+        >
+          <Icon name="copy" size={14} />
+          Copy all MAC addresses{devicesWithMac.length > 0 ? ` (${devicesWithMac.length})` : ''}
+        </button>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Backup</div>
+        <div className="card-title">Export / import config</div>
+        <p className="card-body">
+          Exports everything except the uploaded media files themselves: your content library's
+          metadata, locations, playlists, schedules, and every paired screen's name, IP, MAC
+          address, and settings — as one JSON file, for future-proofing or restoring a hub. Importing
+          replaces everything currently saved with the file's contents.
+        </p>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleImportFile(file);
+            e.target.value = '';
+          }}
+        />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-secondary" onClick={() => void downloadBackup()}>
+            <Icon name="download" size={14} />
+            Export backup
+          </button>
+          <button type="button" className="btn btn-secondary" disabled={restoring} onClick={() => importInputRef.current?.click()}>
+            <Icon name="uploadCloud" size={14} />
+            {restoring ? 'Restoring…' : 'Import backup'}
+          </button>
+        </div>
+      </div>
+
       <div className="card" style={{ gap: 10 }}>
         <div className="card-kicker">Setup</div>
         <div className="card-title">Flash your Raspberry Pi</div>
@@ -107,6 +214,19 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
             : 'Standalone mode — content is saved in this browser only. Deploy the hub to manage screens from any device on your network.'}
         </p>
         <p className="card-body text-muted" style={{ fontSize: 12 }}>Created by Yusuf Miah with Claude.</p>
+        {authGateEnabled && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ alignSelf: 'flex-start', marginTop: 4 }}
+            onClick={() => {
+              void logout();
+              onLogout();
+            }}
+          >
+            Log out
+          </button>
+        )}
       </div>
     </div>
   );

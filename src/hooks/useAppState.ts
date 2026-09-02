@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DiscoveredDevice } from '../api/client';
-import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from '../api/types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from '../api/types';
 
 export function useAppState() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
@@ -28,13 +28,18 @@ export function useAppState() {
   // some unrelated action happens to trigger its own refreshDevices()/refreshGroups()
   // call, or the page is manually reloaded. 10s errs toward the hub's own 45s
   // online/offline window (see ONLINE_WINDOW_MS) without polling too aggressively.
+  // Also picks up a video's transcodeStatus flipping from 'processing' to 'done'/'failed'
+  // once the hub's background capping job finishes (see hub/src/routes/library.ts) —
+  // otherwise the Library screen's "Decoding…" badge would only ever clear on some
+  // unrelated action that happens to trigger its own refreshLibrary() call.
   useEffect(() => {
     const id = setInterval(() => {
       void refreshDevices();
       void refreshGroups();
+      void refreshLibrary();
     }, 10_000);
     return () => clearInterval(id);
-  }, [refreshDevices, refreshGroups]);
+  }, [refreshDevices, refreshGroups, refreshLibrary]);
 
   const showToast = useCallback((message: string) => {
     clearTimeout(toastTimer.current);
@@ -43,20 +48,20 @@ export function useAppState() {
   }, []);
 
   // ---- Library ----
-  const addImage = useCallback(async (file: File) => {
-    const item = await api.addImage(file);
+  const addImage = useCallback(async (file: File, onProgress?: (pct: number) => void) => {
+    const item = await api.addImage(file, onProgress);
     await refreshLibrary();
     return item;
   }, [refreshLibrary]);
 
-  const addVideo = useCallback(async (file: File) => {
-    const item = await api.addVideo(file);
+  const addVideo = useCallback(async (file: File, onProgress?: (pct: number) => void) => {
+    const item = await api.addVideo(file, onProgress);
     await refreshLibrary();
     return item;
   }, [refreshLibrary]);
 
-  const addPdf = useCallback(async (file: File) => {
-    const item = await api.addPdf(file);
+  const addPdf = useCallback(async (file: File, onProgress?: (pct: number) => void) => {
+    const item = await api.addPdf(file, onProgress);
     await refreshLibrary();
     return item;
   }, [refreshLibrary]);
@@ -82,6 +87,11 @@ export function useAppState() {
 
   const renameLibraryItem = useCallback(async (id: string, name: string) => {
     await api.renameLibraryItem(id, name);
+    await refreshLibrary();
+  }, [refreshLibrary]);
+
+  const reorderLibrary = useCallback(async (ids: string[]) => {
+    await api.reorderLibrary(ids);
     await refreshLibrary();
   }, [refreshLibrary]);
 
@@ -210,7 +220,18 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
+  const setDeviceVideoQuality = useCallback(async (id: string, videoQuality: 'auto' | 'full') => {
+    await api.setDeviceVideoQuality(id, videoQuality);
+    await refreshDevices();
+  }, [refreshDevices]);
+
   const scanNetwork = useCallback((): Promise<DiscoveredDevice[]> => api.scanNetwork(), []);
+
+  // ---- Backup / restore ----
+  const exportBackup = useCallback((): Promise<Backup> => api.exportBackup(), []);
+  const importBackup = useCallback(async (backup: Backup) => {
+    await api.importBackup(backup);
+  }, []);
 
   return {
     loaded,
@@ -226,6 +247,7 @@ export function useAppState() {
     addClock,
     setItemDuration,
     renameLibraryItem,
+    reorderLibrary,
     removeLibraryItem,
     addGroup,
     renameGroup,
@@ -248,7 +270,10 @@ export function useAppState() {
     restartDevice,
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
+    setDeviceVideoQuality,
     scanNetwork,
+    exportBackup,
+    importBackup,
   };
 }
 

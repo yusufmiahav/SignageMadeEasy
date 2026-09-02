@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
-import type { AnnouncementSchedule, Device, DeviceStatus, DiscoveredDevice, Group, LibraryItem, PlayerState, ScheduleEvent } from './types.js';
+import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, PlayerState, ScheduleEvent } from './types.js';
 
 const ONLINE_WINDOW_MS = 45_000;
 
@@ -12,6 +12,7 @@ function uid(prefix: string): string {
 
 interface LibraryRow {
   id: string; name: string; type: LibraryItem['type']; size: string | null; duration: string | null; durationSec: number | null; thumb: string | null; text: string | null; pageCount: number | null;
+  fullUrl: string | null; transcodeStatus: LibraryItem['transcodeStatus'] | null;
 }
 
 function rowToLibraryItem(r: LibraryRow): LibraryItem {
@@ -22,26 +23,52 @@ function rowToLibraryItem(r: LibraryRow): LibraryItem {
   if (r.thumb != null) item.thumb = r.thumb;
   if (r.text != null) item.text = r.text;
   if (r.pageCount != null) item.pageCount = r.pageCount;
+  if (r.fullUrl != null) item.fullUrl = r.fullUrl;
+  if (r.transcodeStatus != null) item.transcodeStatus = r.transcodeStatus;
   return item;
 }
 
 export function listLibrary(): LibraryItem[] {
-  const rows = db.prepare('SELECT id, name, type, size, duration, durationSec, thumb, text, pageCount FROM library ORDER BY createdAt ASC').all() as LibraryRow[];
+  const rows = db.prepare('SELECT id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus FROM library ORDER BY sortOrder ASC').all() as LibraryRow[];
   return rows.map(rowToLibraryItem);
 }
 
-export function addLibraryItem(input: { name: string; type: LibraryItem['type']; size?: string; duration?: string; thumb?: string; text?: string; pageCount?: number }): LibraryItem {
+export function addLibraryItem(input: {
+  name: string; type: LibraryItem['type']; size?: string; duration?: string; thumb?: string; text?: string; pageCount?: number;
+  fullUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus'];
+}): LibraryItem {
   const id = uid('l');
-  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@createdAt)').run({
+  const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM library').get() as { n: number }).n;
+  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@sortOrder,@createdAt)').run({
     id, name: input.name, type: input.type,
     size: input.size ?? null, duration: input.duration ?? null, thumb: input.thumb ?? null, text: input.text ?? null, pageCount: input.pageCount ?? null,
+    fullUrl: input.fullUrl ?? null, transcodeStatus: input.transcodeStatus ?? null,
+    sortOrder: nextOrder,
     createdAt: Date.now(),
   });
   return {
     id, name: input.name, type: input.type,
     ...(input.size && { size: input.size }), ...(input.duration && { duration: input.duration }),
     ...(input.thumb && { thumb: input.thumb }), ...(input.text && { text: input.text }), ...(input.pageCount != null && { pageCount: input.pageCount }),
+    ...(input.fullUrl && { fullUrl: input.fullUrl }), ...(input.transcodeStatus && { transcodeStatus: input.transcodeStatus }),
   };
+}
+
+/** Persists a full drag-and-drop reorder from the Library screen — `ids` is the complete new display order. Any existing item not included keeps its relative order, appended after the given ones, so an incomplete list can't silently drop items from view. */
+export const reorderLibrary = db.transaction((ids: string[]): void => {
+  const setOrder = db.prepare('UPDATE library SET sortOrder = ? WHERE id = ?');
+  ids.forEach((id, i) => setOrder.run(i, id));
+  const rest = db.prepare('SELECT id FROM library WHERE id NOT IN (SELECT value FROM json_each(?)) ORDER BY sortOrder ASC').all(JSON.stringify(ids)) as { id: string }[];
+  rest.forEach((r, i) => setOrder.run(ids.length + i, r.id));
+});
+
+/** Called once the background capping job (see routes/library.ts) finishes for a video item. */
+export function setVideoTranscodeResult(id: string, status: 'done' | 'failed', cappedUrl?: string): void {
+  if (status === 'done' && cappedUrl) {
+    db.prepare('UPDATE library SET thumb = ?, transcodeStatus = ? WHERE id = ?').run(cappedUrl, status, id);
+  } else {
+    db.prepare('UPDATE library SET transcodeStatus = ? WHERE id = ?').run(status, id);
+  }
 }
 
 export function removeLibraryItem(id: string): void {
@@ -185,7 +212,13 @@ export function removeAnnouncementSchedule(groupId: string, scheduleId: string):
 
 // ---- Devices ----
 
-interface DeviceRow { id: string; name: string; ip: string; groupId: string; announcementId: string | null; announcementOn: number; lastSeenAt: number | null }
+interface DeviceRow {
+  id: string; name: string; ip: string; mac: string | null; groupId: string; announcementId: string | null; announcementOn: number;
+  videoQuality: Device['videoQuality']; lastSeenAt: number | null;
+  tempC: number | null; throttled: string | null; uptimeSec: number | null; diskFreeMb: number | null; diskTotalMb: number | null;
+}
+
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -193,27 +226,33 @@ function statusFor(lastSeenAt: number | null): DeviceStatus {
 
 function rowToDevice(r: DeviceRow): Device {
   return {
-    id: r.id, name: r.name, ip: r.ip, groupId: r.groupId,
-    announcementId: r.announcementId, announcementOn: !!r.announcementOn,
+    id: r.id, name: r.name, ip: r.ip, mac: r.mac, groupId: r.groupId,
+    announcementId: r.announcementId, announcementOn: !!r.announcementOn, videoQuality: r.videoQuality,
     status: statusFor(r.lastSeenAt), lastSeenAt: r.lastSeenAt ?? undefined,
+    tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
   };
 }
 
 export function listDevices(): Device[] {
-  const rows = db.prepare('SELECT id, name, ip, groupId, announcementId, announcementOn, lastSeenAt FROM devices ORDER BY rowid ASC').all() as DeviceRow[];
+  const rows = db.prepare(`SELECT ${DEVICE_COLUMNS} FROM devices ORDER BY rowid ASC`).all() as DeviceRow[];
   return rows.map(rowToDevice);
 }
 
 export function getDevice(id: string): Device | null {
-  const row = db.prepare('SELECT id, name, ip, groupId, announcementId, announcementOn, lastSeenAt FROM devices WHERE id = ?').get(id) as DeviceRow | undefined;
+  const row = db.prepare(`SELECT ${DEVICE_COLUMNS} FROM devices WHERE id = ?`).get(id) as DeviceRow | undefined;
   return row ? rowToDevice(row) : null;
 }
 
-export function pairDevice(input: { name: string; ip: string; groupId: string; status?: DeviceStatus }): Device {
+export function pairDevice(input: { name: string; ip: string; mac?: string | null; groupId: string; status?: DeviceStatus }): Device {
   const id = uid('d');
   const lastSeenAt = input.status === 'offline' ? null : Date.now();
-  db.prepare('INSERT INTO devices (id, name, ip, groupId, announcementId, announcementOn, lastSeenAt) VALUES (?,?,?,?,?,0,?)').run(id, input.name, input.ip, input.groupId, null, lastSeenAt);
-  return { id, name: input.name, ip: input.ip, groupId: input.groupId, announcementId: null, announcementOn: false, status: statusFor(lastSeenAt) };
+  const mac = input.mac ?? null;
+  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt) VALUES (?,?,?,?,?,?,0,?,?)').run(id, input.name, input.ip, mac, input.groupId, null, 'auto', lastSeenAt);
+  return { id, name: input.name, ip: input.ip, mac, groupId: input.groupId, announcementId: null, announcementOn: false, videoQuality: 'auto', status: statusFor(lastSeenAt) };
+}
+
+export function setDeviceVideoQuality(id: string, videoQuality: Device['videoQuality']): void {
+  db.prepare('UPDATE devices SET videoQuality = ? WHERE id = ?').run(videoQuality, id);
 }
 
 export function renameDevice(id: string, name: string): void {
@@ -240,18 +279,20 @@ export function toggleDeviceAnnouncement(id: string): void {
   }
 }
 
-export function recordHeartbeat(id: string, ip: string): void {
-  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ? WHERE id = ?').run(Date.now(), ip, id);
+export interface HeartbeatDiagnostics {
+  tempC?: number | null;
+  throttled?: string | null;
+  uptimeSec?: number | null;
+  diskFreeMb?: number | null;
+  diskTotalMb?: number | null;
 }
 
-// ---- Pairing helper (simulated placeholder for a real LAN scan) ----
-
-export function scanNetwork(): DiscoveredDevice[] {
-  const randOctet = () => 20 + Math.floor(Math.random() * 200);
-  return [
-    { id: uid('n'), name: 'New Display', ip: `192.168.1.${randOctet()}` },
-    { id: uid('n'), name: 'New Display', ip: `192.168.1.${randOctet()}` },
-  ];
+export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnostics): void {
+  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ? WHERE id = ?').run(
+    Date.now(), ip,
+    diag?.tempC ?? null, diag?.throttled ?? null, diag?.uptimeSec ?? null, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null,
+    id,
+  );
 }
 
 // ---- Content resolution (mirrors src/api/resolve.ts) ----
@@ -301,7 +342,10 @@ export function getPlayerState(deviceId: string): PlayerState | null {
     .map((item) => ({
       id: item.id,
       type: item.type,
-      url: item.thumb ?? '',
+      // This screen's own preference wins for video: 'full' always gets the original
+      // upload; otherwise the resolution-capped copy once one exists, falling back to
+      // the original while it's still processing or if capping failed outright.
+      url: (item.type === 'video' && device.videoQuality === 'full' ? item.fullUrl : undefined) ?? item.thumb ?? item.fullUrl ?? '',
       duration: item.type === 'video' ? null : item.type === 'image' || item.type === 'clock' ? (item.durationSec ?? 8) : 8,
       ...(item.type === 'pdf' && { pageCount: item.pageCount ?? 1 }),
     }));
@@ -320,3 +364,90 @@ export function getPlayerState(deviceId: string): PlayerState | null {
     announcement: { on: announcementOn && !!announcement, text: announcement?.text ?? null },
   };
 }
+
+// ---- Backup / restore ----
+
+export interface Backup {
+  version: 1;
+  exportedAt: string;
+  library: LibraryItem[];
+  groups: Group[];
+  devices: Device[];
+}
+
+/** Full snapshot of everything the control app manages — content metadata, locations/playlists/schedules, and paired screens (name, IP, MAC, settings). Uploaded media files themselves aren't included (they're not JSON-portable); back up hub/data/uploads separately if you need those too. */
+export function exportBackup(): Backup {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    library: listLibrary(),
+    groups: listGroups(),
+    devices: listDevices(),
+  };
+}
+
+/**
+ * Wipes and replaces every table from a previously exported backup, preserving every
+ * id exactly — library items, groups, events, announcement schedules, and devices
+ * all cross-reference each other by id (a group's defaultPlaylist/forcedContentId
+ * point at library ids, a device's groupId points at a group), and a fresh uid() per
+ * row the way addLibraryItem/addGroup/pairDevice normally generate one would
+ * silently break every one of those references. Restored devices come back offline
+ * (lastSeenAt cleared) until each Pi's own poller heartbeats again, rather than
+ * presenting stale liveness state as current.
+ */
+export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'groups' | 'devices'>): void => {
+  db.prepare('DELETE FROM events').run();
+  db.prepare('DELETE FROM announcement_schedules').run();
+  db.prepare('DELETE FROM devices').run();
+  db.prepare('DELETE FROM groups_').run();
+  db.prepare('DELETE FROM library').run();
+
+  const insertLibrary = db.prepare(
+    'INSERT INTO library (id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, sortOrder, createdAt) ' +
+    'VALUES (@id,@name,@type,@size,@duration,@durationSec,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@sortOrder,@createdAt)',
+  );
+  backup.library.forEach((item, i) => {
+    insertLibrary.run({
+      id: item.id, name: item.name, type: item.type,
+      size: item.size ?? null, duration: item.duration ?? null, durationSec: item.durationSec ?? null,
+      thumb: item.thumb ?? null, text: item.text ?? null, pageCount: item.pageCount ?? null,
+      fullUrl: item.fullUrl ?? null, transcodeStatus: item.transcodeStatus ?? null,
+      sortOrder: i, createdAt: Date.now() + i, // +i keeps insertion order stable if createdAt is ever read as a tiebreaker
+    });
+  });
+
+  const insertGroup = db.prepare(
+    'INSERT INTO groups_ (id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId) VALUES (@id,@name,@defaultPlaylist,@forcedContentId,@forcedAnnouncementId)',
+  );
+  const insertEvent = db.prepare('INSERT INTO events (id, groupId, name, start, end, libIds) VALUES (@id,@groupId,@name,@start,@end,@libIds)');
+  const insertAnnSchedule = db.prepare(
+    'INSERT INTO announcement_schedules (id, groupId, announcementId, startDate, endDate, startTime, endTime) VALUES (@id,@groupId,@announcementId,@startDate,@endDate,@startTime,@endTime)',
+  );
+  for (const group of backup.groups) {
+    insertGroup.run({
+      id: group.id, name: group.name, defaultPlaylist: JSON.stringify(group.defaultPlaylist),
+      forcedContentId: group.forcedContentId, forcedAnnouncementId: group.forcedAnnouncementId,
+    });
+    for (const event of group.events) {
+      insertEvent.run({ id: event.id, groupId: group.id, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds) });
+    }
+    for (const s of group.announcementSchedules) {
+      insertAnnSchedule.run({
+        id: s.id, groupId: group.id, announcementId: s.announcementId,
+        startDate: s.startDate, endDate: s.endDate, startTime: s.startTime, endTime: s.endTime,
+      });
+    }
+  }
+
+  const insertDevice = db.prepare(
+    'INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@announcementId,@announcementOn,@videoQuality,NULL)',
+  );
+  for (const device of backup.devices) {
+    insertDevice.run({
+      id: device.id, name: device.name, ip: device.ip, mac: device.mac, groupId: device.groupId,
+      announcementId: device.announcementId, announcementOn: device.announcementOn ? 1 : 0, videoQuality: device.videoQuality,
+    });
+  }
+});

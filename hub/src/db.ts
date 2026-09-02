@@ -58,6 +58,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     ip TEXT NOT NULL,
+    mac TEXT,
     groupId TEXT NOT NULL REFERENCES groups_(id) ON DELETE CASCADE,
     announcementId TEXT,
     announcementOn INTEGER NOT NULL DEFAULT 0,
@@ -73,6 +74,49 @@ if (!hasDurationSec) db.exec('ALTER TABLE library ADD COLUMN durationSec INTEGER
 // Same reasoning, for hubs deployed before forcedAnnouncementId existed.
 const hasForcedAnnouncementId = (db.prepare("PRAGMA table_info(groups_)").all() as { name: string }[]).some((c) => c.name === 'forcedAnnouncementId');
 if (!hasForcedAnnouncementId) db.exec('ALTER TABLE groups_ ADD COLUMN forcedAnnouncementId TEXT');
+
+// Same reasoning, for hubs deployed before mac existed — captured once at pairing
+// time from the Pi's own /identify response (see piAgent.ts), never null for a
+// screen paired after this shipped, always null for one paired before it (and for
+// every device in standalone/localStorage mode, which has no real Pi to ask).
+const hasMac = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).some((c) => c.name === 'mac');
+if (!hasMac) db.exec('ALTER TABLE devices ADD COLUMN mac TEXT');
+
+// Same reasoning, for hubs deployed before video resolution capping ran in the
+// background — fullUrl is the untouched original upload, transcodeStatus tracks
+// whether a capped copy exists yet (see videoTranscode.ts and routes/library.ts).
+const libraryCols = (db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).map((c) => c.name);
+if (!libraryCols.includes('fullUrl')) db.exec('ALTER TABLE library ADD COLUMN fullUrl TEXT');
+if (!libraryCols.includes('transcodeStatus')) db.exec('ALTER TABLE library ADD COLUMN transcodeStatus TEXT');
+
+// Same reasoning, for hubs deployed before per-screen video quality existed — every
+// existing screen defaults to 'auto' (the capped copy), matching this project's
+// prior behavior of always serving a capped video to every screen.
+const hasVideoQuality = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).some((c) => c.name === 'videoQuality');
+if (!hasVideoQuality) db.exec("ALTER TABLE devices ADD COLUMN videoQuality TEXT NOT NULL DEFAULT 'auto'");
+
+// Same reasoning, for hubs deployed before the Library screen supported drag-to-reorder
+// — every existing row gets seeded with its current createdAt-based position so
+// nothing visibly reshuffles the first time this runs; new rows get one past the
+// current max (see store.ts's addLibraryItem).
+const hasSortOrder = (db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some((c) => c.name === 'sortOrder');
+if (!hasSortOrder) {
+  db.exec('ALTER TABLE library ADD COLUMN sortOrder INTEGER');
+  const rows = db.prepare('SELECT id FROM library ORDER BY createdAt ASC').all() as { id: string }[];
+  const setOrder = db.prepare('UPDATE library SET sortOrder = ? WHERE id = ?');
+  rows.forEach((r, i) => setOrder.run(i, r.id));
+}
+
+// Same reasoning, for hubs deployed before per-heartbeat diagnostics existed —
+// reported by the Pi's own poller (see pi-player/src/diagnostics.ts) alongside every
+// heartbeat; null for a device that's never sent one yet (old firmware, or offline
+// since before this shipped).
+const deviceCols = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceCols.includes('tempC')) db.exec('ALTER TABLE devices ADD COLUMN tempC REAL');
+if (!deviceCols.includes('throttled')) db.exec('ALTER TABLE devices ADD COLUMN throttled TEXT');
+if (!deviceCols.includes('uptimeSec')) db.exec('ALTER TABLE devices ADD COLUMN uptimeSec INTEGER');
+if (!deviceCols.includes('diskFreeMb')) db.exec('ALTER TABLE devices ADD COLUMN diskFreeMb INTEGER');
+if (!deviceCols.includes('diskTotalMb')) db.exec('ALTER TABLE devices ADD COLUMN diskTotalMb INTEGER');
 
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.

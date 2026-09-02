@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type HTMLAttributes } from 'react';
 import { Icon, type IconName } from './icons/Icon';
 import type { LibraryItem } from '../api/types';
 
@@ -17,6 +17,16 @@ const TYPE_LABEL: Record<LibraryItem['type'], string> = {
   announcement: 'Announcement',
   clock: 'Clock',
 };
+
+// Announcements and clocks have no underlying file — nothing to download for
+// those. Video downloads the original upload (fullUrl), not whichever capped/full
+// copy a given screen happens to be playing, since "download the uploaded content"
+// means the source file, not a resolution-specific derivative of it.
+function downloadUrlFor(item: LibraryItem): string | undefined {
+  if (item.type === 'video') return item.fullUrl ?? item.thumb;
+  if (item.type === 'image' || item.type === 'pdf') return item.thumb;
+  return undefined;
+}
 
 function metaText(item: LibraryItem): string {
   switch (item.type) {
@@ -37,11 +47,15 @@ interface LibraryCardProps {
   item: LibraryItem;
   onRemove: (id: string) => void;
   onRename: (id: string, name: string) => void;
+  /** Spread onto a small grip icon rather than the whole card, so dragging doesn't fight with selecting the rename input's text or clicking the remove button. */
+  dragHandleProps?: HTMLAttributes<HTMLSpanElement>;
+  isDragging?: boolean;
 }
 
-export function LibraryCard({ item, onRemove, onRename }: LibraryCardProps) {
+export function LibraryCard({ item, onRemove, onRename, dragHandleProps, isDragging }: LibraryCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
+  const downloadUrl = downloadUrlFor(item);
 
   const startEdit = () => {
     setName(item.name);
@@ -53,7 +67,7 @@ export function LibraryCard({ item, onRemove, onRename }: LibraryCardProps) {
   };
 
   return (
-    <div className="card" style={{ gap: 8, padding: 8 }}>
+    <div className="card" data-library-id={item.id} style={{ gap: 8, padding: 8, opacity: isDragging ? 0.4 : 1 }}>
       <div className="thumb-box">
         {item.type === 'image' && item.thumb ? (
           <div className="thumb-img" style={{ backgroundImage: `url(${item.thumb})` }} />
@@ -77,9 +91,32 @@ export function LibraryCard({ item, onRemove, onRename }: LibraryCardProps) {
           <Icon name={TYPE_ICON[item.type]} size={24} style={{ opacity: 0.4 }} />
         )}
         <span className="tag tag-accent type-tag">{TYPE_LABEL[item.type]}</span>
+        {item.transcodeStatus === 'processing' && (
+          <span className="tag tag-neutral" style={{ position: 'absolute', bottom: 4, left: 4 }} title="The hub is creating a resolution-capped copy of this video in the background">
+            Decoding…
+          </span>
+        )}
+        {item.transcodeStatus === 'failed' && (
+          <span className="tag tag-neutral" style={{ position: 'absolute', bottom: 4, left: 4 }} title="Capping this video failed — screens set to 'Optimized video' will play the full-resolution original instead">
+            Full-res only
+          </span>
+        )}
         <button type="button" className="btn btn-ghost btn-icon thumb-remove" aria-label="Remove" onClick={() => onRemove(item.id)}>
           <Icon name="x" size={12} />
         </button>
+        {downloadUrl && (
+          <a
+            className="btn btn-ghost btn-icon thumb-download"
+            aria-label="Download"
+            title="Download the uploaded file"
+            href={downloadUrl}
+            download={item.name}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Icon name="download" size={12} />
+          </a>
+        )}
       </div>
       {editing ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -97,6 +134,14 @@ export function LibraryCard({ item, onRemove, onRename }: LibraryCardProps) {
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span
+            {...dragHandleProps}
+            aria-label="Drag to reorder"
+            title="Drag to reorder"
+            style={{ display: 'flex', flexShrink: 0, opacity: 0.4, cursor: 'grab', ...dragHandleProps?.style }}
+          >
+            <Icon name="gripVertical" size={12} />
+          </span>
           <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {item.name}
           </div>

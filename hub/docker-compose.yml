@@ -16,5 +16,13 @@ services:
     environment:
       - PORT=4000
       - SIGNAGE_DATA_DIR=/app/data
+      # The PIN the control app asks for before it'll show or change anything on this
+      # hub — see hub/README.md's "Login PIN" section. Defaults to Abc123 if unset;
+      # change it here.
+      - SIGNAGE_PIN=Abc123
+      # Only needed on a multi-homed NAS (more than one NIC/subnet) — see
+      # hub/README.md's "Multi-homed NAS" section. Uncomment and set to an address
+      # every Pi can reach, regardless of which interface a pairing request arrives on.
+      # - SIGNAGE_PUBLIC_HUB_URL=http://10.21.0.5:4000
     volumes:
       - ./data:/app/data

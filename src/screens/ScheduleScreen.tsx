@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Calendar } from '../components/Calendar';
 import { PlaylistRow } from '../components/PlaylistRow';
 import { EventRow } from '../components/EventRow';
+import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
 import { activeContentIds, itemsForDate } from '../api/resolve';
+import type { LibraryItem } from '../api/types';
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -18,9 +20,10 @@ interface ScheduleScreenProps {
   app: AppState;
   onOpenAddContent: (groupId: string) => void;
   onOpenAddEvent: (groupId: string) => void;
+  onPreviewContent: (item: LibraryItem) => void;
 }
 
-export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent }: ScheduleScreenProps) {
+export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onPreviewContent }: ScheduleScreenProps) {
   const { groups, devices, library, reorderDefaultPlaylist, removeFromDefaultPlaylist, removeEvent, setItemDuration } = app;
   const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id ?? '');
   const [calMonthOffset, setCalMonthOffset] = useState(0);
@@ -69,9 +72,37 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent }: Schedu
         ))}
       </div>
 
-      <div className="preview-box">
-        <span className={`tag ${todayTagClass}`} style={{ position: 'absolute', top: 6, left: 6, fontSize: 9 }}>{todayLabel}</span>
-        <span className="preview-box-label" style={{ fontSize: 13 }}>{nowPlayingItem ? nowPlayingItem.name : '—'}</span>
+      <div
+        className={`preview-box${active.kind === 'forced' ? ' preview-box-forced' : ''}`}
+        style={
+          nowPlayingItem?.type === 'image' && nowPlayingItem.thumb
+            ? { backgroundImage: `url(${nowPlayingItem.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+            : undefined
+        }
+      >
+        <span className={`tag ${todayTagClass}`} style={{ position: 'absolute', top: 6, left: 6, fontSize: 9, zIndex: 1 }}>{todayLabel}</span>
+        {!(nowPlayingItem?.type === 'image' && nowPlayingItem.thumb) && (
+          <span className="preview-box-label" style={{ fontSize: 13 }}>{nowPlayingItem ? nowPlayingItem.name : '—'}</span>
+        )}
+        {nowPlayingItem && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon thumb-remove"
+            aria-label="Preview content"
+            title="Preview what this screen would actually show"
+            style={{ zIndex: 1 }}
+            onClick={() => onPreviewContent(nowPlayingItem)}
+          >
+            <Icon name="eye" size={13} />
+          </button>
+        )}
+        {active.kind === 'forced' && (
+          <div className="force-watermark" aria-hidden="true">
+            {Array.from({ length: 14 }, (_, i) => (
+              <span key={i}>Force content enabled</span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
