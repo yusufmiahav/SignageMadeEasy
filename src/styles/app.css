@@ -179,6 +179,15 @@ body {
   overflow: hidden;
 }
 
+/* Schedule screen's own "now playing" preview only — DeviceCard's copy of
+   .preview-box already sits inside .device-grid's narrow columns and doesn't need
+   this. Without a cap, a bare .preview-box stretches to .app-content's full
+   1200px width on desktop, which at 16:9 is a ~675px-tall box dominating the
+   screen above the actual playlist/calendar it's meant to summarize. */
+.preview-box-compact {
+  max-width: 360px;
+}
+
 .preview-box-label {
   color: var(--color-bg);
   font-size: 12px;

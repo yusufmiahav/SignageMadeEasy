@@ -38,6 +38,9 @@ export interface ScheduleEvent {
   start: string;
   end: string;
   libIds: string[];
+  /** 24h "HH:MM" — see src/api/types.ts's copy of this interface for the full comment. */
+  startTime?: string;
+  endTime?: string;
 }
 
 export interface AnnouncementSchedule {

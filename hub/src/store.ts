@@ -111,12 +111,15 @@ export function setLibraryItemTags(id: string, tags: string[]): void {
 
 interface GroupRow { id: string; name: string; defaultPlaylist: string; forcedContentId: string | null; forcedAnnouncementId: string | null; blackout: number }
 const GROUP_COLUMNS = 'id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId, blackout';
-interface EventRow { id: string; groupId: string; name: string; start: string; end: string; libIds: string }
+interface EventRow { id: string; groupId: string; name: string; start: string; end: string; libIds: string; startTime: string | null; endTime: string | null }
 interface AnnouncementScheduleRow { id: string; groupId: string; announcementId: string; startDate: string; endDate: string; startTime: string; endTime: string }
 
 function eventsForGroup(groupId: string): ScheduleEvent[] {
-  const rows = db.prepare('SELECT id, groupId, name, start, end, libIds FROM events WHERE groupId = ? ORDER BY start ASC').all(groupId) as EventRow[];
-  return rows.map((r) => ({ id: r.id, name: r.name, start: r.start, end: r.end, libIds: JSON.parse(r.libIds) }));
+  const rows = db.prepare('SELECT id, groupId, name, start, end, libIds, startTime, endTime FROM events WHERE groupId = ? ORDER BY start ASC').all(groupId) as EventRow[];
+  return rows.map((r) => ({
+    id: r.id, name: r.name, start: r.start, end: r.end, libIds: JSON.parse(r.libIds),
+    startTime: r.startTime ?? undefined, endTime: r.endTime ?? undefined,
+  }));
 }
 
 function announcementSchedulesForGroup(groupId: string): AnnouncementSchedule[] {
@@ -204,7 +207,9 @@ export function reorderDefaultPlaylist(groupId: string, libId: string, direction
 
 export function addEvent(groupId: string, event: Omit<ScheduleEvent, 'id'>): ScheduleEvent {
   const id = uid('e');
-  db.prepare('INSERT INTO events (id, groupId, name, start, end, libIds) VALUES (?,?,?,?,?,?)').run(id, groupId, event.name, event.start, event.end, JSON.stringify(event.libIds));
+  db.prepare('INSERT INTO events (id, groupId, name, start, end, libIds, startTime, endTime) VALUES (?,?,?,?,?,?,?,?)').run(
+    id, groupId, event.name, event.start, event.end, JSON.stringify(event.libIds), event.startTime ?? null, event.endTime ?? null,
+  );
   return { id, ...event };
 }
 
@@ -323,12 +328,22 @@ function toISODate(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-export function activeContentIds(group: Group, today: string = toISODate(new Date())): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
+export function activeContentIds(group: Group, now: Date = new Date()): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
   // Highest priority, above even forced content — an emergency override meant to
   // win regardless of anything else configured for this location.
   if (group.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
   if (group.forcedContentId) return { ids: [group.forcedContentId], kind: 'forced', label: 'Forced' };
-  const event = group.events.find((e) => today >= e.start && today <= e.end);
+  const today = toISODate(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  // An event with no startTime/endTime runs all day, every day in [start, end] (the
+  // original behavior); one with both set only replaces the default playlist during
+  // that daily window — same "doesn't span midnight" string-compare caveat as
+  // activeAnnouncementId's schedules below.
+  const event = group.events.find((e) => {
+    if (today < e.start || today > e.end) return false;
+    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
+    return true;
+  });
   if (event) return { ids: event.libIds, kind: 'event', label: event.name };
   return { ids: group.defaultPlaylist, kind: 'default', label: 'Default playlist' };
 }
@@ -451,7 +466,9 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   const insertGroup = db.prepare(
     'INSERT INTO groups_ (id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId, sortOrder, blackout) VALUES (@id,@name,@defaultPlaylist,@forcedContentId,@forcedAnnouncementId,@sortOrder,@blackout)',
   );
-  const insertEvent = db.prepare('INSERT INTO events (id, groupId, name, start, end, libIds) VALUES (@id,@groupId,@name,@start,@end,@libIds)');
+  const insertEvent = db.prepare(
+    'INSERT INTO events (id, groupId, name, start, end, libIds, startTime, endTime) VALUES (@id,@groupId,@name,@start,@end,@libIds,@startTime,@endTime)',
+  );
   const insertAnnSchedule = db.prepare(
     'INSERT INTO announcement_schedules (id, groupId, announcementId, startDate, endDate, startTime, endTime) VALUES (@id,@groupId,@announcementId,@startDate,@endDate,@startTime,@endTime)',
   );
@@ -462,7 +479,10 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       sortOrder: i, blackout: group.blackout ? 1 : 0,
     });
     for (const event of group.events) {
-      insertEvent.run({ id: event.id, groupId: group.id, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds) });
+      insertEvent.run({
+        id: event.id, groupId: group.id, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds),
+        startTime: event.startTime ?? null, endTime: event.endTime ?? null,
+      });
     }
     for (const s of group.announcementSchedules) {
       insertAnnSchedule.run({

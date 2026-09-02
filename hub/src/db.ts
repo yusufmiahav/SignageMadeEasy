@@ -142,5 +142,12 @@ if (!groupCols.includes('sortOrder')) {
 // off for every existing location.
 if (!groupCols.includes('blackout')) db.exec('ALTER TABLE groups_ ADD COLUMN blackout INTEGER NOT NULL DEFAULT 0');
 
+// Same reasoning, for hubs deployed before events supported a daily time window —
+// nullable (not NOT NULL DEFAULT), since null on both means "runs all day," matching
+// every existing event's actual behavior exactly, not just a same-looking default.
+const eventCols = (db.prepare("PRAGMA table_info(events)").all() as { name: string }[]).map((c) => c.name);
+if (!eventCols.includes('startTime')) db.exec('ALTER TABLE events ADD COLUMN startTime TEXT');
+if (!eventCols.includes('endTime')) db.exec('ALTER TABLE events ADD COLUMN endTime TEXT');
+
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.
