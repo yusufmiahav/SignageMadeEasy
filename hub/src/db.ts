@@ -118,5 +118,29 @@ if (!deviceCols.includes('uptimeSec')) db.exec('ALTER TABLE devices ADD COLUMN u
 if (!deviceCols.includes('diskFreeMb')) db.exec('ALTER TABLE devices ADD COLUMN diskFreeMb INTEGER');
 if (!deviceCols.includes('diskTotalMb')) db.exec('ALTER TABLE devices ADD COLUMN diskTotalMb INTEGER');
 
+// Same reasoning, for hubs deployed before Library tags existed — a JSON string
+// array, same encoding as defaultPlaylist/libIds elsewhere in this file. Empty for
+// every existing row until someone tags something.
+if (!(db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some((c) => c.name === 'tags')) {
+  db.exec("ALTER TABLE library ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'");
+}
+
+// Same reasoning, for hubs deployed before locations supported drag-to-reorder on
+// the Home screen — every existing row keeps its current rowid-based (insertion)
+// order so nothing visibly reshuffles the first time this runs; new rows get one
+// past the current max (see store.ts's addGroup).
+const groupCols = (db.prepare("PRAGMA table_info(groups_)").all() as { name: string }[]).map((c) => c.name);
+if (!groupCols.includes('sortOrder')) {
+  db.exec('ALTER TABLE groups_ ADD COLUMN sortOrder INTEGER');
+  const rows = db.prepare('SELECT id FROM groups_ ORDER BY rowid ASC').all() as { id: string }[];
+  const setOrder = db.prepare('UPDATE groups_ SET sortOrder = ? WHERE id = ?');
+  rows.forEach((r, i) => setOrder.run(i, r.id));
+}
+
+// Same reasoning, for hubs deployed before the emergency "blackout" override
+// existed — see activeContentIds' highest-priority check in store.ts. Defaults to
+// off for every existing location.
+if (!groupCols.includes('blackout')) db.exec('ALTER TABLE groups_ ADD COLUMN blackout INTEGER NOT NULL DEFAULT 0');
+
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.

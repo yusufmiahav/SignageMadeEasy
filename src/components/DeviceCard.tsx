@@ -34,6 +34,9 @@ interface DeviceCardProps {
   onToggleAnnouncement: (id: string) => void;
   onSetVideoQuality: (id: string, videoQuality: 'auto' | 'full') => void;
   onPreview: (item: LibraryItem) => void;
+  /** Off by default (see Settings → Device cards) — shows just IP + online/offline until turned on. */
+  advancedInfo: boolean;
+  hideAnnouncementRow: boolean;
 }
 
 export function DeviceCard({
@@ -49,6 +52,8 @@ export function DeviceCard({
   onToggleAnnouncement,
   onSetVideoQuality,
   onPreview,
+  advancedInfo,
+  hideAnnouncementRow,
 }: DeviceCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(device.name);
@@ -135,10 +140,10 @@ export function DeviceCard({
         >
           {device.ip}
         </a>
-        {device.mac && <span className="tag tag-neutral">{device.mac}</span>}
+        {advancedInfo && device.mac && <span className="tag tag-neutral">{device.mac}</span>}
         <span className="tag tag-neutral">{device.status === 'online' ? 'Online' : 'Offline'}</span>
       </div>
-      {(device.tempC != null || device.uptimeSec != null || device.diskFreeMb != null) && (
+      {advancedInfo && (device.tempC != null || device.uptimeSec != null || device.diskFreeMb != null) && (
         <div className="text-muted" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
           {device.tempC != null && (
             <span style={isCurrentlyThrottled(device.throttled) ? { color: 'var(--color-danger, #c0392b)', fontWeight: 600 } : undefined}>
@@ -164,28 +169,30 @@ export function DeviceCard({
           <option value="full">Full-resolution video</option>
         </select>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 2, borderTop: '1px solid var(--color-divider)' }}>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          style={{ fontSize: 11, padding: '4px 0', flex: 1, justifyContent: 'flex-start', gap: 6 }}
-          onClick={() => onPickAnnouncement(device)}
-        >
-          <Icon name="messageCircle" size={13} />
-          {announcement ? announcement.name : 'Announcement: none'}
-        </button>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={device.announcementOn}
-            disabled={!device.announcementId}
-            onChange={() => onToggleAnnouncement(device.id)}
-          />
-          <span className="toggle-track">
-            <span className="toggle-dot" />
-          </span>
-        </label>
-      </div>
+      {!hideAnnouncementRow && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 2, borderTop: '1px solid var(--color-divider)' }}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ fontSize: 11, padding: '4px 0', flex: 1, justifyContent: 'flex-start', gap: 6 }}
+            onClick={() => onPickAnnouncement(device)}
+          >
+            <Icon name="messageCircle" size={13} />
+            {announcement ? announcement.name : 'Announcement: none'}
+          </button>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={device.announcementOn}
+              disabled={!device.announcementId}
+              onChange={() => onToggleAnnouncement(device.id)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+      )}
     </div>
   );
 }

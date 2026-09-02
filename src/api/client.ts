@@ -29,6 +29,7 @@ export interface SignageApiClient {
   reorderLibrary(ids: string[]): Promise<void>;
   /** Images and clocks only — anything else is a server-side no-op. */
   setItemDuration(id: string, durationSec: number): Promise<void>;
+  setLibraryItemTags(id: string, tags: string[]): Promise<void>;
 
   // Locations (groups)
   listGroups(): Promise<Group[]>;
@@ -36,6 +37,8 @@ export interface SignageApiClient {
   renameGroup(id: string, name: string): Promise<void>;
   /** No-op if the location still has devices assigned. Returns whether it deleted. */
   deleteGroup(id: string): Promise<boolean>;
+  /** Persists a reorder of locations on the Home screen — the complete new display order. */
+  reorderGroups(ids: string[]): Promise<void>;
   setDefaultPlaylist(groupId: string, libIds: string[]): Promise<void>;
   addToDefaultPlaylist(groupId: string, libIds: string[]): Promise<void>;
   removeFromDefaultPlaylist(groupId: string, libId: string): Promise<void>;
@@ -47,6 +50,8 @@ export interface SignageApiClient {
   setForcedAnnouncement(groupId: string, announcementId: string | null): Promise<void>;
   addAnnouncementSchedule(groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>): Promise<AnnouncementSchedule>;
   removeAnnouncementSchedule(groupId: string, scheduleId: string): Promise<void>;
+  /** Emergency override: every screen at this location goes to a plain black screen, above even forced content, until cleared with `false`. */
+  setGroupBlackout(groupId: string, blackout: boolean): Promise<void>;
 
   // Devices
   listDevices(): Promise<Device[]>;

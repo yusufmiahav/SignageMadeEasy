@@ -2,9 +2,9 @@ import type { Group, LibraryItem } from './types';
 
 export interface ActiveContent {
   ids: string[];
-  /** "forced" | "event" | "default" */
-  kind: 'forced' | 'event' | 'default';
-  /** "Forced" | the event's name | "Default playlist" */
+  /** "blackout" | "forced" | "event" | "default" */
+  kind: 'blackout' | 'forced' | 'event' | 'default';
+  /** "Blackout" | "Forced" | the event's name | "Default playlist" */
   label: string;
 }
 
@@ -15,12 +15,17 @@ function toISODate(d: Date): string {
 
 /**
  * Resolution order (highest priority first):
- * 1. forcedContentId, if set — that single item, shown until cleared.
- * 2. An event whose date range includes today — that event's item set,
+ * 1. blackout, if set — every screen at this location goes plain black, above
+ *    even forced content (an emergency override).
+ * 2. forcedContentId, if set — that single item, shown until cleared.
+ * 3. An event whose date range includes today — that event's item set,
  *    replacing the default playlist entirely for the range.
- * 3. Otherwise the location's defaultPlaylist, looping.
+ * 4. Otherwise the location's defaultPlaylist, looping.
  */
 export function activeContentIds(group: Group, today: string = toISODate(new Date())): ActiveContent {
+  if (group.blackout) {
+    return { ids: [], kind: 'blackout', label: 'Blackout' };
+  }
   if (group.forcedContentId) {
     return { ids: [group.forcedContentId], kind: 'forced', label: 'Forced' };
   }

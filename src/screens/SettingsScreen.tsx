@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
+import type { Theme } from '../hooks/useTheme';
 import type { Backup } from '../api/types';
 import { copyText } from '../utils/clipboard';
 import { authGateEnabled, logout } from '../api/auth';
@@ -8,6 +9,12 @@ import { authGateEnabled, logout } from '../api/auth';
 interface SettingsScreenProps {
   app: AppState;
   onLogout: () => void;
+  theme: Theme;
+  onSetTheme: (theme: Theme) => void;
+  advancedDeviceInfo: boolean;
+  onSetAdvancedDeviceInfo: (value: boolean) => void;
+  hideAnnouncementRow: boolean;
+  onSetHideAnnouncementRow: (value: boolean) => void;
 }
 
 function isBackup(value: unknown): value is Backup {
@@ -16,7 +23,16 @@ function isBackup(value: unknown): value is Backup {
   return Array.isArray(v.library) && Array.isArray(v.groups) && Array.isArray(v.devices);
 }
 
-export function SettingsScreen({ app, onLogout }: SettingsScreenProps) {
+export function SettingsScreen({
+  app,
+  onLogout,
+  theme,
+  onSetTheme,
+  advancedDeviceInfo,
+  onSetAdvancedDeviceInfo,
+  hideAnnouncementRow,
+  onSetHideAnnouncementRow,
+}: SettingsScreenProps) {
   const { groups, devices, renameGroup, deleteGroup, showToast, exportBackup, importBackup } = app;
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -25,7 +41,9 @@ export function SettingsScreen({ app, onLogout }: SettingsScreenProps) {
 
   const devicesWithMac = devices.filter((d): d is typeof d & { mac: string } => !!d.mac);
   const copyMacAddresses = async () => {
-    const text = devicesWithMac.map((d) => `${d.name}\t${d.mac}`).join('\n');
+    const text = devicesWithMac
+      .map((d) => `(Screen Name: "${d.name}" - IP: "${d.ip}" - MAC: "${d.mac}")`)
+      .join(',');
     const ok = await copyText(text);
     showToast(ok ? `Copied ${devicesWithMac.length} MAC address${devicesWithMac.length === 1 ? '' : 'es'}` : 'Could not copy — clipboard access denied');
   };
@@ -79,6 +97,59 @@ export function SettingsScreen({ app, onLogout }: SettingsScreenProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <h1 style={{ margin: 0 }}>Settings</h1>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Appearance</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>Dark mode</span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={theme === 'dark'}
+              onChange={(e) => onSetTheme(e.target.checked ? 'dark' : 'light')}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Device cards</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>
+            Show advanced device info
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>Temperature, throttling, uptime, and disk space — off shows just IP and online/offline</span>
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={advancedDeviceInfo}
+              onChange={(e) => onSetAdvancedDeviceInfo(e.target.checked)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>
+            Show announcement row on each screen
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>The per-screen announcement picker and on/off toggle under each device card</span>
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={!hideAnnouncementRow}
+              onChange={(e) => onSetHideAnnouncementRow(!e.target.checked)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+      </div>
 
       <div className="card" style={{ gap: 8 }}>
         <div className="card-kicker">Locations</div>
@@ -139,8 +210,9 @@ export function SettingsScreen({ app, onLogout }: SettingsScreenProps) {
         <div className="card-kicker">IT</div>
         <div className="card-title">Device inventory</div>
         <p className="card-body">
-          Copies every paired screen's name and MAC address (tab-separated, one per line) —
-          for network whitelisting, asset tracking, or handing off to IT.
+          Copies every paired screen's name, IP, and MAC address as{' '}
+          <code>(Screen Name: "" - IP: "" - MAC: "")</code>, one per screen — for network
+          whitelisting, asset tracking, or handing off to IT.
         </p>
         <button
           type="button"

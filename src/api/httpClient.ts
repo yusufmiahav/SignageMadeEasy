@@ -68,6 +68,7 @@ export const httpClient: SignageApiClient = {
   reorderLibrary: (ids) => request<void>('/api/library/reorder', { method: 'PUT', ...json({ ids }) }),
   setItemDuration: (id, durationSec) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ durationSec }) }),
   renameLibraryItem: (id, name) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ name }) }),
+  setLibraryItemTags: (id, tags) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ tags }) }),
 
   // Groups
   listGroups: () => request<Group[]>('/api/groups'),
@@ -79,6 +80,7 @@ export const httpClient: SignageApiClient = {
     if (!res.ok) throw new Error(`DELETE /api/groups/${id} failed: ${res.status}`);
     return true;
   },
+  reorderGroups: (ids) => request<void>('/api/groups/reorder', { method: 'PUT', ...json({ ids }) }),
   setDefaultPlaylist: (groupId, libIds) => request<void>(`/api/groups/${groupId}/playlist`, { method: 'PUT', ...json({ libIds }) }),
   addToDefaultPlaylist: (groupId, libIds) => request<void>(`/api/groups/${groupId}/playlist`, { method: 'POST', ...json({ libIds }) }),
   removeFromDefaultPlaylist: (groupId, libId) => request<void>(`/api/groups/${groupId}/playlist/${libId}`, { method: 'DELETE' }),
@@ -91,6 +93,7 @@ export const httpClient: SignageApiClient = {
   addAnnouncementSchedule: (groupId, schedule) =>
     request<AnnouncementSchedule>(`/api/groups/${groupId}/announcement-schedules`, { method: 'POST', ...json(schedule) }),
   removeAnnouncementSchedule: (groupId, scheduleId) => request<void>(`/api/groups/${groupId}/announcement-schedules/${scheduleId}`, { method: 'DELETE' }),
+  setGroupBlackout: (groupId, blackout) => request<void>(`/api/groups/${groupId}/blackout`, { method: 'PUT', ...json({ blackout }) }),
 
   // Devices
   listDevices: () => request<Device[]>('/api/devices'),

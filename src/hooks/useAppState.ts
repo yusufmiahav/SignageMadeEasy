@@ -10,9 +10,36 @@ export function useAppState() {
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  const showToast = useCallback((message: string) => {
+    clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = setTimeout(() => setToast(''), 2600);
+  }, []);
+
   const refreshLibrary = useCallback(async () => setLibrary(await api.listLibrary()), []);
   const refreshGroups = useCallback(async () => setGroups(await api.listGroups()), []);
-  const refreshDevices = useCallback(async () => setDevices(await api.listDevices()), []);
+
+  // Tracks each device's last-known status across polls (not React state — this
+  // must never itself trigger a render) purely to detect an online->offline
+  // transition below; a device that's simply always been offline (never seen
+  // online by this tab) or one seen for the first time on this poll doesn't fire,
+  // so pairing a new not-yet-heartbeated screen doesn't spam this on load.
+  const prevDeviceStatus = useRef<Map<string, DeviceStatus>>(new Map());
+  const isFirstDevicePoll = useRef(true);
+
+  const refreshDevices = useCallback(async () => {
+    const next = await api.listDevices();
+    if (!isFirstDevicePoll.current) {
+      for (const d of next) {
+        if (prevDeviceStatus.current.get(d.id) === 'online' && d.status === 'offline') {
+          showToast(`${d.name} went offline`);
+        }
+      }
+    }
+    isFirstDevicePoll.current = false;
+    prevDeviceStatus.current = new Map(next.map((d) => [d.id, d.status]));
+    setDevices(next);
+  }, [showToast]);
 
   useEffect(() => {
     (async () => {
@@ -40,12 +67,6 @@ export function useAppState() {
     }, 10_000);
     return () => clearInterval(id);
   }, [refreshDevices, refreshGroups, refreshLibrary]);
-
-  const showToast = useCallback((message: string) => {
-    clearTimeout(toastTimer.current);
-    setToast(message);
-    toastTimer.current = setTimeout(() => setToast(''), 2600);
-  }, []);
 
   // ---- Library ----
   const addImage = useCallback(async (file: File, onProgress?: (pct: number) => void) => {
@@ -95,10 +116,23 @@ export function useAppState() {
     await refreshLibrary();
   }, [refreshLibrary]);
 
+  const setLibraryItemTags = useCallback(async (id: string, tags: string[]) => {
+    await api.setLibraryItemTags(id, tags);
+    await refreshLibrary();
+  }, [refreshLibrary]);
+
   const removeLibraryItem = useCallback(async (id: string) => {
     await api.removeLibraryItem(id);
     await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices()]);
   }, [refreshLibrary, refreshGroups, refreshDevices]);
+
+  // Bulk delete from the Library screen's multi-select mode — one refresh at the end
+  // rather than one per item, same reasoning as forceContentAllScreens's loop below.
+  const removeLibraryItems = useCallback(async (ids: string[]) => {
+    await Promise.all(ids.map((id) => api.removeLibraryItem(id)));
+    await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices()]);
+    showToast(`${ids.length} item${ids.length === 1 ? '' : 's'} deleted`);
+  }, [refreshLibrary, refreshGroups, refreshDevices, showToast]);
 
   // ---- Groups / locations ----
   const addGroup = useCallback(async (name: string) => {
@@ -116,6 +150,11 @@ export function useAppState() {
     const ok = await api.deleteGroup(id);
     if (ok) await refreshGroups();
     return ok;
+  }, [refreshGroups]);
+
+  const reorderGroups = useCallback(async (ids: string[]) => {
+    await api.reorderGroups(ids);
+    await refreshGroups();
   }, [refreshGroups]);
 
   const addToDefaultPlaylist = useCallback(async (groupId: string, libIds: string[]) => {
@@ -144,6 +183,18 @@ export function useAppState() {
     await refreshGroups();
   }, [refreshGroups]);
 
+  // Duplicates an existing event within the same location — no dedicated backend
+  // endpoint, since it's just a normal addEvent with the source event's own fields
+  // copied in (mirrors forceContentAllScreens's "no new API surface needed" reasoning).
+  const duplicateEvent = useCallback(async (groupId: string, eventId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    const event = group?.events.find((e) => e.id === eventId);
+    if (!event) return;
+    await api.addEvent(groupId, { name: `${event.name} (copy)`, start: event.start, end: event.end, libIds: [...event.libIds] });
+    await refreshGroups();
+    showToast('Event duplicated');
+  }, [groups, refreshGroups, showToast]);
+
   const setForcedContent = useCallback(async (groupId: string, libId: string | null) => {
     await api.setForcedContent(groupId, libId);
     await refreshGroups();
@@ -170,6 +221,20 @@ export function useAppState() {
     await Promise.all(groups.map((g) => api.setForcedAnnouncement(g.id, announcementId)));
     await refreshGroups();
     showToast(announcementId ? 'Announcement forced on for every screen' : 'Announcement cleared on every screen');
+  }, [groups, refreshGroups, showToast]);
+
+  const setGroupBlackout = useCallback(async (groupId: string, blackout: boolean) => {
+    await api.setGroupBlackout(groupId, blackout);
+    await refreshGroups();
+  }, [refreshGroups]);
+
+  // "Blackout all screens": same client-side-loop-over-the-per-location-call pattern
+  // as forceContentAllScreens/forceAnnouncementAllScreens above — no dedicated bulk
+  // endpoint needed for an emergency action this rare.
+  const blackoutAllScreens = useCallback(async (blackout: boolean) => {
+    await Promise.all(groups.map((g) => api.setGroupBlackout(g.id, blackout)));
+    await refreshGroups();
+    showToast(blackout ? 'Every screen blacked out' : 'Blackout cleared on every screen');
   }, [groups, refreshGroups, showToast]);
 
   const addAnnouncementSchedule = useCallback(async (groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>) => {
@@ -248,19 +313,25 @@ export function useAppState() {
     setItemDuration,
     renameLibraryItem,
     reorderLibrary,
+    setLibraryItemTags,
     removeLibraryItem,
+    removeLibraryItems,
     addGroup,
     renameGroup,
     deleteGroup,
+    reorderGroups,
     addToDefaultPlaylist,
     removeFromDefaultPlaylist,
     reorderDefaultPlaylist,
     addEvent,
     removeEvent,
+    duplicateEvent,
     setForcedContent,
     forceContentAllScreens,
     setForcedAnnouncement,
     forceAnnouncementAllScreens,
+    setGroupBlackout,
+    blackoutAllScreens,
     addAnnouncementSchedule,
     removeAnnouncementSchedule,
     pairDevice,

@@ -24,7 +24,7 @@ interface ScheduleScreenProps {
 }
 
 export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onPreviewContent }: ScheduleScreenProps) {
-  const { groups, devices, library, reorderDefaultPlaylist, removeFromDefaultPlaylist, removeEvent, setItemDuration } = app;
+  const { groups, devices, library, reorderDefaultPlaylist, removeFromDefaultPlaylist, removeEvent, duplicateEvent, setItemDuration } = app;
   const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id ?? '');
   const [calMonthOffset, setCalMonthOffset] = useState(0);
   const [selectedCalDate, setSelectedCalDate] = useState<string | null>(null);
@@ -167,7 +167,12 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onPrevie
         {selectedGroup.events.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
             {selectedGroup.events.map((ev) => (
-              <EventRow key={ev.id} event={ev} onRemove={() => removeEvent(selectedGroup.id, ev.id)} />
+              <EventRow
+                key={ev.id}
+                event={ev}
+                onRemove={() => removeEvent(selectedGroup.id, ev.id)}
+                onDuplicate={() => duplicateEvent(selectedGroup.id, ev.id)}
+              />
             ))}
           </div>
         )}
