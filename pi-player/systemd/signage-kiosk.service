@@ -1,6 +1,19 @@
 [Unit]
 Description=SignageMadeEasy kiosk display (cage + Chromium)
-After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service ydotoold.service
+# systemd-logind.service and dbus.service are the actual root cause of the
+# "XDG_RUNTIME_DIR is not set" crash-loop seen on real hardware (confirmed via
+# journalctl: cage.c:299 fails on the first 2-3 boot attempts, then "self-heals"
+# a few seconds later purely because Restart=always keeps buying time for logind
+# to finish starting). PAMName=login below relies on pam_systemd to inject
+# XDG_RUNTIME_DIR into this unit's own PAM session — that only happens if
+# pam_systemd can reach systemd-logind over D-Bus at the moment THIS session
+# opens. Without an explicit ordering dependency, nothing stops this unit from
+# starting before logind/dbus are up, so pam_systemd silently no-ops (PAM as a
+# whole still reports success) and cage gets an environment with no
+# XDG_RUNTIME_DIR at all. The ExecStartPre bus-socket wait below is a separate,
+# narrower check (an existing socket file doesn't guarantee a *new* session's
+# own env injection will succeed) and isn't a substitute for this ordering.
+After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service ydotoold.service systemd-logind.service dbus.service
 Wants=signage-player.service ydotoold.service
 Conflicts=getty@tty1.service
 
@@ -31,10 +44,12 @@ Environment=XCURSOR_PATH=/home/signage/.icons
 
 # Second real bug, confirmed via journalctl on real hardware: cage's own
 # startup check (cage.c:299) failed with "XDG_RUNTIME_DIR is not set in the
-# environment" on the first 1-2 boot attempts, before pam_systemd/logind
-# finished setting up the signage user's session (it kept self-healing within
-# ~30s via Restart=always below, but that's still ~30s of a failed/blank kiosk
-# on every boot).
+# environment" on the first 2-3 boot attempts (it kept self-healing within
+# ~30-60s via Restart=always below, but that's still a failed/blank kiosk for a
+# while on every boot). Root-caused to the missing systemd-logind.service/
+# dbus.service ordering in [Unit] above, which is the real fix — see that
+# comment. Everything below this point predates that fix and is kept as
+# defense-in-depth, not the primary mechanism anymore.
 #
 # A previous fix here pointed XDG_RUNTIME_DIR at a directory systemd's own
 # RuntimeDirectory= created, to sidestep the race entirely — that was wrong
@@ -46,12 +61,11 @@ Environment=XCURSOR_PATH=/home/signage/.icons
 # init and cage never starting its wlroots backend — worse than the original
 # race, since it no longer self-healed via Restart=always.
 #
-# Fixed by waiting for the real thing instead of substituting a fake one:
-# poll for pam_systemd's own /run/user/<uid>/bus (the file that specifically
-# indicates the D-Bus session libseat needs is actually up), up to 10s, then
-# proceed regardless — if it's still not there, cage will fail exactly as
-# before and Restart=always below still recovers, same self-healing safety
-# net as ever.
+# Waits for the real thing instead of substituting a fake one: poll for
+# pam_systemd's own /run/user/<uid>/bus (the file that specifically indicates
+# the D-Bus session libseat needs is actually up), up to 10s, then proceed
+# regardless — if it's still not there, cage will fail exactly as before and
+# Restart=always below still recovers, same self-healing safety net as ever.
 #
 # Deliberately NOT %U: confirmed on real hardware that %U resolves to 0 (the
 # service manager's own UID, i.e. root — PID 1 always runs as root) for a
