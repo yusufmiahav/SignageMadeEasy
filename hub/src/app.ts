@@ -9,6 +9,7 @@ import { devicesRouter } from './routes/devices.js';
 import { playerRouter } from './routes/player.js';
 import { scanRouter } from './routes/scan.js';
 import { backupRouter } from './routes/backup.js';
+import { settingsRouter } from './routes/settings.js';
 import { authRouter } from './routes/auth.js';
 import { requireAuth } from './auth.js';
 
@@ -39,6 +40,7 @@ export function createApp() {
   app.use('/api/player', playerRouter);
   app.use('/api/scan', requireAuth, scanRouter);
   app.use('/api/backup', requireAuth, backupRouter);
+  app.use('/api/settings', requireAuth, settingsRouter);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

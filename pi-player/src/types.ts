@@ -12,10 +12,12 @@ export interface PlayerItem {
 }
 
 export interface PlayerState {
-  kind: 'forced' | 'event' | 'default';
+  kind: 'blackout' | 'forced' | 'event' | 'default';
   label: string;
   items: PlayerItem[];
   announcement: { on: boolean; text: string | null };
+  /** See hub/src/types.ts's copy of this interface for the full comment. */
+  safetyHold: boolean;
 }
 
 export interface PairingConfig {

@@ -38,6 +38,27 @@ function save(data: AppData): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
+// Kept as its own localStorage entry rather than a field on AppData — a hub-wide
+// setting like this isn't user content, so it has no business in a Backup
+// export/import any more than the hub's own SIGNAGE_PIN would. Standalone mode has
+// no real Pi to actually apply this to; the toggle still works (and persists) for
+// UI consistency with the hub-backed client.
+const SETTINGS_KEY = 'signagemadeeasy.settings.v1';
+
+function loadSettings(): { safetyHold: boolean } {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) return JSON.parse(raw) as { safetyHold: boolean };
+  } catch {
+    // Fall through to the default below.
+  }
+  return { safetyHold: true };
+}
+
+function saveSettings(settings: { safetyHold: boolean }): void {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
 function readImageThumb(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -365,6 +386,15 @@ class LocalStoreClient implements SignageApiClient {
   async importBackup(backup: Backup): Promise<void> {
     this.data = { library: backup.library, groups: backup.groups, devices: backup.devices };
     this.persist();
+  }
+
+  // ---- Settings ----
+  async getSettings(): Promise<{ safetyHold: boolean }> {
+    return loadSettings();
+  }
+
+  async setSafetyHold(enabled: boolean): Promise<void> {
+    saveSettings({ safetyHold: enabled });
   }
 
   // ---- Pairing helpers ----

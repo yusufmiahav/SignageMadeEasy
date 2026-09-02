@@ -6,6 +6,10 @@ export function useAppState() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  // Defaults true (see hub/src/store.ts's getSafetyHold) — matches this project's
+  // original always-on behavior until the initial load below overwrites it with the
+  // hub's real value.
+  const [safetyHold, setSafetyHoldState] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -41,12 +45,20 @@ export function useAppState() {
     setDevices(next);
   }, [showToast]);
 
+  const refreshSettings = useCallback(async () => setSafetyHoldState((await api.getSettings()).safetyHold), []);
+
+  const setSafetyHold = useCallback(async (enabled: boolean) => {
+    await api.setSafetyHold(enabled);
+    setSafetyHoldState(enabled);
+    showToast(enabled ? 'Safety hold enabled' : 'Safety hold disabled');
+  }, [showToast]);
+
   useEffect(() => {
     (async () => {
-      await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices()]);
+      await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices(), refreshSettings()]);
       setLoaded(true);
     })();
-  }, [refreshLibrary, refreshGroups, refreshDevices]);
+  }, [refreshLibrary, refreshGroups, refreshDevices, refreshSettings]);
 
   // Device online/offline status (and group-level forced/scheduled announcement
   // state) can change on their own with nobody touching the control app - a screen
@@ -338,6 +350,8 @@ export function useAppState() {
     library,
     groups,
     devices,
+    safetyHold,
+    setSafetyHold,
     toast,
     showToast,
     addImage,

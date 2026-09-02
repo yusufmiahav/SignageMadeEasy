@@ -127,4 +127,11 @@ export interface PlayerState {
   label: string;
   items: PlayerItem[];
   announcement: { on: boolean; text: string | null };
+  /**
+   * Settings → Reliability's "Safety hold" toggle, echoed on every poll so a Pi that
+   * later loses touch with the hub already knows which way to behave: true (the
+   * default) keeps showing/caching its last-known content through a disconnect;
+   * false means a disconnected screen goes blank instead. See pi-player/src/poller.ts.
+   */
+  safetyHold: boolean;
 }

@@ -115,4 +115,8 @@ export const httpClient: SignageApiClient = {
   // Backup / restore
   exportBackup: () => request<Backup>('/api/backup'),
   importBackup: (backup) => request<void>('/api/backup/restore', { method: 'POST', ...json(backup) }),
+
+  // Settings
+  getSettings: () => request<{ safetyHold: boolean }>('/api/settings'),
+  setSafetyHold: (safetyHold) => request<void>('/api/settings', { method: 'PATCH', ...json({ safetyHold }) }),
 };

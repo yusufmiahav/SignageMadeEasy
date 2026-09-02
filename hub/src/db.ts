@@ -194,5 +194,17 @@ const deviceCols2 = (db.prepare("PRAGMA table_info(devices)").all() as { name: s
 if (!deviceCols2.includes('forcedContentId')) db.exec('ALTER TABLE devices ADD COLUMN forcedContentId TEXT');
 if (!deviceCols2.includes('blackout')) db.exec('ALTER TABLE devices ADD COLUMN blackout INTEGER NOT NULL DEFAULT 0');
 
+// A generic key/value store for hub-wide settings (currently just "safety hold" —
+// see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
+// (via GET /api/player/:id/state), not just the control app — unlike the frontend's
+// own purely-local, per-browser Settings toggles (dark mode, advanced device info),
+// which live in localStorage and never need the hub to know about them at all.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`);
+
 // No demo/seed data — a fresh hub starts with an empty library, no locations, and
 // no paired devices. Everything shown in the control app comes from real use.

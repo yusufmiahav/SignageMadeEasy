@@ -77,6 +77,17 @@ export interface SignageApiClient {
   exportBackup(): Promise<Backup>;
   /** Wipes and replaces everything currently saved with the backup's contents. */
   importBackup(backup: Backup): Promise<void>;
+
+  // Hub-wide settings (unlike the frontend's own purely-local Settings toggles —
+  // dark mode, advanced device info — these need to be known by every Pi too, so
+  // they live on the hub, not localStorage).
+  getSettings(): Promise<{ safetyHold: boolean }>;
+  /**
+   * Defaults to true (see hub/src/store.ts's getSafetyHold): a Pi already caches its
+   * last-resolved content and keeps showing it through a disconnect from the hub.
+   * Turning this off makes a disconnected screen go blank instead.
+   */
+  setSafetyHold(enabled: boolean): Promise<void>;
 }
 
 // Setting VITE_API_BASE_URL at build time (even to an empty string, for a same-origin
