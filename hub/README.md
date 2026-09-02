@@ -27,19 +27,19 @@ Everything persists under `hub/data/` (bind-mounted): `signage.db` (SQLite) and
 
 ## Running as a non-root user
 
-The hub container runs as a non-root user (uid/gid 1000) rather than root. Since
-`hub/data` is a host bind mount, Docker never adjusts its ownership for you —
-give it to uid 1000 once, before the first `up`:
+The hub's server process runs as a non-root user (uid/gid 1000) rather than root,
+for defense in depth. Nothing to do on your end — `docker-entrypoint.sh` starts
+as root, fixes `hub/data`'s ownership (a host bind mount, so Docker itself never
+touches it), and drops to the non-root user before starting the server, every
+time the container starts. This self-heals a `hub/data` left root-owned by an
+older version of this image too — just rebuild/pull and restart.
 
-```bash
-mkdir -p hub/data
-sudo chown -R 1000:1000 hub/data
-```
-
-**Upgrading an existing deployment?** Its `hub/data` was created by an older,
-root-running image and is almost certainly still owned by root — run the same
-`chown` above before pulling/rebuilding, or the hub will start but fail to read
-or write `signage.db`/`uploads/`.
+If you're instead seeing `EACCES: permission denied, mkdir '/app/data/uploads'`
+right now, you're on an image from before this self-healing entrypoint existed —
+pull the latest hub image (or rebuild from the latest source) and restart; no
+manual `chown` should be needed after that. If you'd rather not rebuild
+immediately, running `sudo chown -R 1000:1000 hub/data` once before
+`docker compose ... up -d` unblocks the current image too.
 
 ## Login PIN
 

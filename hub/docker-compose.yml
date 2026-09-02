@@ -32,12 +32,11 @@ services:
       # hub/README.md's "Multi-homed NAS" section. Uncomment and set to an address
       # every Pi can reach, regardless of which interface a pairing request arrives on.
       # - SIGNAGE_PUBLIC_HUB_URL=http://10.21.0.5:4000
-    # The hub image now runs as a non-root user (uid/gid 1000, not 0). Because
-    # ./data is a host bind mount (not a named volume), Docker never adjusts its
-    # ownership for you — the Docker daemon creates it as root if it doesn't
-    # already exist, so the container needs it made writable by uid 1000 once,
-    # before the first `up` and again after upgrading an existing deployment
-    # whose ./data predates this change:
-    #   mkdir -p hub/data && sudo chown -R 1000:1000 hub/data
+    # The hub image runs its server process as a non-root user (uid/gid 1000, not
+    # 0), but the container itself starts as root — docker-entrypoint.sh fixes
+    # ./data's ownership (a host bind mount, so Docker itself never touches it)
+    # before dropping to that non-root user, on every start. No manual chown
+    # needed, including the first time this directory is created or after
+    # upgrading from an older image version.
     volumes:
       - ./data:/app/data
