@@ -247,35 +247,52 @@ log "Installing the SignageMadeEasy boot splash (Plymouth)"
 mkdir -p /usr/share/plymouth/themes/signagemadeeasy
 cp "$APP_DIR/assets/plymouth/signagemadeeasy.plymouth" /usr/share/plymouth/themes/signagemadeeasy/
 cp "$APP_DIR/assets/plymouth/signagemadeeasy.script" /usr/share/plymouth/themes/signagemadeeasy/
+# `-R` both sets the theme and rebuilds the initramfs to include it in one step. On
+# a Pi whose /boot partition has filled up from repeated re-provisioning (old kernels/
+# initramfs images accumulating on the small FAT boot partition), that rebuild can
+# fail — confirmed as the actual difference between a correctly-configured Pi and one
+# that still shows plain boot text: everything below here used to be gated on `-R`
+# succeeding, so a failed rebuild silently skipped the serial-console fix too (see
+# that fix's own comment below) even though the two are unrelated. Falls back to
+# setting the theme without a rebuild, then rebuilding separately, so a
+# rebuild-specific failure is at least visible instead of masking the working
+# theme-selection call.
 if plymouth-set-default-theme signagemadeeasy -R; then
-  CMDLINE_FILE=/boot/firmware/cmdline.txt
-  [[ -f "$CMDLINE_FILE" ]] || CMDLINE_FILE=/boot/cmdline.txt
-  if [[ -f "$CMDLINE_FILE" ]] && ! grep -q '\bsplash\b' "$CMDLINE_FILE"; then
-    # Single line, space-appended — cmdline.txt must never contain a newline.
-    sed -i 's/$/ splash quiet/' "$CMDLINE_FILE"
-  fi
-
-  # Real root cause, confirmed via /var/log/plymouth-debug.log on real hardware
-  # (plymouth.debug=file:... added to cmdline.txt as a one-off diagnostic, then
-  # removed again): every prerequisite above was individually correct — theme
-  # installed, set as default, splash+quiet present — yet Plymouth never loaded
-  # our theme at all. The log showed why: "console /dev/ttyS0 found!" then
-  # "serial consoles detected, managing them with details forced" — Plymouth
-  # hardcodes a fallback to its plain-text "details" plugin (exactly the
-  # "[ OK ] Starting..." boot-log text this was meant to hide) whenever a
-  # serial console is present alongside the real HDMI one, regardless of theme
-  # config. Raspberry Pi OS's default cmdline.txt sets both `console=serial0,...`
-  # (or ttyS0/ttyAMA0 depending on model/overlay) and `console=tty1` together —
-  # removing the serial one is the actual fix, not a config workaround, since
-  # this fallback isn't something plymouthd.conf can override. Trades away
-  # UART-cable boot debugging, which isn't used on a deployed kiosk with HDMI
-  # + SSH available.
-  if [[ -f "$CMDLINE_FILE" ]] && grep -qE 'console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?' "$CMDLINE_FILE"; then
-    sed -i -E 's/console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?[[:space:]]*//g; s/[[:space:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//' "$CMDLINE_FILE"
-  fi
+  :
+elif plymouth-set-default-theme signagemadeeasy && update-initramfs -u; then
+  :
 else
-  echo "Failed to set the boot splash theme — skipping. The kiosk itself is" >&2
-  echo "unaffected; boot will just show the default console text instead." >&2
+  echo "Could not set/rebuild the boot splash theme — continuing anyway. The kiosk" >&2
+  echo "itself is unaffected; boot may show default console text instead of the logo." >&2
+fi
+
+CMDLINE_FILE=/boot/firmware/cmdline.txt
+[[ -f "$CMDLINE_FILE" ]] || CMDLINE_FILE=/boot/cmdline.txt
+if [[ -f "$CMDLINE_FILE" ]] && ! grep -q '\bsplash\b' "$CMDLINE_FILE"; then
+  # Single line, space-appended — cmdline.txt must never contain a newline.
+  sed -i 's/$/ splash quiet/' "$CMDLINE_FILE"
+fi
+
+# Real root cause, confirmed via /var/log/plymouth-debug.log on real hardware
+# (plymouth.debug=file:... added to cmdline.txt as a one-off diagnostic, then
+# removed again): every prerequisite above was individually correct — theme
+# installed, set as default, splash+quiet present — yet Plymouth never loaded
+# our theme at all. The log showed why: "console /dev/ttyS0 found!" then
+# "serial consoles detected, managing them with details forced" — Plymouth
+# hardcodes a fallback to its plain-text "details" plugin (exactly the
+# "[ OK ] Starting..." boot-log text this was meant to hide) whenever a
+# serial console is present alongside the real HDMI one, regardless of theme
+# config. Raspberry Pi OS's default cmdline.txt sets both `console=serial0,...`
+# (or ttyS0/ttyAMA0 depending on model/overlay) and `console=tty1` together —
+# removing the serial one is the actual fix, not a config workaround, since
+# this fallback isn't something plymouthd.conf can override. Trades away
+# UART-cable boot debugging, which isn't used on a deployed kiosk with HDMI
+# + SSH available. Kept unconditional (not gated on the theme-set step above
+# succeeding) — a Pi that failed the initramfs rebuild above still needs this
+# fix, since Plymouth's serial-console fallback to plain text happens
+# independently of whether its own theme's initramfs rebuild worked.
+if [[ -f "$CMDLINE_FILE" ]] && grep -qE 'console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?' "$CMDLINE_FILE"; then
+  sed -i -E 's/console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?[[:space:]]*//g; s/[[:space:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//' "$CMDLINE_FILE"
 fi
 
 # ---------------------------------------------------------------------------
