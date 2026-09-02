@@ -25,6 +25,22 @@ macvlan network bound to your LAN interface instead.
 Everything persists under `hub/data/` (bind-mounted): `signage.db` (SQLite) and
 `uploads/` (the media library). Back that directory up; that's the whole hub's state.
 
+## Running as a non-root user
+
+The hub container runs as a non-root user (uid/gid 1000) rather than root. Since
+`hub/data` is a host bind mount, Docker never adjusts its ownership for you —
+give it to uid 1000 once, before the first `up`:
+
+```bash
+mkdir -p hub/data
+sudo chown -R 1000:1000 hub/data
+```
+
+**Upgrading an existing deployment?** Its `hub/data` was created by an older,
+root-running image and is almost certainly still owned by root — run the same
+`chown` above before pulling/rebuilding, or the hub will start but fail to read
+or write `signage.db`/`uploads/`.
+
 ## Login PIN
 
 The control app asks for a PIN before showing or changing anything on this hub — a
