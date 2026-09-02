@@ -237,7 +237,7 @@ chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$SIGNAGE_HOME/.icons"
 
 # ---------------------------------------------------------------------------
 log "Installing the SignageMadeEasy boot splash (Plymouth)"
-# Replaces the raw kernel/systemd boot text with a plain white screen, wordmark, and
+# Replaces the raw kernel/systemd boot text with a plain black screen, wordmark, and
 # small corner spinner — see assets/plymouth/signagemadeeasy.script. Its syntax was
 # checked against real, working Plymouth themes, but this sandbox has no way to
 # actually render a boot splash (no kernel framebuffer/DRM to test against), so this
