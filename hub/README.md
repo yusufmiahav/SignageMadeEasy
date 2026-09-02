@@ -7,13 +7,41 @@ app (`../src`) talks to over the network. One container serves both the REST API
 ## Deploying on your NAS (Ugreen DXP4800 or similar)
 
 ```bash
-git clone <this repo>
+git clone https://github.com/yusufmiahav/SignageMadeEasy.git
 cd SignageMadeEasy
+git checkout claude/signage-made-easy-dev-r00fl6
 docker compose -f hub/docker-compose.yml up -d --build
 ```
 
+**That branch checkout matters**: this repo's `main` branch does not yet have
+everything described in this README (or in the code) — active work happens on
+`claude/signage-made-easy-dev-r00fl6` and gets merged to `main` only
+periodically. Deploying from `main` right now would silently miss fixes,
+including ones referenced elsewhere in this file.
+
 Then open `http://<nas-ip>:4000` from any phone or laptop on the same LAN — that's
 the control app, now talking to a real hub instead of `localStorage`.
+
+## Updating
+
+```bash
+cd SignageMadeEasy
+git pull
+docker compose -f hub/docker-compose.yml up -d --build
+```
+
+`git pull` updates whichever branch you're currently on — since the initial
+clone above already checked out `claude/signage-made-easy-dev-r00fl6`, this
+just needs to run from inside that same checkout. `--build` matters: without
+it, `up -d` will happily restart the container using whatever image was built
+last time, silently skipping the update. `hub/data` (your library, locations,
+paired screens) lives outside the git checkout entirely and is untouched by
+either command.
+
+If `git pull` ever refuses because of local changes it doesn't want to
+overwrite (rare — nothing in this repo expects to be hand-edited on the NAS),
+check `git status` before doing anything destructive; `git stash` is usually
+the safe way to get `pull` moving again without losing whatever changed.
 
 **Networking is not optional here**: the compose file runs the container with
 `network_mode: host` on purpose. The hub needs to reach Pi IPs directly (to finish
