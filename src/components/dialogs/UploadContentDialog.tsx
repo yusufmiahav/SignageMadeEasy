@@ -21,18 +21,21 @@ interface InFlightUpload {
  * just the upload path, since that's the only piece worth having available from here.
  */
 export function UploadContentDialog({ app, onClose }: UploadContentDialogProps) {
-  const { addImage, addVideo, addPdf } = app;
+  const { addImage, addVideo, addPdf, showToast } = app;
   const dropzoneInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<InFlightUpload[]>([]);
 
-  const trackUpload = async <T,>(file: File, upload: (file: File, onProgress: (pct: number) => void) => Promise<T>): Promise<T> => {
+  const trackUpload = async <T,>(file: File, upload: (file: File, onProgress: (pct: number) => void) => Promise<T>): Promise<T | undefined> => {
     const key = `${file.name}-${file.size}-${Date.now()}`;
     setUploads((prev) => [...prev, { key, name: file.name, pct: 0 }]);
     try {
       return await upload(file, (pct) => {
         setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, pct } : u)));
       });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : `${file.name} failed to upload`);
+      return undefined;
     } finally {
       setUploads((prev) => prev.filter((u) => u.key !== key));
     }
@@ -57,7 +60,10 @@ export function UploadContentDialog({ app, onClose }: UploadContentDialogProps) 
         accept="image/*,video/*"
         multiple
         hidden
-        onChange={(e) => void handleDropped(e.target.files)}
+        onChange={(e) => {
+          void handleDropped(e.target.files);
+          e.target.value = '';
+        }}
       />
       <input
         ref={pdfInputRef}
@@ -67,6 +73,7 @@ export function UploadContentDialog({ app, onClose }: UploadContentDialogProps) 
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) void trackUpload(file, addPdf);
+          e.target.value = '';
         }}
       />
       <div

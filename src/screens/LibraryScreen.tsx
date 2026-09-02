@@ -16,7 +16,7 @@ interface InFlightUpload {
 }
 
 export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps) {
-  const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, removeLibraryItems, renameLibraryItem, setLibraryItemTags, reorderLibrary } = app;
+  const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, removeLibraryItems, renameLibraryItem, setLibraryItemTags, reorderLibrary, showToast } = app;
   const dropzoneInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -50,13 +50,16 @@ export function LibraryScreen({ app, onOpenAnnounceDialog }: LibraryScreenProps)
   // Tracks the raw upload transfer for each in-flight file (not the hub's own
   // post-upload processing, e.g. video capping — that shows up as a "Decoding…"
   // badge on the card itself once the item lands, via LibraryCard's transcodeStatus).
-  const trackUpload = async <T,>(file: File, upload: (file: File, onProgress: (pct: number) => void) => Promise<T>): Promise<T> => {
+  const trackUpload = async <T,>(file: File, upload: (file: File, onProgress: (pct: number) => void) => Promise<T>): Promise<T | undefined> => {
     const key = `${file.name}-${file.size}-${Date.now()}`;
     setUploads((prev) => [...prev, { key, name: file.name, pct: 0 }]);
     try {
       return await upload(file, (pct) => {
         setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, pct } : u)));
       });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : `${file.name} failed to upload`);
+      return undefined;
     } finally {
       setUploads((prev) => prev.filter((u) => u.key !== key));
     }
