@@ -11,21 +11,12 @@ Description=SignageMadeEasy kiosk display (cage + Chromium)
 # /run/user/<uid> at boot before any login session exists at all — see the
 # ExecStart comment below for how that's used.
 #
-# plymouth-quit-wait.service (distinct from plymouth-quit.service below, which
-# only *signals* Plymouth to start quitting — asynchronous, doesn't block) is
-# what actually blocks until Plymouth's process has genuinely finished exiting
-# and released the display. Missing this ordering surfaced a real-hardware bug
-# only after the boot splash itself started working: cage repeatedly logged
-# "[backend/drm/atomic.c] connector HDMI-A-1: Atomic commit failed: Permission
-# denied" in a tight loop — plymouth-quit.service being "done" doesn't mean
-# Plymouth has actually released DRM master yet, so cage started racing it for
-# the display and lost, silently retrying forever without ever presenting a
-# frame (cage's own unit stayed "active (running)" throughout, so
-# Restart=always never even triggered — only a manual `systemctl restart`,
-# which opens a fresh session, worked around it). Before the Plymouth fix this
-# race didn't exist at all: Plymouth's old plain-text fallback never touched
-# DRM, so cage was always the only client. Same ordering fix real desktop
-# managers (gdm and friends) use for exactly this handoff.
+# plymouth-quit-wait.service blocks until Plymouth has genuinely finished
+# exiting and released the display (plymouth-quit.service alone only *signals*
+# it to start quitting — asynchronous, doesn't block); kept as good practice
+# for the same ordering real desktop managers use, but see the ExecStart
+# comment below for the *actual* root cause of a "Atomic commit failed:
+# Permission denied" loop this ordering alone did NOT fix on real hardware.
 After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service plymouth-quit-wait.service ydotoold.service systemd-logind.service dbus.service
 Wants=signage-player.service ydotoold.service
 Conflicts=getty@tty1.service
@@ -46,11 +37,12 @@ StandardError=journal
 # at all) nor CSS cursor:none on the page changes what cage itself draws —
 # cage's cursor isn't something a client can hide, and cage's own maintainers
 # have said outright that hiding it isn't something they support. Kept
-# regardless since it's free and can only help, but see the ExecStartPost
-# warp below for the part that actually does something: relocating the
-# (still-visible) cursor to a corner, off the main content. See the root
-# README's troubleshooting section for the full story before "fixing" this
-# again — it's an accepted cosmetic limitation, not an open bug.
+# regardless since it's free and can only help, but see the cursor-warp
+# background job folded into ExecStart below for the part that actually does
+# something: relocating the (still-visible) cursor to a corner, off the main
+# content. See the root README's troubleshooting section for the full story
+# before "fixing" this again — it's an accepted cosmetic limitation, not an
+# open bug.
 Environment=XCURSOR_THEME=blank
 Environment=XCURSOR_SIZE=24
 Environment=XCURSOR_PATH=/home/signage/.icons
@@ -133,7 +125,40 @@ ExecStartPre=/bin/sh -c 'u=$(id -u signage); for i in $(seq 1 40); do [ -d "/run
 # hardware) — this exports the same real, linger-created path pam_systemd
 # would have set, computed fresh at exec time since $(id -u signage) can't be
 # hardcoded portably across Raspberry Pi OS releases.
-ExecStart=/bin/sh -c 'export XDG_RUNTIME_DIR="/run/user/$(id -u signage)"; exec /usr/bin/cage -- /usr/bin/chromium \
+#
+# Real root cause, confirmed via journalctl session-lifecycle timestamps on
+# real hardware: the cursor-warp used to be a separate ExecStartPost=,
+# sharing this unit's single PAMName=login session with ExecStart. That
+# session got closed the instant ExecStartPost's own short-lived process
+# exited (`journalctl | grep -i "new session\|removed session"` showed the
+# session opening with cage and being *removed* at almost exactly the moment
+# ExecStartPost's ~15s loop would finish) — even though cage's own process
+# was still very much alive. Losing that session is what actually produced
+# the "[backend/drm/atomic.c] Atomic commit failed: Permission denied" loop —
+# not a Plymouth/DRM handoff race as first suspected (the plymouth-quit-wait
+# ordering above is real and worth keeping, it just wasn't the bug here).
+# Fixed by never giving the cursor warp its own systemd-tracked process at
+# all: it's launched as a background job from inside this same `sh -c`,
+# before `exec` replaces the shell with cage, so there is exactly one
+# process (and one PAM session) for the whole unit's lifetime — nothing left
+# to exit early and yank the session out from under cage. `2>/dev/null`
+# suppresses errors from the loop; unlike the old ExecStartPost, nothing here
+# needs `|| true` since a backgrounded job's exit status is never checked by
+# the shell that launched it.
+#
+# The warp itself: relocates the (still-visible — see the XCURSOR_* comment
+# above for why it can't be made invisible) cursor to the bottom-right
+# corner, off the main content, via a synthetic input device (ydotoold/
+# ydotool — see provision.sh) indistinguishable from a real mouse at the
+# kernel level. Retries every second for 15s instead of firing once after a
+# fixed sleep: confirmed on real hardware that a single "sleep 3, then warp"
+# attempt can silently no-op on a slow boot — ydotool reports success either
+# way (writing to the synthetic input device succeeds regardless of whether
+# cage's own input backend has finished initializing enough to actually
+# consume the event yet), so a single attempt gives no signal that it didn't
+# land. Repeating is harmless: warping an already-warped cursor to the same
+# corner again is a no-op.
+ExecStart=/bin/sh -c 'export XDG_RUNTIME_DIR="/run/user/$(id -u signage)"; (for i in $(seq 1 15); do sleep 1; YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool mousemove -- 10000 10000 2>/dev/null; done) & exec /usr/bin/cage -- /usr/bin/chromium \
   --kiosk http://localhost:8088 \
   --ozone-platform=wayland \
   --disable-accelerated-video-decode \
@@ -147,34 +172,6 @@ ExecStart=/bin/sh -c 'export XDG_RUNTIME_DIR="/run/user/$(id -u signage)"; exec 
   --check-for-update-interval=31536000 \
   --overscroll-history-navigation=0 \
   --autoplay-policy=no-user-gesture-required'
-
-# Confirmed on real hardware: this relocates the cursor to the bottom-right
-# corner, off the main content — but the cursor itself stays visible there;
-# see the XCURSOR_* comment above and the root README for why full invisibility
-# on cage isn't achievable, and why the corner cursor is an accepted, final
-# state rather than a bug to keep chasing. Uses a synthetic input device
-# (ydotoold/ydotool — see provision.sh) indistinguishable from a real mouse at
-# the kernel level, so the relocation works regardless of what cage's own
-# cursor-rendering does or doesn't honor.
-#
-# Retries every second for 15s instead of firing once after a fixed sleep:
-# confirmed on real hardware that a single "sleep 3, then warp" attempt can
-# silently no-op on a slow boot — ydotool reports success either way (writing
-# to the synthetic input device succeeds regardless of whether cage's own
-# input backend has finished initializing enough to actually consume the
-# event yet), so a single attempt gives no signal that it didn't land. Same
-# race as the ExecStartPre wait above, just on cage's seat/input backend
-# instead of pam_systemd's runtime dir — a boot slow enough to need several
-# kiosk restarts before succeeding (see that comment) leaves cage starting
-# later than a fixed 3s assumes. Repeating is harmless: warping an
-# already-warped cursor to the same corner again is a no-op.
-# `|| true` at the very end: this must never be able to fail the unit. A
-# failed ExecStartPost marks Type=simple services as failed too, and with
-# Restart=always that would crash-loop the whole kiosk — killing a working
-# cage/Chromium — over nothing worse than ydotool being unavailable
-# (provision.sh installs it best-effort; not every release has it in its
-# default repo).
-ExecStartPost=/bin/sh -c 'for i in $(seq 1 15); do sleep 1; YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool mousemove -- 10000 10000 2>/dev/null; done || true'
 
 Restart=always
 RestartSec=2

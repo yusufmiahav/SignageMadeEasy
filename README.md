@@ -155,22 +155,34 @@ kiosk with HDMI + SSH available. Re-run `provision.sh` and reboot to pick it up.
 `journalctl -u signage-kiosk.service -b` shows a tight, unending loop of
 `[backend/drm/atomic.c] connector HDMI-A-1: Atomic commit failed: Permission
 denied` (and often `[libseat] Could not close device: Unknown object
-'/org/freedesktop/login1/session/_N'`). This surfaced only *after* the boot
-splash fix above started working: cage was racing Plymouth for the display and
-losing. `plymouth-quit.service` only *signals* Plymouth to start quitting —
-asynchronous, doesn't block — while `plymouth-quit-wait.service` is what
-actually blocks until Plymouth's process has genuinely exited and released DRM
-master; `signage-kiosk.service` was ordered after the former but not the
-latter, so cage could (and did) start before Plymouth had actually let go of
-the display, then silently retried forever without ever presenting a frame
-(cage's own unit never registers as failed, so `Restart=always` never
-triggers — only a manual `systemctl restart signage-kiosk.service`, which
-opens a fresh session, worked around it without fixing the root cause). Before
-the Plymouth fix this race didn't exist: the old plain-text fallback never
-touched DRM, so cage was always the only client. Fixed by adding
-`plymouth-quit-wait.service` to the unit's `After=` — the same ordering real
-desktop managers (gdm and friends) use for this exact handoff. Re-run
-`provision.sh` and reboot to pick it up.
+'/org/freedesktop/login1/session/_N'`). Two fix attempts here were each
+confirmed insufficient on real hardware before landing on the real one:
+
+- First suspected a Plymouth/DRM handoff race, since this surfaced right after
+  the boot splash fix above started working: added `plymouth-quit-wait.service`
+  (which actually blocks until Plymouth has released DRM master, unlike
+  `plymouth-quit.service` alone, which only *signals* it to start quitting) to
+  the unit's `After=`. Confirmed on real hardware this did **not** fix it — the
+  identical failure recurred, immediately, on the very next boot.
+- The real root cause, found by correlating `journalctl -b | grep -iE "new
+  session|removed session"` timestamps against `systemctl status`'s reported
+  start time: the cursor-warp used to be a separate `ExecStartPost=`, sharing
+  this unit's single `PAMName=login` session with `ExecStart`. That shared
+  session was torn down the instant `ExecStartPost`'s own short-lived process
+  exited (its ~15s retry loop finishing lined up almost exactly with the
+  session's "Removed" timestamp) — even though cage's own process was still
+  running. Losing that session mid-flight is what actually produced the
+  "Atomic commit failed" loop; Plymouth was never the culprit, the two issues
+  just surfaced around the same time.
+
+Fixed by never giving the cursor warp its own systemd-tracked process at all:
+it now runs as a background job launched from inside `ExecStart`'s own `sh -c`,
+before `exec` replaces the shell with cage, so there is exactly one process
+(and one PAM session) for the entire unit's lifetime — nothing left to exit
+early and pull the session out from under cage. The `plymouth-quit-wait.service`
+ordering is harmless and worth keeping (it's still the correct ordering in
+principle), it just wasn't what was actually broken here. Re-run `provision.sh`
+and reboot to pick it up.
 
 **Deleting a screen in the control app doesn't disconnect it / the Pi still shows
 "connected".** Fixed in the hub/Pi-player pairing logic — the hub now pushes an
