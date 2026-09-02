@@ -317,6 +317,50 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
+  const setDeviceDefaultPlaylist = useCallback(async (deviceId: string, libIds: string[]) => {
+    await api.setDeviceDefaultPlaylist(deviceId, libIds);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  const addToDeviceDefaultPlaylist = useCallback(async (deviceId: string, libIds: string[]) => {
+    await api.addToDeviceDefaultPlaylist(deviceId, libIds);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  const removeFromDeviceDefaultPlaylist = useCallback(async (deviceId: string, libId: string) => {
+    await api.removeFromDeviceDefaultPlaylist(deviceId, libId);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  const reorderDeviceDefaultPlaylist = useCallback(async (deviceId: string, libId: string, direction: 'up' | 'down') => {
+    await api.reorderDeviceDefaultPlaylist(deviceId, libId, direction);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  const addDeviceEvent = useCallback(async (deviceId: string, event: Omit<ScheduleEvent, 'id'>) => {
+    const ev = await api.addDeviceEvent(deviceId, event);
+    await refreshDevices();
+    return ev;
+  }, [refreshDevices]);
+
+  const removeDeviceEvent = useCallback(async (deviceId: string, eventId: string) => {
+    await api.removeDeviceEvent(deviceId, eventId);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  // Mirrors duplicateEvent's own reasoning — no dedicated backend endpoint needed.
+  const duplicateDeviceEvent = useCallback(async (deviceId: string, eventId: string) => {
+    const device = devices.find((d) => d.id === deviceId);
+    const event = device?.events.find((e) => e.id === eventId);
+    if (!event) return;
+    await api.addDeviceEvent(deviceId, {
+      name: `${event.name} (copy)`, start: event.start, end: event.end, libIds: [...event.libIds],
+      startTime: event.startTime, endTime: event.endTime,
+    });
+    await refreshDevices();
+    showToast('Event duplicated');
+  }, [devices, refreshDevices, showToast]);
+
   const removeDevice = useCallback(async (id: string) => {
     await api.removeDevice(id);
     await refreshDevices();
@@ -399,6 +443,13 @@ export function useAppState() {
     setDeviceVideoQuality,
     setDeviceForcedContent,
     setDeviceBlackout,
+    setDeviceDefaultPlaylist,
+    addToDeviceDefaultPlaylist,
+    removeFromDeviceDefaultPlaylist,
+    reorderDeviceDefaultPlaylist,
+    addDeviceEvent,
+    removeDeviceEvent,
+    duplicateDeviceEvent,
     scanNetwork,
     exportBackup,
     importBackup,

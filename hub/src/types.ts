@@ -87,6 +87,10 @@ export interface Device {
   forcedContentId: string | null;
   /** Same scope as forcedContentId — only meaningful while groupId is null. */
   blackout: boolean;
+  /** Same scope as forcedContentId — mirrors Group.defaultPlaylist for a screen with no location. */
+  defaultPlaylist: string[];
+  /** Same scope as forcedContentId — mirrors Group.events for a screen with no location. */
+  events: ScheduleEvent[];
   /**
    * Which copy of a video this screen is served. 'auto' (default): the resolution-capped
    * copy, sized for a Pi 3B+'s hardware decoder — right for most screens. 'full': always

@@ -207,6 +207,42 @@ if (!deviceCols2.includes('sortOrder')) {
   rows.forEach((r, i) => setOrder.run(i, r.id));
 }
 
+// Same reasoning, for hubs deployed before a screen with no location could have its
+// own default playlist (misc-screen scheduling) — every existing screen starts with
+// an empty one, same as a brand-new location's defaultPlaylist.
+if (!deviceCols2.includes('defaultPlaylist')) db.exec("ALTER TABLE devices ADD COLUMN defaultPlaylist TEXT NOT NULL DEFAULT '[]'");
+
+// Same reasoning, for hubs deployed before events could belong to a device instead
+// of a location — events.groupId was NOT NULL from launch (same situation as
+// devices.groupId's own rebuild above), and a device-scoped event has no groupId at
+// all, so this needs the same "rebuild the table, guarded by the notnull flag so it
+// runs exactly once" treatment. The CHECK enforces exactly one of groupId/deviceId is
+// set — every event belongs to exactly one location or one device, never both, never
+// neither.
+const eventsGroupIdCol = (db.prepare("PRAGMA table_info(events)").all() as { name: string; notnull: number }[]).find((c) => c.name === 'groupId');
+if (eventsGroupIdCol?.notnull === 1) {
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE events_new (
+        id TEXT PRIMARY KEY,
+        groupId TEXT REFERENCES groups_(id) ON DELETE CASCADE,
+        deviceId TEXT REFERENCES devices(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        start TEXT NOT NULL,
+        end TEXT NOT NULL,
+        libIds TEXT NOT NULL DEFAULT '[]',
+        startTime TEXT,
+        endTime TEXT,
+        CHECK ((groupId IS NULL) <> (deviceId IS NULL))
+      );
+      INSERT INTO events_new (id, groupId, deviceId, name, start, end, libIds, startTime, endTime)
+        SELECT id, groupId, NULL, name, start, end, libIds, startTime, endTime FROM events;
+      DROP TABLE events;
+      ALTER TABLE events_new RENAME TO events;
+    `);
+  })();
+}
+
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's

@@ -6,14 +6,15 @@ const TYPE_LABEL: Record<string, string> = { image: 'Image', video: 'Video', pdf
 
 interface AddContentDialogProps {
   app: AppState;
-  groupId: string;
+  /** The default playlist's current contents (a location's or a device's own) — used to hide items already on it. */
+  alreadyIncludedIds: string[];
+  onConfirm: (ids: string[]) => Promise<void>;
   onClose: () => void;
 }
 
-export function AddContentDialog({ app, groupId, onClose }: AddContentDialogProps) {
-  const { library, groups, addToDefaultPlaylist } = app;
-  const group = groups.find((g) => g.id === groupId);
-  const inDefault = new Set(group?.defaultPlaylist ?? []);
+export function AddContentDialog({ app, alreadyIncludedIds, onConfirm, onClose }: AddContentDialogProps) {
+  const { library } = app;
+  const inDefault = new Set(alreadyIncludedIds);
   // Announcements aren't playlist content — they run as their own overlay (see the
   // Announcements tab), resolved entirely separately from a group's rotation.
   const addable = library.filter((l) => l.type !== 'announcement' && !inDefault.has(l.id));
@@ -28,7 +29,7 @@ export function AddContentDialog({ app, groupId, onClose }: AddContentDialogProp
   };
 
   const confirm = async () => {
-    if (checked.size > 0) await addToDefaultPlaylist(groupId, Array.from(checked));
+    if (checked.size > 0) await onConfirm(Array.from(checked));
     onClose();
   };
 
