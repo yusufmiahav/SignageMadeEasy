@@ -55,14 +55,20 @@ export interface SignageApiClient {
 
   // Devices
   listDevices(): Promise<Device[]>;
-  pairDevice(input: { name: string; ip: string; groupId: string; status?: DeviceStatus }): Promise<Device>;
+  /** `groupId: null` pairs it with no location yet ("misc" screen, assignable later). */
+  pairDevice(input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }): Promise<Device>;
   renameDevice(id: string, name: string): Promise<void>;
-  moveDevice(id: string, groupId: string): Promise<void>;
+  /** `groupId: null` unassigns it — a legitimate end state, not just an intermediate one. */
+  moveDevice(id: string, groupId: string | null): Promise<void>;
   removeDevice(id: string): Promise<void>;
   restartDevice(id: string): Promise<void>;
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
   setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;
+  /** Misc-screen (no location) equivalent of setForcedContent — only meaningful while the device has no groupId. */
+  setDeviceForcedContent(id: string, libId: string | null): Promise<void>;
+  /** Misc-screen (no location) equivalent of setGroupBlackout — only meaningful while the device has no groupId. */
+  setDeviceBlackout(id: string, blackout: boolean): Promise<void>;
 
   // Pairing helpers (simulated placeholders until the hub can do a real LAN scan)
   scanNetwork(): Promise<DiscoveredDevice[]>;

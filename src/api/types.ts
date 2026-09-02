@@ -83,9 +83,14 @@ export interface Device {
   /** Captured once at pairing time from the Pi's own agent. Null for a screen paired before this existed, one paired while offline, or any device in standalone/localStorage mode (no real Pi to ask). */
   mac: string | null;
   status: DeviceStatus;
-  groupId: string;
+  /** Null for a screen not assigned to any location yet ("misc" screens) — see forcedContentId/blackout below, which fill in for the location-level controls it doesn't have. */
+  groupId: string | null;
   announcementId: string | null;
   announcementOn: boolean;
+  /** Only meaningful/settable while groupId is null — an assigned screen's content comes from its location instead. */
+  forcedContentId: string | null;
+  /** Same scope as forcedContentId — only meaningful while groupId is null. */
+  blackout: boolean;
   /**
    * Which copy of a video this screen is served. 'auto' (default): the resolution-capped
    * copy, sized for a Pi 3B+'s hardware decoder — right for most screens. 'full': always

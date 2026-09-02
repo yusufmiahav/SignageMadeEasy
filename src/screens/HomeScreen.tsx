@@ -1,7 +1,7 @@
 import { Icon } from '../components/icons/Icon';
 import { DeviceCard } from '../components/DeviceCard';
 import type { AppState } from '../hooks/useAppState';
-import { activeAnnouncementId, activeContentIds, nowPlayingItem, nowPlayingName } from '../api/resolve';
+import { activeAnnouncementId, activeContentIds, nowPlayingItem, nowPlayingName, nowPlayingItemForDevice, nowPlayingNameForDevice } from '../api/resolve';
 import type { Device, LibraryItem } from '../api/types';
 
 interface HomeScreenProps {
@@ -14,6 +14,9 @@ interface HomeScreenProps {
   onForceAnnouncementAllScreens: () => void;
   onOpenBlackout: (groupId: string) => void;
   onOpenBlackoutAllScreens: () => void;
+  onForceContentForDevice: (deviceId: string) => void;
+  onForceAnnouncementForDevice: (deviceId: string) => void;
+  onOpenBlackoutForDevice: (deviceId: string) => void;
   onMoveDevice: (device: Device) => void;
   onPickAnnouncement: (device: Device) => void;
   onPreviewContent: (item: LibraryItem) => void;
@@ -31,19 +34,26 @@ export function HomeScreen({
   onForceAnnouncementAllScreens,
   onOpenBlackout,
   onOpenBlackoutAllScreens,
+  onForceContentForDevice,
+  onForceAnnouncementForDevice,
+  onOpenBlackoutForDevice,
   onMoveDevice,
   onPickAnnouncement,
   onPreviewContent,
   advancedDeviceInfo,
   hideAnnouncementRow,
 }: HomeScreenProps) {
-  const { groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality, setForcedContent, setForcedAnnouncement, setGroupBlackout, reorderGroups } = app;
+  const {
+    groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality,
+    setForcedContent, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedContent, setDeviceBlackout,
+  } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
   // Every location shows here, even with zero screens paired yet — a location is
   // useful on its own (you can force content/announcements on it, or it's just
   // waiting for a screen to be paired or moved in), and hiding it here while it
   // still shows on Schedule/Settings was confusing.
   const groupsWithDevices = groups.map((group) => ({ group, devices: devices.filter((d) => d.groupId === group.id) }));
+  const miscDevices = devices.filter((d) => !d.groupId);
 
   const moveGroup = (index: number, direction: -1 | 1) => {
     const target = index + direction;
@@ -187,6 +197,11 @@ export function HomeScreen({
                       onPreview={onPreviewContent}
                       advancedInfo={advancedDeviceInfo}
                       hideAnnouncementRow={hideAnnouncementRow}
+                      onForceContent={onForceContentForDevice}
+                      onForceAnnouncement={onForceAnnouncementForDevice}
+                      onOpenBlackout={onOpenBlackoutForDevice}
+                      onStopForcedContent={(id) => setDeviceForcedContent(id, null)}
+                      onStopBlackout={(id) => setDeviceBlackout(id, false)}
                     />
                   ))}
                 </div>
@@ -194,6 +209,43 @@ export function HomeScreen({
             </div>
           );
         })
+      )}
+
+      {miscDevices.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: 15 }}>Screens without a location</h2>
+            <span className="tag tag-neutral">{miscDevices.length} screen{miscDevices.length === 1 ? '' : 's'}</span>
+          </div>
+          <hr className="hr" style={{ margin: 0 }} />
+          <div className="device-grid">
+            {miscDevices.map((device) => (
+              <DeviceCard
+                key={device.id}
+                device={device}
+                nowPlaying={nowPlayingNameForDevice(device, libraryById)}
+                nowPlayingItem={nowPlayingItemForDevice(device, libraryById)}
+                announcement={device.announcementId ? libraryById.get(device.announcementId) : undefined}
+                onRename={renameDevice}
+                onRestart={restartDevice}
+                onMove={onMoveDevice}
+                onRemove={removeDevice}
+                onPickAnnouncement={onPickAnnouncement}
+                onToggleAnnouncement={toggleDeviceAnnouncement}
+                onSetVideoQuality={setDeviceVideoQuality}
+                onPreview={onPreviewContent}
+                advancedInfo={advancedDeviceInfo}
+                hideAnnouncementRow={hideAnnouncementRow}
+                forcedContentName={device.forcedContentId ? libraryById.get(device.forcedContentId)?.name : undefined}
+                onForceContent={onForceContentForDevice}
+                onForceAnnouncement={onForceAnnouncementForDevice}
+                onOpenBlackout={onOpenBlackoutForDevice}
+                onStopForcedContent={(id) => setDeviceForcedContent(id, null)}
+                onStopBlackout={(id) => setDeviceBlackout(id, false)}
+              />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

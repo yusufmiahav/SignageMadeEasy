@@ -208,11 +208,17 @@ export function useAppState() {
 
   // Mirrors forceAnnouncementAllScreens below: same per-location forcedContentId,
   // just applied to every location at once via a client-side loop, no new endpoint.
+  // Also covers misc screens (no location) via their own forcedContentId, so "every
+  // screen" is actually every screen, not just ones assigned somewhere.
   const forceContentAllScreens = useCallback(async (libId: string | null) => {
-    await Promise.all(groups.map((g) => api.setForcedContent(g.id, libId)));
-    await refreshGroups();
+    const misc = devices.filter((d) => !d.groupId);
+    await Promise.all([
+      ...groups.map((g) => api.setForcedContent(g.id, libId)),
+      ...misc.map((d) => api.setDeviceForcedContent(d.id, libId)),
+    ]);
+    await Promise.all([refreshGroups(), refreshDevices()]);
     showToast(libId ? 'Content forced on for every screen' : 'Forced content cleared on every screen');
-  }, [groups, refreshGroups, showToast]);
+  }, [groups, devices, refreshGroups, refreshDevices, showToast]);
 
   const setForcedAnnouncement = useCallback(async (groupId: string, announcementId: string | null) => {
     await api.setForcedAnnouncement(groupId, announcementId);
@@ -222,12 +228,19 @@ export function useAppState() {
   // "Force on all screens" on the Home page: no dedicated backend endpoint for this —
   // it's the exact same per-location forcedAnnouncementId, just applied to every
   // location at once, so a client-side loop over the existing per-group call is all
-  // this needs rather than a new bulk-specific API surface.
+  // this needs rather than a new bulk-specific API surface. Misc screens (no
+  // location) have no forcedAnnouncementId of their own — their manual
+  // announcementId/announcementOn toggle already IS the forcing mechanism (see
+  // Device.forcedContentId's comment in api/types.ts), so this sets that directly.
   const forceAnnouncementAllScreens = useCallback(async (announcementId: string | null) => {
-    await Promise.all(groups.map((g) => api.setForcedAnnouncement(g.id, announcementId)));
-    await refreshGroups();
+    const misc = devices.filter((d) => !d.groupId);
+    await Promise.all([
+      ...groups.map((g) => api.setForcedAnnouncement(g.id, announcementId)),
+      ...misc.map((d) => api.setDeviceAnnouncement(d.id, announcementId)),
+    ]);
+    await Promise.all([refreshGroups(), refreshDevices()]);
     showToast(announcementId ? 'Announcement forced on for every screen' : 'Announcement cleared on every screen');
-  }, [groups, refreshGroups, showToast]);
+  }, [groups, devices, refreshGroups, refreshDevices, showToast]);
 
   const setGroupBlackout = useCallback(async (groupId: string, blackout: boolean) => {
     await api.setGroupBlackout(groupId, blackout);
@@ -236,12 +249,17 @@ export function useAppState() {
 
   // "Blackout all screens": same client-side-loop-over-the-per-location-call pattern
   // as forceContentAllScreens/forceAnnouncementAllScreens above — no dedicated bulk
-  // endpoint needed for an emergency action this rare.
+  // endpoint needed for an emergency action this rare. Also covers misc screens (no
+  // location) via their own blackout field.
   const blackoutAllScreens = useCallback(async (blackout: boolean) => {
-    await Promise.all(groups.map((g) => api.setGroupBlackout(g.id, blackout)));
-    await refreshGroups();
+    const misc = devices.filter((d) => !d.groupId);
+    await Promise.all([
+      ...groups.map((g) => api.setGroupBlackout(g.id, blackout)),
+      ...misc.map((d) => api.setDeviceBlackout(d.id, blackout)),
+    ]);
+    await Promise.all([refreshGroups(), refreshDevices()]);
     showToast(blackout ? 'Every screen blacked out' : 'Blackout cleared on every screen');
-  }, [groups, refreshGroups, showToast]);
+  }, [groups, devices, refreshGroups, refreshDevices, showToast]);
 
   const addAnnouncementSchedule = useCallback(async (groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>) => {
     const s = await api.addAnnouncementSchedule(groupId, schedule);
@@ -255,7 +273,7 @@ export function useAppState() {
   }, [refreshGroups]);
 
   // ---- Devices ----
-  const pairDevice = useCallback(async (input: { name: string; ip: string; groupId: string; status?: DeviceStatus }) => {
+  const pairDevice = useCallback(async (input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }) => {
     const device = await api.pairDevice(input);
     await Promise.all([refreshDevices(), refreshGroups()]);
     return device;
@@ -266,8 +284,18 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
-  const moveDevice = useCallback(async (id: string, groupId: string) => {
+  const moveDevice = useCallback(async (id: string, groupId: string | null) => {
     await api.moveDevice(id, groupId);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  const setDeviceForcedContent = useCallback(async (id: string, libId: string | null) => {
+    await api.setDeviceForcedContent(id, libId);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  const setDeviceBlackout = useCallback(async (id: string, blackout: boolean) => {
+    await api.setDeviceBlackout(id, blackout);
     await refreshDevices();
   }, [refreshDevices]);
 
@@ -348,6 +376,8 @@ export function useAppState() {
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,
+    setDeviceForcedContent,
+    setDeviceBlackout,
     scanNetwork,
     exportBackup,
     importBackup,

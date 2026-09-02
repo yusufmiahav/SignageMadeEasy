@@ -1,4 +1,4 @@
-import type { Group, LibraryItem } from './types';
+import type { Device, Group, LibraryItem } from './types';
 
 export interface ActiveContent {
   ids: string[];
@@ -56,6 +56,26 @@ export function nowPlayingName(group: Group, libraryById: Map<string, LibraryIte
 /** The actual item currently resolved for this location (for a thumbnail/preview) — undefined if nothing's scheduled. */
 export function nowPlayingItem(group: Group, libraryById: Map<string, LibraryItem>): LibraryItem | undefined {
   return firstResolvedItem(group, libraryById);
+}
+
+/**
+ * A screen with no location has no schedule/default playlist to fall back on —
+ * just its own forcedContentId/blackout, the misc-screen equivalents of a
+ * location's controls (mirrors hub/src/store.ts's activeContentIdsForDevice).
+ */
+export function activeContentIdsForDevice(device: Device): ActiveContent {
+  if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
+  if (device.forcedContentId) return { ids: [device.forcedContentId], kind: 'forced', label: 'Forced' };
+  return { ids: [], kind: 'default', label: 'No content' };
+}
+
+export function nowPlayingItemForDevice(device: Device, libraryById: Map<string, LibraryItem>): LibraryItem | undefined {
+  const { ids } = activeContentIdsForDevice(device);
+  return ids.map((id) => libraryById.get(id)).find((item): item is LibraryItem => !!item);
+}
+
+export function nowPlayingNameForDevice(device: Device, libraryById: Map<string, LibraryItem>): string {
+  return nowPlayingItemForDevice(device, libraryById)?.name ?? '—';
 }
 
 export function itemsForDate(group: Group, date: string): { ids: string[]; kind: 'event' | 'default'; label: string } {

@@ -281,7 +281,7 @@ class LocalStoreClient implements SignageApiClient {
     return [...this.data.devices];
   }
 
-  async pairDevice(input: { name: string; ip: string; groupId: string; status?: DeviceStatus }): Promise<Device> {
+  async pairDevice(input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }): Promise<Device> {
     if (this.data.devices.some((d) => d.ip === input.ip)) {
       throw new Error(`A screen is already paired at ${input.ip}`);
     }
@@ -295,6 +295,8 @@ class LocalStoreClient implements SignageApiClient {
       announcementId: null,
       announcementOn: false,
       videoQuality: 'auto',
+      forcedContentId: null,
+      blackout: false,
     };
     this.data.devices.push(device);
     this.persist();
@@ -307,9 +309,21 @@ class LocalStoreClient implements SignageApiClient {
     this.persist();
   }
 
-  async moveDevice(id: string, groupId: string): Promise<void> {
+  async moveDevice(id: string, groupId: string | null): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device) device.groupId = groupId;
+    this.persist();
+  }
+
+  async setDeviceForcedContent(id: string, libId: string | null): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === id);
+    if (device) device.forcedContentId = libId;
+    this.persist();
+  }
+
+  async setDeviceBlackout(id: string, blackout: boolean): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === id);
+    if (device) device.blackout = blackout;
     this.persist();
   }
 

@@ -97,7 +97,7 @@ export const httpClient: SignageApiClient = {
 
   // Devices
   listDevices: () => request<Device[]>('/api/devices'),
-  pairDevice: (input: { name: string; ip: string; groupId: string; status?: DeviceStatus }) =>
+  pairDevice: (input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }) =>
     request<Device>('/api/devices/pair', { method: 'POST', ...json(input) }),
   renameDevice: (id, name) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ name }) }),
   moveDevice: (id, groupId) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ groupId }) }),
@@ -106,6 +106,8 @@ export const httpClient: SignageApiClient = {
   setDeviceAnnouncement: (id, announcementId) => request<void>(`/api/devices/${id}/announcement`, { method: 'PUT', ...json({ announcementId }) }),
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
   setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),
+  setDeviceForcedContent: (id, libId) => request<void>(`/api/devices/${id}/forced`, { method: 'PUT', ...json({ libId }) }),
+  setDeviceBlackout: (id, blackout) => request<void>(`/api/devices/${id}/blackout`, { method: 'PUT', ...json({ blackout }) }),
 
   // Pairing helpers
   scanNetwork: () => request<DiscoveredDevice[]>('/api/scan'),

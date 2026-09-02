@@ -37,6 +37,18 @@ interface DeviceCardProps {
   /** Off by default (see Settings → Device cards) — shows just IP + online/offline until turned on. */
   advancedInfo: boolean;
   hideAnnouncementRow: boolean;
+  /**
+   * A screen with no location has no location header to host force-content/
+   * announcement/blackout buttons, so this card shows its own — only rendered
+   * while device.groupId is null. forcedContentName resolves device.forcedContentId
+   * to a name (the card itself has no library to look it up in).
+   */
+  forcedContentName?: string;
+  onForceContent: (deviceId: string) => void;
+  onForceAnnouncement: (deviceId: string) => void;
+  onOpenBlackout: (deviceId: string) => void;
+  onStopForcedContent: (deviceId: string) => void;
+  onStopBlackout: (deviceId: string) => void;
 }
 
 export function DeviceCard({
@@ -54,6 +66,12 @@ export function DeviceCard({
   onPreview,
   advancedInfo,
   hideAnnouncementRow,
+  forcedContentName,
+  onForceContent,
+  onForceAnnouncement,
+  onOpenBlackout,
+  onStopForcedContent,
+  onStopBlackout,
 }: DeviceCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(device.name);
@@ -69,6 +87,33 @@ export function DeviceCard({
 
   return (
     <div className="card">
+      {!device.groupId && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {device.blackout ? (
+            <>
+              <span className="tag tag-warning">Blacked out</span>
+              <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onStopBlackout(device.id)}>Stop</button>
+            </>
+          ) : (
+            <button type="button" className="btn btn-warning btn-icon" style={{ width: 26, height: 26 }} aria-label="Blackout" title="Blackout" onClick={() => onOpenBlackout(device.id)}>
+              <Icon name="moon" size={13} />
+            </button>
+          )}
+          {device.forcedContentId ? (
+            <>
+              <span className="tag tag-accent">Forced: {forcedContentName ?? '—'}</span>
+              <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onStopForcedContent(device.id)}>Stop</button>
+            </>
+          ) : (
+            <button type="button" className="btn btn-secondary btn-icon" style={{ width: 26, height: 26 }} aria-label="Force content" title="Force content" onClick={() => onForceContent(device.id)}>
+              <Icon name="monitor" size={13} />
+            </button>
+          )}
+          <button type="button" className="btn btn-secondary btn-icon" style={{ width: 26, height: 26 }} aria-label="Force announcement" title="Force announcement" onClick={() => onForceAnnouncement(device.id)}>
+            <Icon name="messageCircle" size={13} />
+          </button>
+        </div>
+      )}
       <div
         className="preview-box"
         style={

@@ -9,19 +9,23 @@ interface MoveDeviceDialogProps {
   onClose: () => void;
 }
 
+const NO_LOCATION = '__none__';
+
 export function MoveDeviceDialog({ app, device, onClose }: MoveDeviceDialogProps) {
   const { groups, addGroup, moveDevice } = app;
-  const [choiceId, setChoiceId] = useState<string>(device.groupId);
+  const [choiceId, setChoiceId] = useState<string>(device.groupId ?? NO_LOCATION);
   const [newGroupName, setNewGroupName] = useState('');
 
   const isNewGroup = choiceId === '__new__';
 
   const confirm = async () => {
-    let targetId = choiceId;
+    let targetId: string | null = choiceId;
     if (isNewGroup) {
       if (!newGroupName.trim()) return;
       const group = await addGroup(newGroupName);
       targetId = group.id;
+    } else if (choiceId === NO_LOCATION) {
+      targetId = null;
     }
     await moveDevice(device.id, targetId);
     onClose();
@@ -30,6 +34,11 @@ export function MoveDeviceDialog({ app, device, onClose }: MoveDeviceDialogProps
   return (
     <DialogShell title="Move to a different location" onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <label className="radio">
+          <input type="radio" name="moveDevicePick" checked={choiceId === NO_LOCATION} onChange={() => setChoiceId(NO_LOCATION)} />
+          <span className="dot" />
+          No location (misc screen)
+        </label>
         {groups.map((g) => (
           <label key={g.id} className="radio">
             <input type="radio" name="moveDevicePick" checked={choiceId === g.id} onChange={() => setChoiceId(g.id)} />
