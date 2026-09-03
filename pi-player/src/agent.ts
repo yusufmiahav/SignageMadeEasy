@@ -3,6 +3,7 @@ import os from 'node:os';
 import { clearConfig, loadConfig, saveConfig } from './config.js';
 import { startPolling, stopPolling } from './poller.js';
 import { getLocalMac } from './localIp.js';
+import * as identifyFlash from './identifyFlash.js';
 
 export const agentRouter = Router();
 
@@ -35,4 +36,12 @@ agentRouter.post('/restart', (_req, res) => {
   // (see pi-player/systemd/signage-player.service) brings the process straight
   // back up. There's no separate "restart" concept to build; exit-and-respawn is it.
   setTimeout(() => process.exit(0), 200);
+});
+
+// Settings screen's "Identify" button (bulb icon) — just bumps a counter the player
+// page's own /state poll picks up (see app.ts and identifyFlash.ts), which triggers
+// a white/black blink overlay on that Pi's physical display.
+agentRouter.post('/identify-flash', (_req, res) => {
+  identifyFlash.trigger();
+  res.status(204).end();
 });

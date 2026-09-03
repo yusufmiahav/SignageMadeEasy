@@ -371,6 +371,11 @@ export function useAppState() {
     showToast(`Restarting ${device.name}…`);
   }, [showToast]);
 
+  const flashDevice = useCallback(async (device: Device) => {
+    await api.flashDevice(device.id);
+    showToast(`Identifying ${device.name}…`);
+  }, [showToast]);
+
   const setDeviceAnnouncement = useCallback(async (id: string, announcementId: string | null) => {
     await api.setDeviceAnnouncement(id, announcementId);
     await refreshDevices();
@@ -438,6 +443,7 @@ export function useAppState() {
     reorderDevices,
     removeDevice,
     restartDevice,
+    flashDevice,
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,

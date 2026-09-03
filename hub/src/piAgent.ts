@@ -50,3 +50,9 @@ export async function unpair(ip: string): Promise<void> {
   const res = await agentFetch(ip, '/unpair', { method: 'POST' });
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected unpair: ${res.status}`);
 }
+
+// Settings screen's "Identify" button (bulb icon) — see pi-player/src/identifyFlash.ts.
+export async function identifyFlash(ip: string): Promise<void> {
+  const res = await agentFetch(ip, '/identify-flash', { method: 'POST' });
+  if (!res.ok) throw new Error(`Pi agent at ${ip} rejected identify-flash: ${res.status}`);
+}
