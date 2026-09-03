@@ -434,8 +434,12 @@ fi
 # ---------------------------------------------------------------------------
 if [[ "$IS_PI4_5" -eq 1 ]]; then
   log "Installing GStreamer (for NDI live-source support — see pi-player/README.md)"
+  # plugins-bad is required, not optional despite the name — waylandsink (what
+  # actually renders NDI video onto the kiosk's Wayland surface) lives there, not in
+  # -base/-good. Confirmed missing on real Pi 5 hardware: gst-launch-1.0 rejected the
+  # NDI pipeline outright with "no element waylandsink" without it.
   apt-get install -y --no-install-recommends \
-    gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 
   # gst-plugin-ndi and the ndi-find discovery helper both need to be built by hand
