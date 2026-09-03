@@ -1,16 +1,20 @@
-# SignageMadeEasy — Raspberry Pi Player
+# SignageMadeEasy — Player
 
-Turns a Raspberry Pi 3B+ into a signage display: boots straight into fullscreen
-kiosk playback, shows its IP + a pairing QR code until paired, and polls the hub
-(`../hub`) for what to play.
+Turns a Raspberry Pi 3B+ (or a generic x86_64 mini PC / HDMI compute stick — see
+below) into a signage display: boots straight into fullscreen kiosk playback,
+shows its IP + a pairing QR code until paired, and polls the hub (`../hub`) for
+what to play. The player app itself is plain Node.js with no architecture-specific
+code — the same `provision.sh` sets up either platform, detecting which one it's
+running on.
 
 No custom flashable `.img` here — building one properly (via `pi-gen`) needs a real
 ARM build environment and 30–90+ minutes; this ships a provisioning script for stock
-Raspberry Pi OS instead, which Raspberry Pi Imager's own customisation options
-already cover most of the setup for.
+Raspberry Pi OS / Debian instead, which Raspberry Pi Imager's own customisation
+options (or Debian's own installer, on x86) already cover most of the setup for.
 
 ## Flashing
 
+**Raspberry Pi:**
 1. Raspberry Pi Imager → **Raspberry Pi OS Lite (64-bit)**.
 2. Click the gear icon (OS customisation) before writing:
    - Set a hostname (e.g. `signage-lobby`).
@@ -18,20 +22,38 @@ already cover most of the setup for.
    - Set your Wi-Fi SSID + password.
 3. Write the SD card, boot the Pi, connect HDMI + power.
 
+**x86 mini PC / Intel HDMI stick:** install **Debian** (Bookworm or Trixie), not
+Ubuntu — recent Ubuntu releases only ship Chromium as a snap, which doesn't suit a
+kiosk autostart. A netinst image is fine:
+1. During install, tick **SSH server** and untick every desktop-environment task —
+   same idea as Raspberry Pi OS *Lite*, no desktop needed.
+2. On the "software selection"/mirror step, enable the `contrib` and
+   `non-free-firmware` archive components (or add them to `/etc/apt/sources.list`
+   after install) — needed for Chromium's own dependencies and, on newer Intel
+   iGPUs, the `i915` driver's firmware.
+3. Boot it, connect HDMI + power + ethernet (or configure Wi-Fi via `nmcli`/
+   `nmtui` once booted).
+
 ## Provisioning (once, over SSH)
 
 ```bash
-ssh pi@<ip-shown-during-first-boot-or-from-your-router>
+ssh <user>@<ip-shown-during-first-boot-or-from-your-router>
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/yusufmiahav/SignageMadeEasy/main/pi-player/provision.sh)"
 sudo reboot
 ```
 
-This installs Node.js, `cage` (a minimal single-app Wayland kiosk compositor —
+Same command on both platforms — the script detects Raspberry Pi hardware and
+branches the handful of steps that differ (how the boot-splash kernel command
+line is set, and a couple of Pi-only hardware tweaks with no x86 equivalent).
+
+It installs Node.js, `cage` (a minimal single-app Wayland kiosk compositor —
 lighter than a full X11 desktop for exactly this one-app-fullscreen use case) and
 Chromium, builds and deploys the player app to `/opt/signage/app`, sets up two
 systemd services (`signage-player`, `signage-kiosk`), configures auto-login on
 `tty1`, and disables console screen blanking. Re-run it after a `git pull` to
-redeploy player updates — it's idempotent.
+redeploy player updates — it's idempotent. On an x86 stick, Chromium's own
+hardware video decode (VAAPI) is used instead of the Pi's software-decode
+workaround — see the boot splash section below for why those differ.
 
 After reboot the display shows its **IP address and a QR code**. Pair it from the
 control app (Home or Settings → "Add a screen") via Scan network, Scan QR, or Enter
@@ -110,13 +132,16 @@ being reconfigured — that's expected; reload at the new address if you set one
 
 ## Performance: running without a heatsink
 
-Also on the setup page, a "Performance" toggle caps the ARM clock to 1200MHz
-(`arm_freq` in `/boot/config.txt`/`/boot/firmware/config.txt`) to run cooler on
-a bare Pi 3B+ with no heatsink, at the cost of some CPU headroom. Only takes
-effect on reboot — the page shows a "Reboot required" prompt with a one-click
-reboot button whenever the on-disk setting and what's actually running at the
-moment disagree. Check `vcgencmd get_throttled` and `vcgencmd measure_temp`
-before and after to see whether it actually helped your specific setup.
+**Raspberry Pi only.** Also on the setup page, a "Performance" toggle caps the ARM
+clock to 1200MHz (`arm_freq` in `/boot/config.txt`/`/boot/firmware/config.txt`) to
+run cooler on a bare Pi 3B+ with no heatsink, at the cost of some CPU headroom.
+Only takes effect on reboot — the page shows a "Reboot required" prompt with a
+one-click reboot button whenever the on-disk setting and what's actually running at
+the moment disagree. Check `vcgencmd get_throttled` and `vcgencmd measure_temp`
+before and after to see whether it actually helped your specific setup. On an x86
+stick `provision.sh` skips installing this entirely (no `arm_freq` equivalent, and
+not a hardware constraint that hardware has) — toggling it there just reports an
+error rather than crashing anything.
 
 ## Boot splash
 
@@ -125,17 +150,20 @@ Raw kernel/systemd boot text is replaced with a plain black screen, the
 installed as a Plymouth theme and set as default automatically by `provision.sh`,
 with `splash quiet` added to the kernel command line so the console text is actually
 suppressed rather than just shown behind the splash. Confirmed working on real
-hardware.
+hardware. On a Raspberry Pi that command line lives in `/boot/firmware/cmdline.txt`
+(a flat, single-line file); on an x86 stick there's no such file — it comes from
+`/etc/default/grub`'s `GRUB_CMDLINE_LINUX_DEFAULT`, baked into `/boot/grub/grub.cfg`
+by `update-grub`, which `provision.sh` runs automatically after editing it.
 
 **If it doesn't show up after provisioning + a reboot**, the most likely cause is a
-Pi that was provisioned before this fix existed: `provision.sh` also strips
-`console=serial0,...` (or `ttyS0`/`ttyAMA0`) from `/boot/firmware/cmdline.txt` —
+device that was provisioned before this fix existed: `provision.sh` also strips
+`console=serial0,...` (or `ttyS0`/`ttyAMA0`) from the kernel command line —
 Plymouth silently falls back to plain boot text whenever a serial console is present
 alongside the real HDMI one, regardless of theme setup, and that fallback isn't
-something the theme config can override. Fix: `git pull` on the Pi (or re-run the
-one-liner from [Provisioning](#provisioning-once-over-ssh)) to make sure it has the
-current `provision.sh`, re-run it, then reboot. If it still doesn't appear, check
-whether the serial console actually got removed:
+something the theme config can override. Fix: `git pull` on the device (or re-run
+the one-liner from [Provisioning](#provisioning-once-over-ssh)) to make sure it has
+the current `provision.sh`, re-run it, then reboot. If it still doesn't appear,
+check whether the serial console actually got removed — **Raspberry Pi:**
 
 ```bash
 cat /boot/firmware/cmdline.txt   # should NOT contain console=serial0/ttyS0/ttyAMA0
@@ -148,11 +176,34 @@ sudo sed -i -E 's/console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?[[:space:]]*//g; s/[[
 sudo reboot
 ```
 
-To revert the splash entirely back to plain console text:
+**x86 stick:**
+
+```bash
+cat /etc/default/grub | grep GRUB_CMDLINE_LINUX_DEFAULT   # should NOT contain console=ttyS0/serial0
+```
+
+If it's still there, strip it manually, regenerate GRUB's config, and reboot:
+
+```bash
+sudo sed -i -E 's/console=(ttyS[0-9]+|serial0)(,[0-9]+)?[[:space:]]*//g' /etc/default/grub
+sudo update-grub
+sudo reboot
+```
+
+To revert the splash entirely back to plain console text — **Raspberry Pi:**
 
 ```bash
 sudo plymouth-set-default-theme pix -R   # or whatever theme `plymouth-set-default-theme --list` shows was default before
 sudo sed -i 's/ splash quiet//' /boot/firmware/cmdline.txt   # or /boot/cmdline.txt
+sudo reboot
+```
+
+**x86 stick:**
+
+```bash
+sudo plymouth-set-default-theme pix -R   # or whatever theme `plymouth-set-default-theme --list` shows was default before
+sudo sed -i 's/ splash quiet//' /etc/default/grub
+sudo update-grub
 sudo reboot
 ```
 

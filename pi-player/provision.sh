@@ -1,15 +1,34 @@
 #!/usr/bin/env bash
-# SignageMadeEasy Pi provisioning script — run ONCE, as root, over SSH, on a freshly
-# flashed Raspberry Pi OS Lite (64-bit, Bookworm or newer). Idempotent: safe to re-run
-# after a git pull to pick up player updates.
+# SignageMadeEasy player provisioning script — run ONCE, as root, over SSH, on
+# either a freshly flashed Raspberry Pi OS Lite (64-bit, Bookworm or newer) or a
+# freshly installed Debian (Bookworm/Trixie) x86_64 machine — e.g. an Intel HDMI
+# compute stick. Idempotent: safe to re-run after a git pull to pick up player
+# updates. The player app itself (pi-player/src) is plain Node.js with zero native
+# or architecture-specific dependencies — the only parts of this script that differ
+# by platform are how the boot-splash kernel command line is set (Raspberry Pi's
+# flat cmdline.txt vs. GRUB on a generic PC) and a couple of Pi-only hardware
+# tweaks (arm_freq underclock, forcing HDMI audio) that have no x86 equivalent —
+# branched inline below via $IS_PI rather than as a separate script, so a fix to
+# the ~90% that's shared never has to be applied twice.
 #
-# Before this: flash with Raspberry Pi Imager, using its own gear-icon "OS
-# customisation" dialog to set hostname, enable SSH, and set your Wi-Fi SSID/password
-# — none of that is this script's job.
+# x86 note: use Debian, not Ubuntu — recent Ubuntu releases only ship Chromium as
+# a snap, which complicates a kiosk autostart (confinement, unpredictable binary
+# path/timing) in a way a native .deb doesn't. Enable the `contrib` and
+# `non-free-firmware` components in /etc/apt/sources.list (or tick them during
+# install) — plain `main` alone isn't enough for every Chromium dependency, and
+# newer Intel iGPUs need non-free-firmware for reliable display/hardware video
+# decode via the i915 driver.
+#
+# Before this: flash/install the OS —
+#   - Raspberry Pi: flash with Raspberry Pi Imager, using its own gear-icon "OS
+#     customisation" dialog to set hostname, enable SSH, and set your Wi-Fi
+#     SSID/password — none of that is this script's job.
+#   - x86 stick: install Debian (netinst is fine) with an SSH server and no
+#     desktop environment, same idea as "Lite" on the Pi.
 #
 #   ssh pi@<ip-shown-on-first-boot>
 #   sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/pi-player/provision.sh)"
-# or, if you've already cloned the repo onto the Pi:
+# or, if you've already cloned the repo onto the device:
 #   sudo ./pi-player/provision.sh
 
 set -euo pipefail
@@ -26,12 +45,22 @@ SIGNAGE_USER=signage
 
 log() { echo -e "\n==> $*"; }
 
+# /proc/device-tree/model exists on real Raspberry Pi hardware regardless of which
+# OS is installed on it — a more reliable check than `uname -m` (arm64 also covers
+# other ARM boards, and this project doesn't try to support those) or os-release
+# (Raspberry Pi OS is just Debian under the hood, so its own os-release doesn't
+# say "raspberry" anywhere).
+IS_PI=0
+if [[ -f /proc/device-tree/model ]] && grep -qi 'raspberry pi' /proc/device-tree/model 2>/dev/null; then
+  IS_PI=1
+fi
+
 # ---------------------------------------------------------------------------
 log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  cage curl ca-certificates git rsync plymouth plymouth-themes
+  cage curl ca-certificates git rsync plymouth plymouth-themes network-manager
 
 # ydotool/ydotoold (used to warp the cursor off-screen — see signage-kiosk.service,
 # the part actually confirmed on real hardware to hide it) aren't in every
@@ -187,32 +216,49 @@ chown "$SIGNAGE_USER:$SIGNAGE_USER" "$INSTALL_DIR"
 chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$APP_DIR"
 
 # ---------------------------------------------------------------------------
-log "Installing the underclock toggle script (root-owned — see pi-player/src/underclock.ts)"
-# Deliberately NOT under $APP_DIR: that whole tree is chowned to $SIGNAGE_USER
-# above, and $SIGNAGE_USER can invoke this script via the sudoers grant below —
-# if $SIGNAGE_USER could also edit the script it runs as root, that grant would
-# be a straight path to arbitrary root access instead of the one fixed on/off
-# toggle it's meant to be.
-mkdir -p /opt/signage/bin
-install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/set-underclock.sh" /opt/signage/bin/set-underclock.sh
+# arm_freq (see pi-player/src/underclock.ts) only exists on Raspberry Pi firmware —
+# an x86 stick has no equivalent knob here, and doesn't need one: it's not a bare
+# board with no heatsink the way a Pi 3B+ can be. The underclock toggle on the
+# local setup page still degrades gracefully without this (app.ts's /underclock
+# route already catches the missing-script error and reports it to the page,
+# rather than crashing) — this just skips installing something that would never
+# be usable on this hardware.
+if [[ "$IS_PI" -eq 1 ]]; then
+  log "Installing the underclock toggle script (root-owned — see pi-player/src/underclock.ts)"
+  # Deliberately NOT under $APP_DIR: that whole tree is chowned to $SIGNAGE_USER
+  # above, and $SIGNAGE_USER can invoke this script via the sudoers grant below —
+  # if $SIGNAGE_USER could also edit the script it runs as root, that grant would
+  # be a straight path to arbitrary root access instead of the one fixed on/off
+  # toggle it's meant to be.
+  mkdir -p /opt/signage/bin
+  install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/set-underclock.sh" /opt/signage/bin/set-underclock.sh
+fi
 
 # ---------------------------------------------------------------------------
-log "Granting $SIGNAGE_USER passwordless access to the underclock script and reboot"
+if [[ "$IS_PI" -eq 1 ]]; then
+  log "Granting $SIGNAGE_USER passwordless access to the underclock script and reboot"
+else
+  log "Granting $SIGNAGE_USER passwordless access to reboot"
+fi
 # Same reasoning and same visudo-validate-before-install pattern as the nmcli grant
 # above: narrow, specific, fixed commands only — never a blanket NOPASSWD:ALL.
-# reboot's real path varies across Raspberry Pi OS releases (merged-/usr or not) —
-# resolved here rather than hardcoded, same as $CHROMIUM_BIN above.
+# reboot's real path varies across OS releases (merged-/usr or not) — resolved
+# here rather than hardcoded, same as $CHROMIUM_BIN above. The reboot grant itself
+# isn't underclock-specific — the local setup page's static-IP/Wi-Fi flows use it
+# too — so it's unconditional even on hardware with no underclock toggle to grant.
 REBOOT_BIN="$(command -v reboot)"
 SUDOERS_TMP="$(mktemp)"
 {
-  echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /opt/signage/bin/set-underclock.sh"
+  if [[ "$IS_PI" -eq 1 ]]; then
+    echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /opt/signage/bin/set-underclock.sh"
+  fi
   echo "$SIGNAGE_USER ALL=(root) NOPASSWD: $REBOOT_BIN"
 } > "$SUDOERS_TMP"
 if visudo -c -f "$SUDOERS_TMP" >/dev/null 2>&1; then
   install -m 440 "$SUDOERS_TMP" /etc/sudoers.d/signage-underclock
 else
-  echo "Generated underclock sudoers rule failed validation — skipping. The" >&2
-  echo "underclock toggle and reboot-from-the-setup-page won't work without it." >&2
+  echo "Generated underclock/reboot sudoers rule failed validation — skipping. The" >&2
+  echo "underclock toggle (if applicable) and reboot-from-the-setup-page won't work without it." >&2
 fi
 rm -f "$SUDOERS_TMP"
 
@@ -266,39 +312,79 @@ else
   echo "itself is unaffected; boot may show default console text instead of the logo." >&2
 fi
 
-CMDLINE_FILE=/boot/firmware/cmdline.txt
-[[ -f "$CMDLINE_FILE" ]] || CMDLINE_FILE=/boot/cmdline.txt
-if [[ -f "$CMDLINE_FILE" ]] && ! grep -q '\bsplash\b' "$CMDLINE_FILE"; then
-  # Single line, space-appended — cmdline.txt must never contain a newline.
-  sed -i 's/$/ splash quiet/' "$CMDLINE_FILE"
-fi
-
-# Real root cause, confirmed via /var/log/plymouth-debug.log on real hardware
-# (plymouth.debug=file:... added to cmdline.txt as a one-off diagnostic, then
-# removed again): every prerequisite above was individually correct — theme
-# installed, set as default, splash+quiet present — yet Plymouth never loaded
-# our theme at all. The log showed why: "console /dev/ttyS0 found!" then
-# "serial consoles detected, managing them with details forced" — Plymouth
-# hardcodes a fallback to its plain-text "details" plugin (exactly the
-# "[ OK ] Starting..." boot-log text this was meant to hide) whenever a
-# serial console is present alongside the real HDMI one, regardless of theme
-# config. Raspberry Pi OS's default cmdline.txt sets both `console=serial0,...`
-# (or ttyS0/ttyAMA0 depending on model/overlay) and `console=tty1` together —
-# removing the serial one is the actual fix, not a config workaround, since
-# this fallback isn't something plymouthd.conf can override. Trades away
-# UART-cable boot debugging, which isn't used on a deployed kiosk with HDMI
-# + SSH available. Kept unconditional (not gated on the theme-set step above
-# succeeding) — a Pi that failed the initramfs rebuild above still needs this
-# fix, since Plymouth's serial-console fallback to plain text happens
+# Kernel command line: `splash quiet` (show the theme, suppress raw console text),
+# `consoleblank=0` (see "Disabling console screen blanking" below — folded in here
+# since it's the exact same file/mechanism), and stripping any serial console.
+#
+# Real root cause of the serial-console strip, confirmed via
+# /var/log/plymouth-debug.log on real Pi hardware (plymouth.debug=file:... added
+# as a one-off diagnostic, then removed again): every other prerequisite was
+# individually correct — theme installed, set as default, splash+quiet present —
+# yet Plymouth never loaded our theme at all. The log showed why: "console
+# /dev/ttyS0 found!" then "serial consoles detected, managing them with details
+# forced" — Plymouth hardcodes a fallback to its plain-text "details" plugin
+# (exactly the "[ OK ] Starting..." boot-log text this was meant to hide) whenever
+# a serial console is present alongside the real HDMI one, regardless of theme
+# config — not something plymouthd.conf can override. Raspberry Pi OS's default
+# cmdline.txt sets both `console=serial0,...` (or ttyS0/ttyAMA0) and
+# `console=tty1` together; trades away UART-cable boot debugging, which isn't used
+# on a deployed kiosk with HDMI + SSH available. Kept unconditional (not gated on
+# the theme-set step above succeeding) — a device that failed the initramfs
+# rebuild above still needs this, since the serial-console fallback happens
 # independently of whether its own theme's initramfs rebuild worked.
-if [[ -f "$CMDLINE_FILE" ]] && grep -qE 'console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?' "$CMDLINE_FILE"; then
-  sed -i -E 's/console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?[[:space:]]*//g; s/[[:space:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//' "$CMDLINE_FILE"
+if [[ "$IS_PI" -eq 1 ]]; then
+  CMDLINE_FILE=/boot/firmware/cmdline.txt
+  [[ -f "$CMDLINE_FILE" ]] || CMDLINE_FILE=/boot/cmdline.txt
+  if [[ -f "$CMDLINE_FILE" ]] && ! grep -q '\bsplash\b' "$CMDLINE_FILE"; then
+    # Single line, space-appended — cmdline.txt must never contain a newline.
+    sed -i 's/$/ splash quiet/' "$CMDLINE_FILE"
+  fi
+  if [[ -f "$CMDLINE_FILE" ]] && ! grep -q consoleblank=0 "$CMDLINE_FILE"; then
+    sed -i 's/$/ consoleblank=0/' "$CMDLINE_FILE"
+  fi
+  if [[ -f "$CMDLINE_FILE" ]] && grep -qE 'console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?' "$CMDLINE_FILE"; then
+    sed -i -E 's/console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?[[:space:]]*//g; s/[[:space:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//' "$CMDLINE_FILE"
+  fi
+else
+  # Generic x86/GRUB boot has no flat cmdline.txt — the kernel command line comes
+  # from /etc/default/grub's GRUB_CMDLINE_LINUX_DEFAULT instead, baked into
+  # /boot/grub/grub.cfg by update-grub. Some cloud-image-derived x86 installs set a
+  # serial console (console=ttyS0) for headless use, which would hit the exact
+  # same Plymouth fallback documented above — stripped here too just in case, even
+  # though a plain Debian install typically won't have one. Idempotent: re-running
+  # with these tokens already present is a harmless no-op (the `[[ ... == * ]]`
+  # checks skip re-adding what's already there).
+  GRUB_FILE=/etc/default/grub
+  if [[ -f "$GRUB_FILE" ]]; then
+    CURRENT="$(sed -n 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"$/\1/p' "$GRUB_FILE" | head -1)"
+    NEW="$CURRENT"
+    [[ "$NEW" == *splash* ]] || NEW="$NEW splash"
+    [[ "$NEW" == *quiet* ]] || NEW="$NEW quiet"
+    [[ "$NEW" == *consoleblank=0* ]] || NEW="$NEW consoleblank=0"
+    NEW="$(echo "$NEW" | sed -E 's/console=(ttyS[0-9]+|serial0)(,[0-9]+)?[[:space:]]*//g; s/[[:space:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//')"
+    if grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_FILE"; then
+      sed -i "s#^GRUB_CMDLINE_LINUX_DEFAULT=.*#GRUB_CMDLINE_LINUX_DEFAULT=\"$NEW\"#" "$GRUB_FILE"
+    else
+      echo "GRUB_CMDLINE_LINUX_DEFAULT=\"$NEW\"" >> "$GRUB_FILE"
+    fi
+    update-grub
+  else
+    echo "No /etc/default/grub found — skipping boot-splash kernel cmdline setup." >&2
+  fi
 fi
 
 # ---------------------------------------------------------------------------
 log "Installing systemd units"
 cp "$APP_DIR/systemd/signage-player.service" /etc/systemd/system/
-sed "s#/usr/bin/chromium#${CHROMIUM_BIN}#" "$APP_DIR/systemd/signage-kiosk.service" \
+KIOSK_SED="s#/usr/bin/chromium#${CHROMIUM_BIN}#"
+if [[ "$IS_PI" -eq 0 ]]; then
+  # --disable-accelerated-video-decode works around a Pi-specific Chromium/V4L2
+  # hang (see this flag's own comment in signage-kiosk.service) — Intel's VAAPI
+  # video decode in Chromium is solid, so there's no reason to force software
+  # decode here and give up the hardware-decode advantage an x86 stick actually has.
+  KIOSK_SED="$KIOSK_SED; /--disable-accelerated-video-decode/d"
+fi
+sed "$KIOSK_SED" "$APP_DIR/systemd/signage-kiosk.service" \
   > /etc/systemd/system/signage-kiosk.service
 systemctl daemon-reload
 systemctl enable --now signage-player.service
@@ -319,21 +405,21 @@ ExecStart=-/sbin/agetty --autologin ${SIGNAGE_USER} --noclear %I \$TERM
 EOF
 systemctl daemon-reload
 
-log "Disabling console screen blanking"
-if [[ -f /boot/firmware/cmdline.txt ]] && ! grep -q consoleblank=0 /boot/firmware/cmdline.txt; then
-  sed -i 's/$/ consoleblank=0/' /boot/firmware/cmdline.txt
-fi
-
-log "Forcing full HDMI mode (video + audio) instead of a DVI-compatible, audio-less negotiation"
-# Some monitors/EDIDs make the Pi negotiate HDMI in a video-only mode with no audio
-# at all, regardless of what the OS or player tries to output — a well-known,
-# low-risk Pi gotcha, distinct from (and much safer than) forcing a specific
-# resolution: this doesn't touch EDID parsing or the chosen video mode, it only
-# tells the firmware "this is a real HDMI sink, always enable audio."
-CONFIG_FILE=/boot/firmware/config.txt
-[[ -f "$CONFIG_FILE" ]] || CONFIG_FILE=/boot/config.txt
-if [[ -f "$CONFIG_FILE" ]] && ! grep -q '^hdmi_drive=' "$CONFIG_FILE"; then
-  echo "hdmi_drive=2" >> "$CONFIG_FILE"
+if [[ "$IS_PI" -eq 1 ]]; then
+  log "Forcing full HDMI mode (video + audio) instead of a DVI-compatible, audio-less negotiation"
+  # Some monitors/EDIDs make the Pi negotiate HDMI in a video-only mode with no audio
+  # at all, regardless of what the OS or player tries to output — a well-known,
+  # low-risk Pi gotcha, distinct from (and much safer than) forcing a specific
+  # resolution: this doesn't touch EDID parsing or the chosen video mode, it only
+  # tells the firmware "this is a real HDMI sink, always enable audio." No x86
+  # equivalent — a standard Intel HDMI output already carries audio by default;
+  # if a particular stick/monitor combo doesn't, that's an ALSA/PulseAudio output
+  # selection issue specific to that hardware, not something safe to script here.
+  CONFIG_FILE=/boot/firmware/config.txt
+  [[ -f "$CONFIG_FILE" ]] || CONFIG_FILE=/boot/config.txt
+  if [[ -f "$CONFIG_FILE" ]] && ! grep -q '^hdmi_drive=' "$CONFIG_FILE"; then
+    echo "hdmi_drive=2" >> "$CONFIG_FILE"
+  fi
 fi
 
 log "Done. Reboot to start the kiosk: sudo reboot"
