@@ -141,6 +141,19 @@ class LocalStoreClient implements SignageApiClient {
     return item;
   }
 
+  async addNdiSource(name: string, ndiSourceName: string): Promise<LibraryItem> {
+    const item: LibraryItem = { id: uid('l'), name: name.trim() || ndiSourceName.trim(), type: 'ndi', ndiSourceName: ndiSourceName.trim(), tags: [] };
+    this.data.library.push(item);
+    this.persist();
+    return item;
+  }
+
+  // No real Pi to ask in standalone/localStorage mode — same "nothing to discover"
+  // answer as every other Pi-only capability this client fakes.
+  async listNdiSources(): Promise<string[]> {
+    return [];
+  }
+
   async setLibraryItemTags(id: string, tags: string[]): Promise<void> {
     const item = this.data.library.find((i) => i.id === id);
     if (item) item.tags = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
@@ -148,7 +161,7 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   async setItemDuration(id: string, durationSec: number): Promise<void> {
-    const item = this.data.library.find((i) => i.id === id && (i.type === 'image' || i.type === 'clock'));
+    const item = this.data.library.find((i) => i.id === id && (i.type === 'image' || i.type === 'clock' || i.type === 'ndi'));
     if (item && Number.isFinite(durationSec) && durationSec >= 1) item.durationSec = Math.round(durationSec);
     this.persist();
   }

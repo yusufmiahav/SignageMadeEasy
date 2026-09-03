@@ -8,6 +8,7 @@ const TYPE_ICON: Record<LibraryItem['type'], IconName> = {
   pdf: 'fileText',
   announcement: 'messageCircle',
   clock: 'clock',
+  ndi: 'radio',
 };
 
 const TYPE_LABEL: Record<LibraryItem['type'], string> = {
@@ -16,6 +17,7 @@ const TYPE_LABEL: Record<LibraryItem['type'], string> = {
   pdf: 'PDF',
   announcement: 'Announcement',
   clock: 'Clock',
+  ndi: 'NDI source',
 };
 
 // Announcements and clocks have no underlying file — nothing to download for
@@ -40,6 +42,8 @@ function metaText(item: LibraryItem): string {
       return item.text ?? '';
     case 'clock':
       return 'Live time of day';
+    case 'ndi':
+      return item.ndiSourceName ?? '';
   }
 }
 

@@ -207,6 +207,65 @@ sudo update-grub
 sudo reboot
 ```
 
+## NDI live sources (Raspberry Pi 4/5 only)
+
+A Pi 4/5 (not 3B+ — this needs the extra horsepower) can display a live **NDI**
+(Network Device Interface) video feed — a camera, an encoder, another computer's NDI
+output — as one item in the normal rotation, alongside images/video/PDF/clock. This
+is NDI-**in** (receiving), not NDI-out.
+
+**The hub never touches the actual video stream.** Adding an NDI source from the
+control app only saves one short string, the NDI source name — the real video flows
+directly over the LAN from the NDI source device to this Pi's own receiver process,
+completely bypassing the hub. Practically, that means **the Pi and the NDI source
+need to be reachable from each other via NDI's own discovery**, which is mDNS-based
+and doesn't cross subnets without a separate NDI Discovery Server — generally, put
+them on the same LAN segment/VLAN.
+
+### One-time setup: building gst-plugin-ndi and the discovery helper
+
+`provision.sh` installs GStreamer's own packages on a Pi 4/5 automatically, but the
+actual NDI support — the `ndisrc` GStreamer element and this project's small
+discovery helper — needs the proprietary **NDI SDK for Linux**, which can't be
+downloaded automatically: Vizrt's EULA requires a human to accept it first.
+
+1. On the Pi (or on any Linux ARM64 machine, then copy the built files over), go to
+   <https://ndi.video/for-developers/ndi-sdk/> and download the NDI SDK for Linux,
+   accepting the EULA.
+2. Build [`gst-plugin-ndi`](https://github.com/teltek/gst-plugin-ndi) (the community
+   GStreamer NDI plugin) against that SDK, following its own README — this produces a
+   `.so` GStreamer plugin. Install it wherever your GStreamer plugin path expects
+   plugins (`gst-inspect-1.0 --print-plugin-auto-install-info` or checking
+   `GST_PLUGIN_PATH` will tell you where). Confirm it's found:
+   ```bash
+   gst-inspect-1.0 ndisrc
+   ```
+3. Build the discovery helper: a ~30-line C program using the same SDK's
+   `NDIlib_find_*` functions to print discovered source names, one per line. Compile
+   it against the SDK's headers/libs and install the binary to:
+   ```bash
+   /opt/signage/bin/ndi-find
+   ```
+   (Override the path with the `SIGNAGE_NDI_FIND_BIN` env var on
+   `signage-player.service` if you'd rather put it somewhere else.)
+4. Re-run `provision.sh` (or just check manually) — it probes for both of these on a
+   Pi 4/5 and prints a reminder if either is still missing, but doesn't fail the rest
+   of provisioning if they are.
+
+### Adding an NDI source from the control app
+
+Library screen → **Add NDI source**. Either:
+- Pick a paired Pi 4/5 and click **Scan for sources** — this asks that Pi to run its
+  own NDI discovery (a few seconds) and lists whatever it finds, or
+- Type the NDI source name in manually (its exact NDI network name, e.g.
+  `DESKTOP-ABC (Camera 1)`) — useful if the source isn't broadcasting yet, or no Pi
+  4/5 is paired/reachable right now.
+
+Add it to a playlist/event like any other content — it plays full-screen for its
+configured duration (same "Plays for Ns" control as images/clocks) before rotating to
+the next item. If the named source isn't currently reachable, the screen just holds
+on the last frame it had (or a black screen if it never connected) until it is.
+
 ## Local development / testing (not on real Pi hardware)
 
 ```bash

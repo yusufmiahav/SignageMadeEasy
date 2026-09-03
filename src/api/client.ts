@@ -23,11 +23,15 @@ export interface SignageApiClient {
   addAnnouncement(name: string, text: string): Promise<LibraryItem>;
   /** Current time of day on a black background, rendered live on the Pi — no file involved. */
   addClock(name: string): Promise<LibraryItem>;
+  /** No file either — the hub only stores `ndiSourceName`; the actual video flows directly from the NDI source to a Pi 4/5's own receiver, bypassing the hub entirely. */
+  addNdiSource(name: string, ndiSourceName: string): Promise<LibraryItem>;
+  /** Pi 4/5 only — asks the given paired device to run its own NDI discovery for AddNdiSourceDialog's "Scan for sources" button. Empty array (never throws) when the device is unreachable, isn't a Pi 4/5, or has no discovery helper built yet — the dialog just falls back to manual entry. */
+  listNdiSources(deviceId: string): Promise<string[]>;
   removeLibraryItem(id: string): Promise<void>;
   renameLibraryItem(id: string, name: string): Promise<void>;
   /** Persists a drag-and-drop reorder from the Library screen — the complete new display order. */
   reorderLibrary(ids: string[]): Promise<void>;
-  /** Images and clocks only — anything else is a server-side no-op. */
+  /** Images, clocks, and NDI sources only — anything else is a server-side no-op. */
   setItemDuration(id: string, durationSec: number): Promise<void>;
   setLibraryItemTags(id: string, tags: string[]): Promise<void>;
 

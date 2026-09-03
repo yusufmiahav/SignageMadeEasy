@@ -117,6 +117,17 @@ export function useAppState() {
     return item;
   }, [refreshLibrary, showToast]);
 
+  const addNdiSource = useCallback(async (name: string, ndiSourceName: string) => {
+    const item = await api.addNdiSource(name, ndiSourceName);
+    await refreshLibrary();
+    showToast('NDI source added');
+    return item;
+  }, [refreshLibrary, showToast]);
+
+  // Just a passthrough to the picker dialog — no app state to refresh, unlike the
+  // add* callbacks above.
+  const listNdiSources = useCallback((deviceId: string) => api.listNdiSources(deviceId), []);
+
   const setItemDuration = useCallback(async (id: string, durationSec: number) => {
     await api.setItemDuration(id, durationSec);
     await refreshLibrary();
@@ -408,6 +419,8 @@ export function useAppState() {
     addPdf,
     addAnnouncement,
     addClock,
+    addNdiSource,
+    listNdiSources,
     setItemDuration,
     renameLibraryItem,
     reorderLibrary,

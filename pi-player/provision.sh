@@ -55,6 +55,15 @@ if [[ -f /proc/device-tree/model ]] && grep -qi 'raspberry pi' /proc/device-tree
   IS_PI=1
 fi
 
+# Distinct from IS_PI above — a Pi 4/5 has enough headroom for the NDI-in feature
+# (native GStreamer + gst-plugin-ndi, see pi-player/src/ndiPlayer.ts and README.md),
+# which a 3B+ isn't targeted for. A plain 32-bit "Raspberry Pi 4" board string and a
+# 64-bit one both match this the same way IS_PI's own check does.
+IS_PI4_5=0
+if [[ -f /proc/device-tree/model ]] && grep -qiE 'raspberry pi (4|5)' /proc/device-tree/model 2>/dev/null; then
+  IS_PI4_5=1
+fi
+
 # ---------------------------------------------------------------------------
 log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -419,6 +428,32 @@ if [[ "$IS_PI" -eq 1 ]]; then
   [[ -f "$CONFIG_FILE" ]] || CONFIG_FILE=/boot/config.txt
   if [[ -f "$CONFIG_FILE" ]] && ! grep -q '^hdmi_drive=' "$CONFIG_FILE"; then
     echo "hdmi_drive=2" >> "$CONFIG_FILE"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+if [[ "$IS_PI4_5" -eq 1 ]]; then
+  log "Installing GStreamer (for NDI live-source support — see pi-player/README.md)"
+  apt-get install -y --no-install-recommends \
+    gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+
+  # gst-plugin-ndi and the ndi-find discovery helper both need to be built by hand
+  # against the proprietary NDI SDK (Vizrt's EULA requires a human to accept it —
+  # can't be curled/scripted here, see README.md), so this only checks whether that
+  # one-time manual step has already happened and points at the docs if not.
+  # Deliberately non-fatal — same best-effort pattern as the ydotool install above —
+  # since a Pi 4/5 provisioned before that manual step is still a working screen for
+  # every other content type.
+  if ! gst-inspect-1.0 ndisrc >/dev/null 2>&1; then
+    echo "gst-plugin-ndi (the 'ndisrc' GStreamer element) isn't installed yet — NDI" >&2
+    echo "sources won't play until it's built. See pi-player/README.md for the" >&2
+    echo "one-time manual NDI SDK download/build step." >&2
+  fi
+  if [[ ! -x /opt/signage/bin/ndi-find ]]; then
+    echo "The NDI discovery helper (/opt/signage/bin/ndi-find) isn't built yet — the" >&2
+    echo "control app's 'Scan for sources' button won't find anything on this screen" >&2
+    echo "until it is. See pi-player/README.md." >&2
   fi
 fi
 

@@ -16,9 +16,9 @@ function uid(prefix: string): string {
 
 interface LibraryRow {
   id: string; name: string; type: LibraryItem['type']; size: string | null; duration: string | null; durationSec: number | null; thumb: string | null; text: string | null; pageCount: number | null;
-  fullUrl: string | null; transcodeStatus: LibraryItem['transcodeStatus'] | null; tags: string;
+  fullUrl: string | null; transcodeStatus: LibraryItem['transcodeStatus'] | null; tags: string; ndiSourceName: string | null;
 }
-const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags';
+const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName';
 
 function rowToLibraryItem(r: LibraryRow): LibraryItem {
   const item: LibraryItem = { id: r.id, name: r.name, type: r.type, tags: r.tags ? JSON.parse(r.tags) : [] };
@@ -30,6 +30,7 @@ function rowToLibraryItem(r: LibraryRow): LibraryItem {
   if (r.pageCount != null) item.pageCount = r.pageCount;
   if (r.fullUrl != null) item.fullUrl = r.fullUrl;
   if (r.transcodeStatus != null) item.transcodeStatus = r.transcodeStatus;
+  if (r.ndiSourceName != null) item.ndiSourceName = r.ndiSourceName;
   return item;
 }
 
@@ -40,14 +41,14 @@ export function listLibrary(): LibraryItem[] {
 
 export function addLibraryItem(input: {
   name: string; type: LibraryItem['type']; size?: string; duration?: string; thumb?: string; text?: string; pageCount?: number;
-  fullUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus'];
+  fullUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus']; ndiSourceName?: string;
 }): LibraryItem {
   const id = uid('l');
   const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM library').get() as { n: number }).n;
-  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@sortOrder,@createdAt)').run({
+  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, ndiSourceName, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@ndiSourceName,@sortOrder,@createdAt)').run({
     id, name: input.name, type: input.type,
     size: input.size ?? null, duration: input.duration ?? null, thumb: input.thumb ?? null, text: input.text ?? null, pageCount: input.pageCount ?? null,
-    fullUrl: input.fullUrl ?? null, transcodeStatus: input.transcodeStatus ?? null,
+    fullUrl: input.fullUrl ?? null, transcodeStatus: input.transcodeStatus ?? null, ndiSourceName: input.ndiSourceName ?? null,
     sortOrder: nextOrder,
     createdAt: Date.now(),
   });
@@ -56,6 +57,7 @@ export function addLibraryItem(input: {
     ...(input.size && { size: input.size }), ...(input.duration && { duration: input.duration }),
     ...(input.thumb && { thumb: input.thumb }), ...(input.text && { text: input.text }), ...(input.pageCount != null && { pageCount: input.pageCount }),
     ...(input.fullUrl && { fullUrl: input.fullUrl }), ...(input.transcodeStatus && { transcodeStatus: input.transcodeStatus }),
+    ...(input.ndiSourceName && { ndiSourceName: input.ndiSourceName }),
   };
 }
 
@@ -106,7 +108,7 @@ export function removeLibraryItem(id: string): void {
 }
 
 export function setItemDuration(id: string, durationSec: number): void {
-  db.prepare("UPDATE library SET durationSec = ? WHERE id = ? AND type IN ('image', 'clock')").run(durationSec, id);
+  db.prepare("UPDATE library SET durationSec = ? WHERE id = ? AND type IN ('image', 'clock', 'ndi')").run(durationSec, id);
 }
 
 export function renameLibraryItem(id: string, name: string): void {
@@ -525,8 +527,9 @@ export function getPlayerState(deviceId: string): PlayerState | null {
       // upload; otherwise the resolution-capped copy once one exists, falling back to
       // the original while it's still processing or if capping failed outright.
       url: (item.type === 'video' && device.videoQuality === 'full' ? item.fullUrl : undefined) ?? item.thumb ?? item.fullUrl ?? '',
-      duration: item.type === 'video' ? null : item.type === 'image' || item.type === 'clock' ? (item.durationSec ?? 8) : 8,
+      duration: item.type === 'video' ? null : item.type === 'image' || item.type === 'clock' || item.type === 'ndi' ? (item.durationSec ?? 8) : 8,
       ...(item.type === 'pdf' && { pageCount: item.pageCount ?? 1 }),
+      ...(item.type === 'ndi' && { ndiSourceName: item.ndiSourceName ?? '' }),
     }));
 
   const safetyHold = getSafetyHold();
@@ -594,8 +597,8 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   db.prepare('DELETE FROM library').run();
 
   const insertLibrary = db.prepare(
-    'INSERT INTO library (id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, sortOrder, createdAt) ' +
-    'VALUES (@id,@name,@type,@size,@duration,@durationSec,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@tags,@sortOrder,@createdAt)',
+    'INSERT INTO library (id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, sortOrder, createdAt) ' +
+    'VALUES (@id,@name,@type,@size,@duration,@durationSec,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@tags,@ndiSourceName,@sortOrder,@createdAt)',
   );
   backup.library.forEach((item, i) => {
     insertLibrary.run({
@@ -603,6 +606,7 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       size: item.size ?? null, duration: item.duration ?? null, durationSec: item.durationSec ?? null,
       thumb: item.thumb ?? null, text: item.text ?? null, pageCount: item.pageCount ?? null,
       fullUrl: item.fullUrl ?? null, transcodeStatus: item.transcodeStatus ?? null, tags: JSON.stringify(item.tags ?? []),
+      ndiSourceName: item.ndiSourceName ?? null,
       sortOrder: i, createdAt: Date.now() + i, // +i keeps insertion order stable if createdAt is ever read as a tiebreaker
     });
   });

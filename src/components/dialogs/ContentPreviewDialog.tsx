@@ -39,6 +39,14 @@ export function ContentPreviewDialog({ item, onClose }: ContentPreviewDialogProp
           <iframe src={item.thumb} title={item.name} style={{ width: '100%', height: '70vh', border: 'none' }} />
         )}
         {item.type === 'clock' && <LiveClock />}
+        {item.type === 'ndi' && (
+          <div style={{ background: '#000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', aspectRatio: '16 / 9', padding: 16, textAlign: 'center' }}>
+            <span style={{ fontSize: 14, opacity: 0.7 }}>
+              Live NDI feed ({item.ndiSourceName || 'no source set'}) — streams directly
+              to the screen, not previewable here.
+            </span>
+          </div>
+        )}
         {item.type === 'announcement' && (
           <div style={{ background: '#000', color: '#fff', padding: '24px 16px', textAlign: 'center', fontSize: 16, fontWeight: 600 }}>
             {item.text || 'Announcement'}

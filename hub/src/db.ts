@@ -129,6 +129,13 @@ if (!(db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some
 // the Home screen — every existing row keeps its current rowid-based (insertion)
 // order so nothing visibly reshuffles the first time this runs; new rows get one
 // past the current max (see store.ts's addGroup).
+// Same reasoning, for hubs deployed before NDI-source library items existed — the
+// NDI network name to receive at playback time (see types.ts's LibraryItem.ndiSourceName
+// and pi-player/src/ndiPlayer.ts), null for every non-'ndi' item.
+if (!(db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some((c) => c.name === 'ndiSourceName')) {
+  db.exec('ALTER TABLE library ADD COLUMN ndiSourceName TEXT');
+}
+
 const groupCols = (db.prepare("PRAGMA table_info(groups_)").all() as { name: string }[]).map((c) => c.name);
 if (!groupCols.includes('sortOrder')) {
   db.exec('ALTER TABLE groups_ ADD COLUMN sortOrder INTEGER');

@@ -64,6 +64,10 @@ export const httpClient: SignageApiClient = {
   addPdf: (file, onProgress) => uploadFile('/api/library/pdf', file, onProgress),
   addAnnouncement: (name, text) => request<LibraryItem>('/api/library/announcement', { method: 'POST', ...json({ name, text }) }),
   addClock: (name) => request<LibraryItem>('/api/library/clock', { method: 'POST', ...json({ name }) }),
+  addNdiSource: (name, ndiSourceName) => request<LibraryItem>('/api/library/ndi', { method: 'POST', ...json({ name, ndiSourceName }) }),
+  // 502 (device unreachable / not a Pi 4/5 / discovery helper missing) all collapse to
+  // an empty list here — see the SignageApiClient comment for why this never throws.
+  listNdiSources: (deviceId) => request<{ sources: string[] }>(`/api/devices/${deviceId}/ndi-sources`).then((r) => r.sources).catch(() => []),
   removeLibraryItem: (id) => request<void>(`/api/library/${id}`, { method: 'DELETE' }),
   reorderLibrary: (ids) => request<void>('/api/library/reorder', { method: 'PUT', ...json({ ids }) }),
   setItemDuration: (id, durationSec) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ durationSec }) }),

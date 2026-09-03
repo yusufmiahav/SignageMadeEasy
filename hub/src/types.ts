@@ -3,7 +3,7 @@
 // too, so both are kept in sync by hand (small, stable shapes; not worth a shared
 // package for two consumers).
 
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi';
 
 export interface LibraryItem {
   id: string;
@@ -11,8 +11,10 @@ export interface LibraryItem {
   type: LibraryItemType;
   size?: string;
   duration?: string;
-  /** Seconds this item stays on screen before advancing. Images and clocks only; defaults to 8 when unset. */
+  /** Seconds this item stays on screen before advancing. Images, clocks, and NDI sources only; defaults to 8 when unset. */
   durationSec?: number;
+  /** NDI sources only — the NDI network name of the source to receive, e.g. "DESKTOP-ABC (Camera 1)". Not a URL or upload; resolved directly by the Pi's own NDI discovery at playback time. */
+  ndiSourceName?: string;
   /** URL path (e.g. "/uploads/<id>.jpg"), not a data URL — served statically by the hub. */
   thumb?: string;
   text?: string;
@@ -124,6 +126,8 @@ export interface PlayerItem {
   duration: number | null;
   /** For PDFs: total page count, each shown for `duration` seconds. */
   pageCount?: number;
+  /** NDI sources only — see LibraryItem.ndiSourceName. */
+  ndiSourceName?: string;
 }
 
 export interface PlayerState {

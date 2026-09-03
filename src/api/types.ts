@@ -1,4 +1,4 @@
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi';
 
 export interface LibraryItem {
   id: string;
@@ -8,8 +8,10 @@ export interface LibraryItem {
   size?: string;
   /** Human-readable duration, e.g. "0:42". Videos only. */
   duration?: string;
-  /** Seconds this item stays on screen before advancing. Images and clocks only; defaults to 8 when unset. */
+  /** Seconds this item stays on screen before advancing. Images, clocks, and NDI sources only; defaults to 8 when unset. */
   durationSec?: number;
+  /** NDI sources only — the NDI network name of the source to receive, e.g. "DESKTOP-ABC (Camera 1)". Resolved directly by a paired Pi 4/5's own NDI discovery at playback time; the hub never touches the actual video stream. */
+  ndiSourceName?: string;
   /** Data URL thumbnail. Images only. */
   thumb?: string;
   /** Message body. Announcements only. */
