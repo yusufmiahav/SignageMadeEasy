@@ -33,12 +33,48 @@ export function SettingsScreen({
   hideAnnouncementRow,
   onSetHideAnnouncementRow,
 }: SettingsScreenProps) {
-  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, reorderDevices, showToast, exportBackup, importBackup, safetyHold, setSafetyHold } = app;
+  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, reorderDevices, moveDevice, addGroup, showToast, exportBackup, importBackup, safetyHold, setSafetyHold } = app;
   const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' } | null>(null);
   const [editingName, setEditingName] = useState('');
   const miscDevices = devices.filter((d) => !d.groupId);
   const [restoring, setRestoring] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  // Batch-move: select screens across any location (or the misc list) and move them
+  // all to one target at once — same underlying moveDevice as the single-screen move
+  // arrows/dialog, just applied to the whole selection in one go.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [moveTarget, setMoveTarget] = useState('');
+  const [newLocationName, setNewLocationName] = useState('');
+  const isNewLocationTarget = moveTarget === '__new__';
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setMoveTarget('');
+    setNewLocationName('');
+  };
+  const moveSelected = async () => {
+    if (!moveTarget) return;
+    let targetId: string | null = moveTarget === '__none__' ? null : moveTarget;
+    if (isNewLocationTarget) {
+      if (!newLocationName.trim()) return;
+      const group = await addGroup(newLocationName);
+      targetId = group.id;
+    }
+    const ids = [...selectedIds];
+    await Promise.all(ids.map((id) => moveDevice(id, targetId)));
+    showToast(`Moved ${ids.length} screen${ids.length === 1 ? '' : 's'}`);
+    exitSelectMode();
+  };
 
   const devicesWithMac = devices.filter((d): d is typeof d & { mac: string } => !!d.mac);
   const copyMacAddresses = async () => {
@@ -120,6 +156,14 @@ export function SettingsScreen({
         key={device.id}
         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px', borderTop: '1px solid var(--color-divider)' }}
       >
+        {selectMode && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${device.name}`}
+            checked={selectedIds.has(device.id)}
+            onChange={() => toggleSelect(device.id)}
+          />
+        )}
         {isEditing ? (
           <input
             className="input"
@@ -135,7 +179,7 @@ export function SettingsScreen({
             <div className="text-muted" style={{ fontSize: 11 }}>Screen</div>
           </div>
         )}
-        {isEditing ? (
+        {selectMode ? null : isEditing ? (
           <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
             <Icon name="check" size={13} />
           </button>
@@ -253,7 +297,67 @@ export function SettingsScreen({
       </div>
 
       <div className="card" style={{ gap: 8 }}>
-        <div className="card-kicker">Locations & Screens</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="card-kicker">Locations & Screens</div>
+          {devices.length > 1 && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: 12, padding: '4px 8px' }}
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            >
+              {selectMode ? 'Cancel select' : 'Select screens'}
+            </button>
+          )}
+        </div>
+
+        {selectMode && (
+          <div className="select-toolbar">
+            <span style={{ fontSize: 13 }}>{selectedIds.size} selected</span>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ fontSize: 12 }}
+              onClick={() => setSelectedIds(new Set(devices.map((d) => d.id)))}
+            >
+              Select all
+            </button>
+            <select
+              className="input"
+              style={{ width: 'auto', fontSize: 12 }}
+              value={moveTarget}
+              onChange={(e) => setMoveTarget(e.target.value)}
+              aria-label="Move selected screens to"
+            >
+              <option value="" disabled>Move to…</option>
+              <option value="__none__">No location</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+              <option value="__new__">+ New location</option>
+            </select>
+            {isNewLocationTarget && (
+              <input
+                className="input"
+                style={{ width: 140, fontSize: 12 }}
+                placeholder="e.g. Reception"
+                value={newLocationName}
+                onChange={(e) => setNewLocationName(e.target.value)}
+                autoFocus
+              />
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: 12 }}
+              disabled={selectedIds.size === 0 || !moveTarget || (isNewLocationTarget && !newLocationName.trim())}
+              onClick={() => void moveSelected()}
+            >
+              Move
+            </button>
+          </div>
+        )}
+
         {groups.map((group) => {
           const screens = devices.filter((d) => d.groupId === group.id);
           const isEditing = editing?.kind === 'group' && editing.id === group.id;
