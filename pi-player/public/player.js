@@ -133,8 +133,19 @@ async function playPdf(item, myGeneration) {
 // (like image/clock) against polling /native-ndi/status for an early "process died" —
 // whichever comes first advances rotation; see the project plan for why v1 has no
 // richer health signal than process-alive.
+//
+// Sole-item case mirrors video's own restart-in-place special case (see playItem's
+// video branch below): confirmed on real hardware that without this, a lone NDI item
+// would tear down and respawn the GStreamer process every time its duration timer
+// elapsed — "advancing" to the next item just means itself again — causing a
+// periodic black flash purely from the pointless restart, not anything wrong with
+// the feed itself. A live NDI source has no natural end the way a demuxed video's
+// `ended` event does, so the fix is simpler than video's: just never schedule a
+// duration-based restart at all when this is the only thing in rotation, and rely
+// solely on crash detection (a real process death still restarts it).
 function playNativeNdi(item, myGeneration) {
   const duration = item.duration ?? 8;
+  const isSoleItem = activeItems.length === 1;
   const advanceOnce = () => {
     if (myGeneration !== generation) return;
     currentIndex = (currentIndex + 1) % activeItems.length;
@@ -149,7 +160,7 @@ function playNativeNdi(item, myGeneration) {
     .then((res) => res.json())
     .then(({ token }) => {
       if (myGeneration !== generation) return;
-      advanceTimer = setTimeout(advanceOnce, duration * 1000);
+      if (!isSoleItem) advanceTimer = setTimeout(advanceOnce, duration * 1000);
       ndiPollTimer = setInterval(() => {
         fetch(`/native-ndi/status/${token}`)
           .then((res) => res.json())
@@ -159,7 +170,7 @@ function playNativeNdi(item, myGeneration) {
             clearInterval(ndiPollTimer);
             advanceOnce();
           })
-          .catch(() => {}); // transient poll failure — the duration timeout still catches a real, lasting problem
+          .catch(() => {}); // transient poll failure — self-heals on the next tick a second later regardless
       }, 1000);
     })
     .catch((err) => {
