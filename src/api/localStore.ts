@@ -429,6 +429,10 @@ class LocalStoreClient implements SignageApiClient {
     // No real Pi to restart yet — the future hub API will proxy this to the device.
   }
 
+  async flashDevice(): Promise<void> {
+    // No real Pi to flash in standalone mode.
+  }
+
   async setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device) {

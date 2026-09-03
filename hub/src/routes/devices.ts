@@ -134,6 +134,18 @@ devicesRouter.get('/:id/ndi-sources', async (req, res) => {
   }
 });
 
+// Settings screen's "Identify" button (bulb icon) — see pi-player/src/identifyFlash.ts.
+devicesRouter.post('/:id/identify-flash', async (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  try {
+    await piAgent.identifyFlash(device.ip);
+    res.status(204).end();
+  } catch {
+    res.status(502).json({ error: 'could not reach device' });
+  }
+});
+
 devicesRouter.put('/:id/announcement', (req, res) => {
   const { announcementId } = req.body ?? {};
   store.setDeviceAnnouncement(req.params.id, announcementId ?? null);

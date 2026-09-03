@@ -13,6 +13,7 @@ import * as localContent from './localContent.js';
 import * as underclock from './underclock.js';
 import * as staticIp from './staticIp.js';
 import * as ndiPlayer from './ndiPlayer.js';
+import * as identifyFlash from './identifyFlash.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,7 +49,12 @@ export function createApp() {
     const networkSetup = wifiStatus.hotspotActive
       ? { ssid: wifiStatus.hotspotSsid, password: wifiStatus.hotspotPassword, url: `http://${getLocalIp()}:8088/network-setup.html` }
       : null;
-    res.json({ paired: config != null, ip: getLocalIp(), state: resolved, error, networkSetup, localContent: localContent.get() });
+    res.json({
+      paired: config != null, ip: getLocalIp(), state: resolved, error, networkSetup, localContent: localContent.get(),
+      // Settings screen's "Identify" button — see identifyFlash.ts. player.js triggers
+      // its blink overlay whenever this changes from the previous poll's value.
+      flashToken: identifyFlash.getToken(),
+    });
   });
 
   // Field fail-safe: reachable any time the hub can't be reached (unpaired, hub down,

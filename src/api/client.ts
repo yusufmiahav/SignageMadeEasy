@@ -68,6 +68,8 @@ export interface SignageApiClient {
   moveDevice(id: string, groupId: string | null): Promise<void>;
   removeDevice(id: string): Promise<void>;
   restartDevice(id: string): Promise<void>;
+  /** Makes this screen's physical display blink white/black twice — helps identify which real screen an entry in Settings corresponds to. No-op in standalone/localStorage mode (no real Pi to ask). */
+  flashDevice(id: string): Promise<void>;
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
   setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;

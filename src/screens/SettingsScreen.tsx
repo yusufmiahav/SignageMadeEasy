@@ -33,7 +33,7 @@ export function SettingsScreen({
   hideAnnouncementRow,
   onSetHideAnnouncementRow,
 }: SettingsScreenProps) {
-  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, reorderDevices, moveDevice, addGroup, showToast, exportBackup, importBackup, safetyHold, setSafetyHold } = app;
+  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, reorderDevices, moveDevice, addGroup, showToast, exportBackup, importBackup, safetyHold, setSafetyHold, flashDevice } = app;
   const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' } | null>(null);
   const [editingName, setEditingName] = useState('');
   const miscDevices = devices.filter((d) => !d.groupId);
@@ -202,6 +202,9 @@ export function SettingsScreen({
               onClick={() => moveDeviceInScope(scope, device.id, 'down')}
             >
               <Icon name="chevronDown" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Identify" title="Blink this screen's display" onClick={() => void flashDevice(device)}>
+              <Icon name="lightbulb" size={13} />
             </button>
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(device.id, device.name, 'device')}>
               <Icon name="pencil" size={13} />

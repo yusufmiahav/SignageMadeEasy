@@ -60,3 +60,9 @@ export async function listNdiSources(ip: string): Promise<string[]> {
   const body = (await res.json()) as { sources: string[] };
   return body.sources;
 }
+
+// Settings screen's "Identify" button (bulb icon) — see pi-player/src/identifyFlash.ts.
+export async function identifyFlash(ip: string): Promise<void> {
+  const res = await agentFetch(ip, '/identify-flash', { method: 'POST' });
+  if (!res.ok) throw new Error(`Pi agent at ${ip} rejected identify-flash: ${res.status}`);
+}

@@ -108,6 +108,7 @@ export const httpClient: SignageApiClient = {
   moveDevice: (id, groupId) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ groupId }) }),
   removeDevice: (id) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
+  flashDevice: (id) => request<void>(`/api/devices/${id}/identify-flash`, { method: 'POST' }),
   setDeviceAnnouncement: (id, announcementId) => request<void>(`/api/devices/${id}/announcement`, { method: 'PUT', ...json({ announcementId }) }),
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
   setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),
