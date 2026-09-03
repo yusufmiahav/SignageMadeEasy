@@ -254,10 +254,10 @@ function renderPlayerState(state) {
 // front of a wall of screens match a physical display to its entry in the control
 // app. Drawn as an overlay on top of #stage rather than touching rotation/teardown
 // state at all, so it works regardless of what's currently playing (including the
-// unpaired/connecting screens) without interrupting it. One exception: while a
-// native NDI item is on screen, its own separate Wayland surface (see ndiPlayer.ts)
-// occludes this browser page entirely, so the flash won't be visible then — a known,
-// low-priority gap for what's still a rare content type.
+// unpaired/connecting screens) without interrupting it. One exception: while a video
+// is playing via mpv, its own separate Wayland surface (see mpvPlayer.ts) occludes
+// this browser page entirely, so the flash won't be visible then — a known,
+// low-priority gap given how much of the fleet's actual playback is video.
 let lastFlashToken = null;
 
 function triggerIdentifyFlash() {
