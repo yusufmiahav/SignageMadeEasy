@@ -117,6 +117,21 @@ libraryRouter.post('/clock', (req, res) => {
   res.status(201).json(item);
 });
 
+// No file either — the hub only ever stores the NDI source name a Pi 4/5 resolves
+// directly over the LAN at playback time (see pi-player/src/ndiPlayer.ts).
+libraryRouter.post('/ndi', (req, res) => {
+  const { name, ndiSourceName } = req.body ?? {};
+  if (typeof ndiSourceName !== 'string' || !ndiSourceName.trim()) {
+    return res.status(400).json({ error: 'ndiSourceName is required' });
+  }
+  const item = store.addLibraryItem({
+    name: (name ?? '').trim() || ndiSourceName.trim(),
+    type: 'ndi',
+    ndiSourceName: ndiSourceName.trim(),
+  });
+  res.status(201).json(item);
+});
+
 libraryRouter.patch('/:id', (req, res) => {
   const { durationSec, name, tags } = req.body ?? {};
   if (durationSec !== undefined) {

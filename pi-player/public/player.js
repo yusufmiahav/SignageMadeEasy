@@ -37,6 +37,7 @@ let activeKind = 'default'; // 'blackout' | 'forced' | 'event' | 'default' — s
 let currentIndex = 0;
 let advanceTimer = null;
 let clockTimer = null; // the 'clock' item's setInterval — not a <video>/<canvas>, so teardownStage's generic child.remove() wouldn't stop it on its own.
+let ndiPollTimer = null; // the 'ndi' item's status-polling setInterval — see playNativeNdi.
 let generation = 0; // bumped whenever rotation is torn down, so late async work (a PDF page render, a video's `ended`) from a previous item can no-op instead of racing the new one.
 
 function teardownStage() {
@@ -44,6 +45,12 @@ function teardownStage() {
   advanceTimer = null;
   clearInterval(clockTimer);
   clockTimer = null;
+  clearInterval(ndiPollTimer);
+  ndiPollTimer = null;
+  // Unconditional and fire-and-forget: a no-op on the Pi if nothing native is playing,
+  // but guarantees switching away from an NDI item always kills the GStreamer process
+  // rather than leaving it running underneath whatever plays next.
+  void fetch('/native-ndi/stop', { method: 'POST' }).catch(() => {});
   for (const child of [...stage.children]) {
     if (child instanceof HTMLVideoElement) {
       child.pause();
@@ -117,6 +124,59 @@ async function playPdf(item, myGeneration) {
     currentIndex = (currentIndex + 1) % activeItems.length;
     playItem(currentIndex);
   }
+}
+
+// Pi 4/5 only. NDI has no browser decoder, so there's nothing to mount on #stage —
+// the native GStreamer process this starts (see ndiPlayer.ts) renders its own
+// fullscreen Wayland surface on top of this page, the same architectural pattern the
+// mpv-hwdecode branch uses for regular video. Rotation timing races a fixed duration
+// (like image/clock) against polling /native-ndi/status for an early "process died" —
+// whichever comes first advances rotation; see the project plan for why v1 has no
+// richer health signal than process-alive.
+//
+// Sole-item case mirrors video's own restart-in-place special case (see playItem's
+// video branch below): confirmed on real hardware that without this, a lone NDI item
+// would tear down and respawn the GStreamer process every time its duration timer
+// elapsed — "advancing" to the next item just means itself again — causing a
+// periodic black flash purely from the pointless restart, not anything wrong with
+// the feed itself. A live NDI source has no natural end the way a demuxed video's
+// `ended` event does, so the fix is simpler than video's: just never schedule a
+// duration-based restart at all when this is the only thing in rotation, and rely
+// solely on crash detection (a real process death still restarts it).
+function playNativeNdi(item, myGeneration) {
+  const duration = item.duration ?? 8;
+  const isSoleItem = activeItems.length === 1;
+  const advanceOnce = () => {
+    if (myGeneration !== generation) return;
+    currentIndex = (currentIndex + 1) % activeItems.length;
+    playItem(currentIndex);
+  };
+
+  fetch('/native-ndi/play', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ndiSourceName: item.ndiSourceName }),
+  })
+    .then((res) => res.json())
+    .then(({ token }) => {
+      if (myGeneration !== generation) return;
+      if (!isSoleItem) advanceTimer = setTimeout(advanceOnce, duration * 1000);
+      ndiPollTimer = setInterval(() => {
+        fetch(`/native-ndi/status/${token}`)
+          .then((res) => res.json())
+          .then(({ playing }) => {
+            if (myGeneration !== generation || playing) return;
+            clearTimeout(advanceTimer);
+            clearInterval(ndiPollTimer);
+            advanceOnce();
+          })
+          .catch(() => {}); // transient poll failure — self-heals on the next tick a second later regardless
+      }, 1000);
+    })
+    .catch((err) => {
+      console.log('[signage ndi]', 'failed to start playback', err);
+      if (myGeneration === generation) scheduleAdvance(duration, myGeneration);
+    });
 }
 
 function playItem(index) {
@@ -239,6 +299,8 @@ function playItem(index) {
     clockTimer = setInterval(tick, 1000);
     stage.appendChild(el);
     scheduleAdvance(item.duration ?? 8, myGeneration);
+  } else if (item.type === 'ndi') {
+    playNativeNdi(item, myGeneration);
   } else {
     // Announcements never appear in the main rotation (server-side filtered), but
     // skip defensively rather than getting stuck if one ever does.

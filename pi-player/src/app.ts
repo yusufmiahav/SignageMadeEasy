@@ -12,6 +12,7 @@ import * as wifiManager from './wifiManager.js';
 import * as localContent from './localContent.js';
 import * as underclock from './underclock.js';
 import * as staticIp from './staticIp.js';
+import * as ndiPlayer from './ndiPlayer.js';
 import * as identifyFlash from './identifyFlash.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -154,6 +155,33 @@ export function createApp() {
     const result = await wifiManager.applyCredentials(ssid, typeof password === 'string' ? password : '');
     if (result.ok) res.json({ ok: true });
     else res.status(502).json({ ok: false, error: result.error });
+  });
+
+  // Native NDI playback (Pi 4/5 only — see ndiPlayer.ts). Mirrors the mpv-branch's own
+  // /native-<x>/play|status|stop shape: a native process spawned per item, controlled
+  // via a tiny HTTP surface the player page (player.js) drives instead of a <video>
+  // tag, since NDI has no browser decoder.
+  app.post('/native-ndi/play', (req, res) => {
+    const { ndiSourceName } = req.body ?? {};
+    if (typeof ndiSourceName !== 'string' || !ndiSourceName) return res.status(400).json({ error: 'ndiSourceName is required' });
+    res.json({ token: ndiPlayer.play(ndiSourceName) });
+  });
+
+  app.get('/native-ndi/status/:token', (req, res) => {
+    res.json({ playing: ndiPlayer.isPlaying(Number(req.params.token)) });
+  });
+
+  app.post('/native-ndi/stop', (_req, res) => {
+    ndiPlayer.stop();
+    res.json({ ok: true });
+  });
+
+  app.get('/native-ndi/sources', async (_req, res) => {
+    try {
+      res.json({ sources: await ndiPlayer.findSources() });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   // Locally cached media (see mediaCache.ts) — served alongside the hub's own URL,
