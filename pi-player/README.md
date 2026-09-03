@@ -120,14 +120,35 @@ before and after to see whether it actually helped your specific setup.
 
 ## Boot splash
 
-Raw kernel/systemd boot text is replaced with a plain white screen, the
+Raw kernel/systemd boot text is replaced with a plain black screen, the
 "SignageMadeEasy" wordmark, and a small spinner in the corner (`assets/plymouth/`) —
 installed as a Plymouth theme and set as default automatically by `provision.sh`,
 with `splash quiet` added to the kernel command line so the console text is actually
-suppressed rather than just shown behind the splash. Its syntax was checked against
-real, working Plymouth themes, but **this hasn't been confirmed on real hardware** —
-there's no way to render a boot splash in a sandbox with no kernel framebuffer. If it
-looks wrong, doesn't appear, or (worse) affects boot reliability, revert with:
+suppressed rather than just shown behind the splash. Confirmed working on real
+hardware.
+
+**If it doesn't show up after provisioning + a reboot**, the most likely cause is a
+Pi that was provisioned before this fix existed: `provision.sh` also strips
+`console=serial0,...` (or `ttyS0`/`ttyAMA0`) from `/boot/firmware/cmdline.txt` —
+Plymouth silently falls back to plain boot text whenever a serial console is present
+alongside the real HDMI one, regardless of theme setup, and that fallback isn't
+something the theme config can override. Fix: `git pull` on the Pi (or re-run the
+one-liner from [Provisioning](#provisioning-once-over-ssh)) to make sure it has the
+current `provision.sh`, re-run it, then reboot. If it still doesn't appear, check
+whether the serial console actually got removed:
+
+```bash
+cat /boot/firmware/cmdline.txt   # should NOT contain console=serial0/ttyS0/ttyAMA0
+```
+
+If it's still there, strip it manually and reboot once more:
+
+```bash
+sudo sed -i -E 's/console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?[[:space:]]*//g; s/[[:space:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//' /boot/firmware/cmdline.txt
+sudo reboot
+```
+
+To revert the splash entirely back to plain console text:
 
 ```bash
 sudo plymouth-set-default-theme pix -R   # or whatever theme `plymouth-set-default-theme --list` shows was default before
