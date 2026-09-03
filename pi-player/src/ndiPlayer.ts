@@ -31,7 +31,12 @@ function pipelineArgs(ndiSourceName: string): string[] {
     '-e',
     'ndisrc', `ndi-name=${ndiSourceName}`, '!',
     'ndisrcdemux', 'name=d',
-    'd.video', '!', 'queue', '!', 'videoconvert', '!', 'waylandsink', 'fullscreen=true',
+    // sync=false — confirmed on real Pi 5 hardware: waylandsink's default clock-synced
+    // rendering drops most incoming frames ("A lot of buffers are being dropped") since
+    // ndisrc's buffer timestamps don't line up with the pipeline clock the way a
+    // demuxed file's would. Rendering each frame as it arrives instead of pacing to a
+    // clock is the standard fix for this class of live network source.
+    'd.video', '!', 'queue', '!', 'videoconvert', '!', 'waylandsink', 'fullscreen=true', 'sync=false',
   ];
 }
 
