@@ -267,6 +267,36 @@ function renderPlayerState(state) {
   playItem(0);
 }
 
+// --- Identify flash ----------------------------------------------------------
+// Settings screen's "Identify" button (bulb icon) — helps a technician standing in
+// front of a wall of screens match a physical display to its entry in the control
+// app. Drawn as an overlay on top of #stage rather than touching rotation/teardown
+// state at all, so it works regardless of what's currently playing (including the
+// unpaired/connecting screens) without interrupting it. One exception: while a
+// native NDI item is on screen, its own separate Wayland surface (see ndiPlayer.ts)
+// occludes this browser page entirely, so the flash won't be visible then — a known,
+// low-priority gap for what's still a rare content type.
+let lastFlashToken = null;
+
+function triggerIdentifyFlash() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed; inset:0; z-index:9999; pointer-events:none; background:#fff;';
+  document.body.appendChild(overlay);
+
+  const PHASE_MS = 250;
+  const phases = ['#000', '#fff', '#000']; // starts on #fff (already applied above): white, black, white, black
+  let i = 0;
+  const tick = () => {
+    if (i >= phases.length) {
+      overlay.remove();
+      return;
+    }
+    overlay.style.background = phases[i++];
+    setTimeout(tick, PHASE_MS);
+  };
+  setTimeout(tick, PHASE_MS);
+}
+
 // --- Polling -----------------------------------------------------------------
 
 // Wraps an uploaded fallback file (see localContent.ts) as a fake single-item
@@ -283,6 +313,13 @@ async function pollOnce() {
     const res = await fetch('/state');
     const data = await res.json();
     const localUrl = data.ip ? `http://${data.ip}:8088/network-setup.html` : null;
+
+    // Checked unconditionally, before the screen-state branching below, so identify
+    // works no matter what's currently showing. Skips the very first poll after page
+    // load (lastFlashToken starts null) so an old token from before this page loaded
+    // doesn't trigger a spurious flash.
+    if (lastFlashToken !== null && data.flashToken !== lastFlashToken) triggerIdentifyFlash();
+    lastFlashToken = data.flashToken;
 
     if (data.networkSetup) {
       // Takes priority over everything else: while broadcasting its own fallback
