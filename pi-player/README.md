@@ -226,29 +226,65 @@ them on the same LAN segment/VLAN.
 
 `provision.sh` installs GStreamer's own packages on a Pi 4/5 automatically, but the
 actual NDI support — the `ndisrc` GStreamer element and this project's small
-discovery helper — needs the proprietary **NDI SDK for Linux**, which can't be
-downloaded automatically: Vizrt's EULA requires a human to accept it first.
+discovery helper (`pi-player/native/ndi-find.c`) — needs the proprietary **NDI SDK
+for Linux**, which can't be downloaded automatically: Vizrt's EULA requires a human
+to accept it first. Confirmed working end-to-end on real Pi 5 hardware (64-bit
+Raspberry Pi OS) with these exact steps.
 
-1. On the Pi (or on any Linux ARM64 machine, then copy the built files over), go to
-   <https://ndi.video/for-developers/ndi-sdk/> and download the NDI SDK for Linux,
-   accepting the EULA.
-2. Build [`gst-plugin-ndi`](https://github.com/teltek/gst-plugin-ndi) (the community
-   GStreamer NDI plugin) against that SDK, following its own README — this produces a
-   `.so` GStreamer plugin. Install it wherever your GStreamer plugin path expects
-   plugins (`gst-inspect-1.0 --print-plugin-auto-install-info` or checking
-   `GST_PLUGIN_PATH` will tell you where). Confirm it's found:
+1. Go to <https://ndi.video/for-developers/ndi-sdk/>, accept the EULA, and download
+   the **NDI SDK for Linux** (a `.tar.gz`). Get it onto the Pi (`scp` from your
+   computer works fine — remember the `:` before the remote path, e.g.
+   `scp Install_NDI_SDK_v6_Linux.tar.gz pi-user@pi-ip:~/`), then extract it:
    ```bash
-   gst-inspect-1.0 ndisrc
+   tar xzf Install_NDI_SDK_v6_Linux.tar.gz
    ```
-3. Build the discovery helper: a ~30-line C program using the same SDK's
-   `NDIlib_find_*` functions to print discovered source names, one per line. Compile
-   it against the SDK's headers/libs and install the binary to:
+   This unpacks straight into a `NDI SDK for Linux/` folder with `include/` and
+   per-architecture `lib/`/`bin/` subfolders — no separate installer script to run.
+   A Pi 4 or 5 (64-bit) uses the `aarch64-rpi4-linux-gnueabi` folder.
+
+2. Install the SDK's shared library where the system linker will find it (`-a`
+   preserves the `libndi.so` → `libndi.so.6` → `libndi.so.6.x.x` symlink chain):
+   ```bash
+   sudo cp -a ~/"NDI SDK for Linux/lib/aarch64-rpi4-linux-gnueabi/"libndi.so* /usr/local/lib/
+   sudo ldconfig
+   ldconfig -p | grep ndi   # should list libndi.so.6 resolving under /usr/local/lib
+   ```
+
+3. Build [`gst-plugin-ndi`](https://github.com/teltek/gst-plugin-ndi) (the community
+   GStreamer NDI plugin, written in Rust — needs `cargo`, installed via
+   <https://rustup.rs> if it isn't already). It only needs `libndi` linkable from
+   step 2 above, not the SDK headers:
+   ```bash
+   git clone https://github.com/teltek/gst-plugin-ndi.git
+   cd gst-plugin-ndi
+   cargo build --release
+   ```
+   Install the resulting plugin into GStreamer's real plugin directory (rather than
+   relying on `GST_PLUGIN_PATH`, which the systemd service won't have set):
+   ```bash
+   GST_PLUGINS_DIR=$(pkg-config --variable=pluginsdir gstreamer-1.0)
+   sudo install -o root -g root -m 644 target/release/libgstndi.so "$GST_PLUGINS_DIR"
+   sudo ldconfig
+   rm -rf ~/.cache/gstreamer-1.0   # otherwise a previously-cached load failure can stick
+   gst-inspect-1.0 ndisrc          # should show the ndisrc element details
+   ```
+
+4. Build the discovery helper from this repo (`pi-player/native/`) — this one *does*
+   need the SDK's headers, since it's a small C program calling the NDI API directly:
+   ```bash
+   cd ~/SignageMadeEasy/pi-player/native   # wherever this repo is checked out on the Pi
+   make NDI_INCLUDE="$HOME/NDI SDK for Linux/include"
+   sudo make install
+   ```
+   Installs to `/opt/signage/bin/ndi-find` (override with `PREFIX=...` at build time,
+   or the `SIGNAGE_NDI_FIND_BIN` env var on `signage-player.service` at runtime, if
+   you'd rather put it somewhere else). Test it directly — it should print any
+   currently-broadcasting NDI source names, one per line, after a few seconds:
    ```bash
    /opt/signage/bin/ndi-find
    ```
-   (Override the path with the `SIGNAGE_NDI_FIND_BIN` env var on
-   `signage-player.service` if you'd rather put it somewhere else.)
-4. Re-run `provision.sh` (or just check manually) — it probes for both of these on a
+
+5. Re-run `provision.sh` (or just check manually) — it probes for both of these on a
    Pi 4/5 and prints a reminder if either is still missing, but doesn't fail the rest
    of provisioning if they are.
 
