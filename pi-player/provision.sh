@@ -69,49 +69,7 @@ log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  cage curl ca-certificates git rsync plymouth plymouth-themes network-manager
-
-# ydotool/ydotoold (used to warp the cursor off-screen — see signage-kiosk.service,
-# the part actually confirmed on real hardware to hide it) aren't in every
-# release's default repo — e.g. Raspberry Pi OS Trixie only has them in
-# trixie-backports. Best-effort and isolated from the required packages above on
-# purpose: this failing must never take the rest of provisioning down with it
-# (that's exactly what happened before this was split out — one missing package
-# killed the whole script via set -euo pipefail before it ever reached anything
-# else, the same failure mode as the earlier git-ownership bug).
-#
-# Package name varies by architecture too, confirmed on real hardware: on
-# Raspberry Pi OS's 32-bit (armhf) build, `ydotoold` isn't an installable
-# package at all — `ydotool` alone bundles both the client and the daemon —
-# whereas other architectures split them into two separate packages. Try the
-# two-package form first, fall back to the single-package form, and verify
-# with the actual binary rather than trusting either apt-get call's exit code
-# alone, since apt-get can succeed while still not providing what we need.
-try_install_ydotool() {
-  apt-get install -y --no-install-recommends "$@" ydotool ydotoold 2>/dev/null || \
-  apt-get install -y --no-install-recommends "$@" ydotool 2>/dev/null
-}
-
-HAVE_YDOTOOL=0
-if try_install_ydotool && command -v ydotoold >/dev/null 2>&1; then
-  HAVE_YDOTOOL=1
-elif [[ -f /etc/os-release ]] && grep -q '^VERSION_CODENAME=trixie' /etc/os-release; then
-  BACKPORTS_LIST=/etc/apt/sources.list.d/trixie-backports.list
-  if [[ ! -f "$BACKPORTS_LIST" ]]; then
-    echo "deb http://deb.debian.org/debian trixie-backports main" > "$BACKPORTS_LIST"
-  fi
-  # Pinned to trixie-backports specifically (-t) so this doesn't pull anything
-  # else up from backports as a side effect — only touches these two packages.
-  if apt-get update 2>/dev/null && \
-     try_install_ydotool -t trixie-backports && command -v ydotoold >/dev/null 2>&1; then
-    HAVE_YDOTOOL=1
-  fi
-fi
-if [[ "$HAVE_YDOTOOL" -eq 0 ]]; then
-  echo "ydotool/ydotoold not available — skipping the cursor off-screen warp (the" >&2
-  echo "XCURSOR_THEME/XCURSOR_SIZE attempt still applies, but wasn't confirmed" >&2
-  echo "sufficient on its own — see signage-kiosk.service)." >&2
-fi
+  sway curl ca-certificates git rsync plymouth plymouth-themes network-manager
 
 # Package name for Chromium differs across Raspberry Pi OS releases.
 if apt-cache show chromium >/dev/null 2>&1; then
@@ -272,25 +230,6 @@ fi
 rm -f "$SUDOERS_TMP"
 
 # ---------------------------------------------------------------------------
-log "Installing a blank cursor theme"
-# cage always draws *a* cursor with no direct API to suppress it — but it does
-# receive XCURSOR_THEME/XCURSOR_SIZE (confirmed via /proc/<pid>/environ on real
-# hardware): the cursor it draws is just a normal Xcursor theme lookup at a
-# given size. Pointing XCURSOR_THEME at a fully transparent theme genuinely
-# hides it, PROVIDED XCURSOR_SIZE is a real size — see signage-kiosk.service
-# for why it must not be 0.
-SIGNAGE_HOME="$(getent passwd "$SIGNAGE_USER" | cut -d: -f6)"
-CURSOR_DIR="$SIGNAGE_HOME/.icons/blank/cursors"
-mkdir -p "$CURSOR_DIR"
-cp "$APP_DIR/assets/blank-cursor" "$CURSOR_DIR/left_ptr"
-ln -sf left_ptr "$CURSOR_DIR/default"
-cat > "$SIGNAGE_HOME/.icons/blank/index.theme" <<'EOF'
-[Icon Theme]
-Name=blank
-EOF
-chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$SIGNAGE_HOME/.icons"
-
-# ---------------------------------------------------------------------------
 log "Installing the SignageMadeEasy boot splash (Plymouth)"
 # Replaces the raw kernel/systemd boot text with a plain black screen, wordmark, and
 # small corner spinner — see assets/plymouth/signagemadeeasy.script. Its syntax was
@@ -298,7 +237,7 @@ log "Installing the SignageMadeEasy boot splash (Plymouth)"
 # actually render a boot splash (no kernel framebuffer/DRM to test against), so this
 # still needs a real-hardware look before trusting it fully. Wrapped so a failure
 # here (initramfs tooling issue, disk space, etc.) can't take the rest of
-# provisioning down with it — same reasoning as the ydotool install above.
+# provisioning down with it — same reasoning as the GStreamer/NDI install below.
 mkdir -p /usr/share/plymouth/themes/signagemadeeasy
 cp "$APP_DIR/assets/plymouth/signagemadeeasy.plymouth" /usr/share/plymouth/themes/signagemadeeasy/
 cp "$APP_DIR/assets/plymouth/signagemadeeasy.script" /usr/share/plymouth/themes/signagemadeeasy/
@@ -388,20 +327,17 @@ cp "$APP_DIR/systemd/signage-player.service" /etc/systemd/system/
 KIOSK_SED="s#/usr/bin/chromium#${CHROMIUM_BIN}#"
 if [[ "$IS_PI" -eq 0 ]]; then
   # --disable-accelerated-video-decode works around a Pi-specific Chromium/V4L2
-  # hang (see this flag's own comment in signage-kiosk.service) — Intel's VAAPI
+  # hang (see this flag's own comment in sway-kiosk.config) — Intel's VAAPI
   # video decode in Chromium is solid, so there's no reason to force software
   # decode here and give up the hardware-decode advantage an x86 stick actually has.
   KIOSK_SED="$KIOSK_SED; /--disable-accelerated-video-decode/d"
 fi
-sed "$KIOSK_SED" "$APP_DIR/systemd/signage-kiosk.service" \
-  > /etc/systemd/system/signage-kiosk.service
+# The sway config (not the systemd unit itself) is where chromium's binary path
+# and flags live — see sway-kiosk.config's own header comment.
+sed "$KIOSK_SED" "$APP_DIR/systemd/sway-kiosk.config" > "$INSTALL_DIR/sway-kiosk.config"
+cp "$APP_DIR/systemd/signage-kiosk.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now signage-player.service
-if [[ "$HAVE_YDOTOOL" -eq 1 ]]; then
-  cp "$APP_DIR/systemd/ydotoold.service" /etc/systemd/system/
-  systemctl daemon-reload
-  systemctl enable --now ydotoold.service
-fi
 systemctl enable signage-kiosk.service
 
 # ---------------------------------------------------------------------------
@@ -446,9 +382,8 @@ if [[ "$IS_PI4_5" -eq 1 ]]; then
   # against the proprietary NDI SDK (Vizrt's EULA requires a human to accept it —
   # can't be curled/scripted here, see README.md), so this only checks whether that
   # one-time manual step has already happened and points at the docs if not.
-  # Deliberately non-fatal — same best-effort pattern as the ydotool install above —
-  # since a Pi 4/5 provisioned before that manual step is still a working screen for
-  # every other content type.
+  # Deliberately non-fatal — since a Pi 4/5 provisioned before that manual step is
+  # still a working screen for every other content type.
   if ! gst-inspect-1.0 ndisrc >/dev/null 2>&1; then
     echo "gst-plugin-ndi (the 'ndisrc' GStreamer element) isn't installed yet — NDI" >&2
     echo "sources won't play until it's built. See pi-player/README.md for the" >&2

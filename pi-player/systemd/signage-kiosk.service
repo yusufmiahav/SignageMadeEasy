@@ -1,15 +1,17 @@
 [Unit]
-Description=SignageMadeEasy kiosk display (cage + Chromium)
-# Real crash-loop confirmed via journalctl on real hardware: cage.c:299 fails
-# with "XDG_RUNTIME_DIR is not set in the environment" on the first 2-3 boot
-# attempts, self-healing only because Restart=always keeps buying time. This
-# After= ordering on systemd-logind.service/dbus.service is necessary but, on
-# its own, confirmed NOT sufficient on real hardware: those units being
-# "active" doesn't mean logind has finished registering *this* PAM session
-# yet, especially under the load of a Pi 3B+'s slower boot. The actual fix is
-# `loginctl enable-linger signage` in provision.sh, which creates
-# /run/user/<uid> at boot before any login session exists at all — see the
-# ExecStart comment below for how that's used.
+Description=SignageMadeEasy kiosk display (sway + Chromium)
+# Real crash-loop confirmed via journalctl on real hardware: the compositor
+# fails with "XDG_RUNTIME_DIR is not set in the environment" on the first 2-3
+# boot attempts, self-healing only because Restart=always keeps buying time.
+# This After= ordering on systemd-logind.service/dbus.service is necessary
+# but, on its own, confirmed NOT sufficient on real hardware: those units
+# being "active" doesn't mean logind has finished registering *this* PAM
+# session yet, especially under the load of a Pi 3B+'s slower boot. The
+# actual fix is `loginctl enable-linger signage` in provision.sh, which
+# creates /run/user/<uid> at boot before any login session exists at all —
+# see the ExecStart comment below for how that's used. This was all
+# discovered and fixed with cage as the compositor; kept as-is for sway,
+# which uses the same libseat/logind session model.
 #
 # plymouth-quit-wait.service blocks until Plymouth has genuinely finished
 # exiting and released the display (plymouth-quit.service alone only *signals*
@@ -17,8 +19,8 @@ Description=SignageMadeEasy kiosk display (cage + Chromium)
 # for the same ordering real desktop managers use, but see the ExecStart
 # comment below for the *actual* root cause of a "Atomic commit failed:
 # Permission denied" loop this ordering alone did NOT fix on real hardware.
-After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service plymouth-quit-wait.service ydotoold.service systemd-logind.service dbus.service
-Wants=signage-player.service ydotoold.service
+After=signage-player.service systemd-user-sessions.service getty@tty1.service plymouth-quit.service plymouth-quit-wait.service systemd-logind.service dbus.service
+Wants=signage-player.service
 Conflicts=getty@tty1.service
 
 [Service]
@@ -30,25 +32,8 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
-# Final, confirmed-on-real-hardware conclusion after several attempts: cage
-# cannot be made to render a genuinely invisible cursor. Neither this
-# transparent Xcursor theme (XCURSOR_SIZE must be a real size like 24, not 0,
-# or cage falls back to its normal default cursor instead of loading "blank"
-# at all) nor CSS cursor:none on the page changes what cage itself draws —
-# cage's cursor isn't something a client can hide, and cage's own maintainers
-# have said outright that hiding it isn't something they support. Kept
-# regardless since it's free and can only help, but see the cursor-warp
-# background job folded into ExecStart below for the part that actually does
-# something: relocating the (still-visible) cursor to a corner, off the main
-# content. See the root README's troubleshooting section for the full story
-# before "fixing" this again — it's an accepted cosmetic limitation, not an
-# open bug.
-Environment=XCURSOR_THEME=blank
-Environment=XCURSOR_SIZE=24
-Environment=XCURSOR_PATH=/home/signage/.icons
-
 # Second real bug, confirmed via journalctl on real hardware across two
-# separate fix attempts: cage's own startup check (cage.c:299) failed with
+# separate fix attempts: the compositor's own startup check failed with
 # "XDG_RUNTIME_DIR is not set in the environment" on the first 2-3 boot
 # attempts every time (self-healing within ~30-60s via Restart=always below,
 # but that's still a failed/blank kiosk for a while on every boot).
@@ -65,11 +50,11 @@ Environment=XCURSOR_PATH=/home/signage/.icons
 # Attempt 2 added an After=systemd-logind.service/dbus.service ordering in
 # [Unit] plus this ExecStartPre bus-socket poll — also confirmed insufficient
 # on real hardware: those units being "active" doesn't mean logind has
-# finished registering *this specific* new PAM session by the time cage
-# starts, and the poll below can pass near-instantly by observing the bus
-# socket its own just-opened session created, not proof that pam_systemd's
-# separate, asynchronous env-injection into cage's own about-to-be-spawned
-# process has completed.
+# finished registering *this specific* new PAM session by the time the
+# compositor starts, and the poll below can pass near-instantly by observing
+# the bus socket its own just-opened session created, not proof that
+# pam_systemd's separate, asynchronous env-injection into the compositor's
+# own about-to-be-spawned process has completed.
 #
 # The actual fix (provision.sh's `loginctl enable-linger signage`) sidesteps
 # the race entirely instead of trying to win it: linger makes logind create
@@ -89,89 +74,16 @@ Environment=XCURSOR_PATH=/home/signage/.icons
 # instance. Looks up signage's real UID directly instead.
 ExecStartPre=/bin/sh -c 'u=$(id -u signage); for i in $(seq 1 40); do [ -d "/run/user/$u" ] && [ -S "/run/user/$u/bus" ] && exit 0; sleep 0.25; done; exit 0'
 
-# --kiosk: fullscreen, no chrome. --noerrdialogs/--disable-session-crashed-bubble:
-# no "restore pages?" prompts after a power-cut reboot. --check-for-update-interval
-# set absurdly high since there's no reason a kiosk display should ever prompt to
-# update itself. --ozone-platform=wayland forces Chromium to run as a genuine
-# Wayland client of cage instead of possibly falling back to cage's built-in
-# XWayland compatibility layer — confirmed via real hardware ps/journalctl output
-# to be honored. Doesn't affect the cursor.
-#
-# --remote-debugging-port/--remote-debugging-address: opens real DevTools at
-# http://<pi-ip>:9222 from any device on the LAN — used to diagnose real
-# on-device video playback issues that never reproduced in a sandbox. Same
-# LAN-trust model as everything else here (no auth anywhere in this project);
-# bound to 0.0.0.0 on purpose. Chromium itself still only binds the DevTools
-# socket to 127.0.0.1 regardless of this flag (a hardening behavior, confirmed
-# on real hardware) — reach it via `ssh -L 9222:localhost:9222 pi@<ip>` +
-# chrome://inspect, not this flag alone.
-#
-# --disable-accelerated-video-decode: diagnosed via that remote DevTools console
-# on real hardware — a long (2min+) video reliably stalled with networkState
-# idle and readyState stuck at "have current data", at the exact same point
-# every time, with the cached file confirmed byte-identical to the original
-# (ruling out a truncated download) and zero new kernel dmesg entries at the
-# moment of the freeze (ruling out an OOM kill or a kernel-level GPU driver
-# reset). That combination points at Chromium's own hardware video decode
-# pipeline (VideoCore GPU via V4L2) silently hanging partway through — a known
-# rough edge on this platform, not something fixable from the page's
-# JavaScript. Forcing software decode trades CPU load (confirmed choppier on
-# real hardware — re-encode source video to 720p H.264 if that's a problem,
-# see the troubleshooting section in the root README) for Chromium's far more
-# mature, battle-tested decode path.
-# Wrapped in `sh -c` to export XDG_RUNTIME_DIR explicitly rather than relying
-# on pam_systemd's own per-invocation env injection to land in time (see the
-# ExecStartPre comment above for why that alone wasn't reliable on real
-# hardware) — this exports the same real, linger-created path pam_systemd
-# would have set, computed fresh at exec time since $(id -u signage) can't be
-# hardcoded portably across Raspberry Pi OS releases.
-#
-# Real root cause, confirmed via journalctl session-lifecycle timestamps on
-# real hardware: the cursor-warp used to be a separate ExecStartPost=,
-# sharing this unit's single PAMName=login session with ExecStart. That
-# session got closed the instant ExecStartPost's own short-lived process
-# exited (`journalctl | grep -i "new session\|removed session"` showed the
-# session opening with cage and being *removed* at almost exactly the moment
-# ExecStartPost's ~15s loop would finish) — even though cage's own process
-# was still very much alive. Losing that session is what actually produced
-# the "[backend/drm/atomic.c] Atomic commit failed: Permission denied" loop —
-# not a Plymouth/DRM handoff race as first suspected (the plymouth-quit-wait
-# ordering above is real and worth keeping, it just wasn't the bug here).
-# Fixed by never giving the cursor warp its own systemd-tracked process at
-# all: it's launched as a background job from inside this same `sh -c`,
-# before `exec` replaces the shell with cage, so there is exactly one
-# process (and one PAM session) for the whole unit's lifetime — nothing left
-# to exit early and yank the session out from under cage. `2>/dev/null`
-# suppresses errors from the loop; unlike the old ExecStartPost, nothing here
-# needs `|| true` since a backgrounded job's exit status is never checked by
-# the shell that launched it.
-#
-# The warp itself: relocates the (still-visible — see the XCURSOR_* comment
-# above for why it can't be made invisible) cursor to the bottom-right
-# corner, off the main content, via a synthetic input device (ydotoold/
-# ydotool — see provision.sh) indistinguishable from a real mouse at the
-# kernel level. Retries every second for 15s instead of firing once after a
-# fixed sleep: confirmed on real hardware that a single "sleep 3, then warp"
-# attempt can silently no-op on a slow boot — ydotool reports success either
-# way (writing to the synthetic input device succeeds regardless of whether
-# cage's own input backend has finished initializing enough to actually
-# consume the event yet), so a single attempt gives no signal that it didn't
-# land. Repeating is harmless: warping an already-warped cursor to the same
-# corner again is a no-op.
-ExecStart=/bin/sh -c 'export XDG_RUNTIME_DIR="/run/user/$(id -u signage)"; (for i in $(seq 1 15); do sleep 1; YDOTOOL_SOCKET=/tmp/.ydotool_socket /usr/bin/ydotool mousemove -- 10000 10000 2>/dev/null; done) & exec /usr/bin/cage -- /usr/bin/chromium \
-  --kiosk http://localhost:8088 \
-  --ozone-platform=wayland \
-  --disable-accelerated-video-decode \
-  --remote-debugging-port=9222 \
-  --remote-debugging-address=0.0.0.0 \
-  --noerrdialogs \
-  --disable-infobars \
-  --disable-session-crashed-bubble \
-  --disable-translate \
-  --no-first-run \
-  --check-for-update-interval=31536000 \
-  --overscroll-history-navigation=0 \
-  --autoplay-policy=no-user-gesture-required'
+# sway -c points at the deployed, sed-templated config — see
+# sway-kiosk.config (which is where chromium's binary path and flags actually
+# live; nothing chromium-related is on this line). Wrapped in `sh -c` to
+# export XDG_RUNTIME_DIR explicitly rather than relying on pam_systemd's own
+# per-invocation env injection to land in time (see the ExecStartPre comment
+# above for why that alone wasn't reliable on real hardware) — this exports
+# the same real, linger-created path pam_systemd would have set, computed
+# fresh at exec time since $(id -u signage) can't be hardcoded portably
+# across Raspberry Pi OS releases.
+ExecStart=/bin/sh -c 'export XDG_RUNTIME_DIR="/run/user/$(id -u signage)"; exec /usr/bin/sway -c /opt/signage/sway-kiosk.config'
 
 Restart=always
 RestartSec=2
