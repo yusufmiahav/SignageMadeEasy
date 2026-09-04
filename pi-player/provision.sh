@@ -55,13 +55,20 @@ if [[ -f /proc/device-tree/model ]] && grep -qi 'raspberry pi' /proc/device-tree
   IS_PI=1
 fi
 
-# Distinct from IS_PI above — a Pi 4/5 has enough headroom for the NDI-in feature
+# Distinct from IS_PI above — this is "has enough headroom for the NDI-in feature"
 # (native GStreamer + gst-plugin-ndi, see pi-player/src/ndiPlayer.ts and README.md),
-# which a 3B+ isn't targeted for. A plain 32-bit "Raspberry Pi 4" board string and a
-# 64-bit one both match this the same way IS_PI's own check does.
-IS_PI4_5=0
-if [[ -f /proc/device-tree/model ]] && grep -qiE 'raspberry pi (4|5)' /proc/device-tree/model 2>/dev/null; then
-  IS_PI4_5=1
+# not "is a Raspberry Pi". A Pi 4/5 qualifies (a plain 32-bit "Raspberry Pi 4" board
+# string and a 64-bit one both match, same as IS_PI's own check); a Pi 3B+ doesn't —
+# it's the one board this project targets that's genuinely underpowered for it. Every
+# x86_64 stick this script supports qualifies too: ndiPlayer.ts/waylandDisplay.ts have
+# no Pi-specific logic at all (just spawns gst-launch-1.0 and finds whatever Wayland
+# socket the compositor exposes), an x86 CPU generally has more headroom than a Pi 4/5
+# for this, and the NDI SDK itself ships an x86_64-linux-gnu build alongside its ARM
+# ones — nothing here is actually Pi-specific, IS_PI4_5 was just scoped too narrowly
+# when this shipped, before x86 support existed as a target for it.
+SUPPORTS_NDI=0
+if [[ "$IS_PI" -eq 0 ]] || { [[ -f /proc/device-tree/model ]] && grep -qiE 'raspberry pi (4|5)' /proc/device-tree/model 2>/dev/null; }; then
+  SUPPORTS_NDI=1
 fi
 
 # ---------------------------------------------------------------------------
@@ -368,7 +375,7 @@ if [[ "$IS_PI" -eq 1 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-if [[ "$IS_PI4_5" -eq 1 ]]; then
+if [[ "$SUPPORTS_NDI" -eq 1 ]]; then
   log "Installing GStreamer (for NDI live-source support — see pi-player/README.md)"
   # plugins-bad is required, not optional despite the name — waylandsink (what
   # actually renders NDI video onto the kiosk's Wayland surface) lives there, not in
@@ -382,7 +389,7 @@ if [[ "$IS_PI4_5" -eq 1 ]]; then
   # against the proprietary NDI SDK (Vizrt's EULA requires a human to accept it —
   # can't be curled/scripted here, see README.md), so this only checks whether that
   # one-time manual step has already happened and points at the docs if not.
-  # Deliberately non-fatal — since a Pi 4/5 provisioned before that manual step is
+  # Deliberately non-fatal — since a device provisioned before that manual step is
   # still a working screen for every other content type.
   if ! gst-inspect-1.0 ndisrc >/dev/null 2>&1; then
     echo "gst-plugin-ndi (the 'ndisrc' GStreamer element) isn't installed yet — NDI" >&2

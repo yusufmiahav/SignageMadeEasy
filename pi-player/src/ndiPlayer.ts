@@ -1,9 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { waitForWaylandDisplay, XDG_RUNTIME_DIR } from './waylandDisplay.js';
 
-// Pi 4/5 only. NDI has no browser decoder, so a live NDI source is rendered by a
-// native GStreamer process (gst-launch-1.0 + the community gst-plugin-ndi) spawned as
-// a second fullscreen Wayland client alongside cage/Chromium — the same architectural
+// Pi 4/5 or an x86 device only (see provision.sh's SUPPORTS_NDI) — not a Pi 3B+. NDI
+// has no browser decoder, so a live NDI source is rendered by a native GStreamer
+// process (gst-launch-1.0 + the community gst-plugin-ndi) spawned as
+// a second fullscreen Wayland client alongside sway/Chromium — the same architectural
 // shape as the mpv-hwdecode branch's native video player, but a wholly separate
 // implementation: no IPC socket (ndisrc has its own internal reconnect logic and there's
 // no confirmed "frozen but alive" failure mode yet to watch for — see the project plan

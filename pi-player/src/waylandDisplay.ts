@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 
-// The player agent's systemd unit starts before the kiosk/cage unit (see
+// The player agent's systemd unit starts before the kiosk/sway unit (see
 // systemd/signage-kiosk.service), so it can't just inherit a WAYLAND_DISPLAY env var
-// set at cage's own startup the way a child process of cage itself would — this has
+// set at sway's own startup the way a child process of sway itself would — this has
 // to go find the compositor's socket on disk instead. Used by ndiPlayer.ts to give
 // gst-launch-1.0's waylandsink somewhere to attach.
 
@@ -15,7 +15,7 @@ import fs from 'node:fs';
 // User=signage and sets no XDG_RUNTIME_DIR of its own.
 const XDG_RUNTIME_DIR = process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid ? process.getuid() : 1000}`;
 
-/** Highest-numbered wayland-N socket currently present — guards against a stale socket left behind by a crashed prior compositor rather than the live one cage is currently serving. */
+/** Highest-numbered wayland-N socket currently present — guards against a stale socket left behind by a crashed prior compositor rather than the live one sway is currently serving. */
 export function findWaylandDisplay(): string | null {
   let entries: string[];
   try {

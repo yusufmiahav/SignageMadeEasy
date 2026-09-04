@@ -157,7 +157,7 @@ export function createApp() {
     else res.status(502).json({ ok: false, error: result.error });
   });
 
-  // Native NDI playback (Pi 4/5 only — see ndiPlayer.ts). Mirrors the mpv-branch's own
+  // Native NDI playback (Pi 4/5 or an x86 device only — see ndiPlayer.ts). Mirrors the mpv-branch's own
   // /native-<x>/play|status|stop shape: a native process spawned per item, controlled
   // via a tiny HTTP surface the player page (player.js) drives instead of a <video>
   // tag, since NDI has no browser decoder.

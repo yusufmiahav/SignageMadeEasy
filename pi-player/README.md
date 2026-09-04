@@ -223,43 +223,51 @@ sudo update-grub
 sudo reboot
 ```
 
-## NDI live sources (Raspberry Pi 4/5 only)
+## NDI live sources (Raspberry Pi 4/5 or an x86 mini PC/stick)
 
-A Pi 4/5 (not 3B+ — this needs the extra horsepower) can display a live **NDI**
-(Network Device Interface) video feed — a camera, an encoder, another computer's NDI
-output — as one item in the normal rotation, alongside images/video/PDF/clock. This
-is NDI-**in** (receiving), not NDI-out.
+A Pi 4/5 or an x86_64 mini PC/HDMI stick (not a Pi 3B+ — this needs more headroom
+than that has) can display a live **NDI** (Network Device Interface) video feed — a
+camera, an encoder, another computer's NDI output — as one item in the normal
+rotation, alongside images/video/PDF/clock. This is NDI-**in** (receiving), not
+NDI-out. Nothing about the actual receiving/rendering code is Pi-specific — it's
+just GStreamer + whatever Wayland socket the kiosk compositor exposes — so an x86
+stick works the same way, and the NDI SDK itself ships an `x86_64-linux-gnu` build
+alongside its ARM ones.
 
 **The hub never touches the actual video stream.** Adding an NDI source from the
 control app only saves one short string, the NDI source name — the real video flows
-directly over the LAN from the NDI source device to this Pi's own receiver process,
-completely bypassing the hub. Practically, that means **the Pi and the NDI source
-need to be reachable from each other via NDI's own discovery**, which is mDNS-based
-and doesn't cross subnets without a separate NDI Discovery Server — generally, put
-them on the same LAN segment/VLAN.
+directly over the LAN from the NDI source device to this device's own receiver
+process, completely bypassing the hub. Practically, that means **this device and the
+NDI source need to be reachable from each other via NDI's own discovery**, which is
+mDNS-based and doesn't cross subnets without a separate NDI Discovery Server —
+generally, put them on the same LAN segment/VLAN.
 
 ### One-time setup: building gst-plugin-ndi and the discovery helper
 
-`provision.sh` installs GStreamer's own packages on a Pi 4/5 automatically, but the
-actual NDI support — the `ndisrc` GStreamer element and this project's small
-discovery helper (`pi-player/native/ndi-find.c`) — needs the proprietary **NDI SDK
-for Linux**, which can't be downloaded automatically: Vizrt's EULA requires a human
-to accept it first. Confirmed working end-to-end on real Pi 5 hardware (64-bit
-Raspberry Pi OS) with these exact steps.
+`provision.sh` installs GStreamer's own packages automatically on any device capable
+of NDI (a Pi 4/5 or an x86 stick — not a Pi 3B+), but the actual NDI support — the
+`ndisrc` GStreamer element and this project's small discovery helper
+(`pi-player/native/ndi-find.c`) — needs the proprietary **NDI SDK for Linux**, which
+can't be downloaded automatically: Vizrt's EULA requires a human to accept it first.
+Confirmed working end-to-end on real Pi 5 hardware (64-bit Raspberry Pi OS) with
+these exact steps; an x86 stick follows the same steps, just using the SDK's
+`x86_64-linux-gnu` folder instead of the ARM one (called out below).
 
 1. Go to <https://ndi.video/for-developers/ndi-sdk/>, accept the EULA, and download
-   the **NDI SDK for Linux** (a `.tar.gz`). Get it onto the Pi (`scp` from your
+   the **NDI SDK for Linux** (a `.tar.gz`). Get it onto the device (`scp` from your
    computer works fine — remember the `:` before the remote path, e.g.
-   `scp Install_NDI_SDK_v6_Linux.tar.gz pi-user@pi-ip:~/`), then extract it:
+   `scp Install_NDI_SDK_v6_Linux.tar.gz user@device-ip:~/`), then extract it:
    ```bash
    tar xzf Install_NDI_SDK_v6_Linux.tar.gz
    ```
    This unpacks straight into a `NDI SDK for Linux/` folder with `include/` and
    per-architecture `lib/`/`bin/` subfolders — no separate installer script to run.
-   A Pi 4 or 5 (64-bit) uses the `aarch64-rpi4-linux-gnueabi` folder.
+   A Pi 4 or 5 (64-bit) uses the `aarch64-rpi4-linux-gnueabi` folder; an x86_64
+   stick uses `x86_64-linux-gnu`.
 
 2. Install the SDK's shared library where the system linker will find it (`-a`
-   preserves the `libndi.so` → `libndi.so.6` → `libndi.so.6.x.x` symlink chain):
+   preserves the `libndi.so` → `libndi.so.6` → `libndi.so.6.x.x` symlink chain) —
+   substitute `x86_64-linux-gnu` for the folder name below on an x86 stick:
    ```bash
    sudo cp -a ~/"NDI SDK for Linux/lib/aarch64-rpi4-linux-gnueabi/"libndi.so* /usr/local/lib/
    sudo ldconfig
@@ -301,17 +309,18 @@ Raspberry Pi OS) with these exact steps.
    ```
 
 5. Re-run `provision.sh` (or just check manually) — it probes for both of these on a
-   Pi 4/5 and prints a reminder if either is still missing, but doesn't fail the rest
-   of provisioning if they are.
+   Pi 4/5 or x86 device and prints a reminder if either is still missing, but doesn't
+   fail the rest of provisioning if they are.
 
 ### Adding an NDI source from the control app
 
 Library screen → **Add NDI source**. Either:
-- Pick a paired Pi 4/5 and click **Scan for sources** — this asks that Pi to run its
-  own NDI discovery (a few seconds) and lists whatever it finds, or
+- Pick a paired device (a Pi 4/5 or x86 stick) and click **Scan for sources** — this
+  asks that device to run its own NDI discovery (a few seconds) and lists whatever it
+  finds, or
 - Type the NDI source name in manually (its exact NDI network name, e.g.
-  `DESKTOP-ABC (Camera 1)`) — useful if the source isn't broadcasting yet, or no Pi
-  4/5 is paired/reachable right now.
+  `DESKTOP-ABC (Camera 1)`) — useful if the source isn't broadcasting yet, or no
+  NDI-capable device is paired/reachable right now.
 
 Add it to a playlist/event like any other content — it plays full-screen for its
 configured duration (same "Plays for Ns" control as images/clocks) before rotating to

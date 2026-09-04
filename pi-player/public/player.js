@@ -126,7 +126,7 @@ async function playPdf(item, myGeneration) {
   }
 }
 
-// Pi 4/5 only. NDI has no browser decoder, so there's nothing to mount on #stage —
+// Pi 4/5 or an x86 device only. NDI has no browser decoder, so there's nothing to mount on #stage —
 // the native GStreamer process this starts (see ndiPlayer.ts) renders its own
 // fullscreen Wayland surface on top of this page, the same architectural pattern the
 // mpv-hwdecode branch uses for regular video. Rotation timing races a fixed duration
