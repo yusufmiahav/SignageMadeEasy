@@ -3,7 +3,7 @@
 // too, so both are kept in sync by hand (small, stable shapes; not worth a shared
 // package for two consumers).
 
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi';
 
 export interface LibraryItem {
   id: string;
@@ -11,8 +11,10 @@ export interface LibraryItem {
   type: LibraryItemType;
   size?: string;
   duration?: string;
-  /** Seconds this item stays on screen before advancing. Images and clocks only; defaults to 8 when unset. */
+  /** Seconds this item stays on screen before advancing. Images, clocks, and NDI sources only; defaults to 8 when unset. */
   durationSec?: number;
+  /** NDI sources only — the NDI network name of the source to receive, e.g. "DESKTOP-ABC (Camera 1)". Not a URL or upload; resolved directly by the Pi's own NDI discovery at playback time. */
+  ndiSourceName?: string;
   /** URL path (e.g. "/uploads/<id>.jpg"), not a data URL — served statically by the hub. */
   thumb?: string;
   text?: string;
@@ -28,6 +30,8 @@ export interface LibraryItem {
    * to the original, same as 'skipped' from a playback standpoint.
    */
   transcodeStatus?: 'processing' | 'done' | 'skipped' | 'failed';
+  /** Free-form labels for search/filtering in the Library screen. Empty array, never undefined. */
+  tags: string[];
 }
 
 export interface ScheduleEvent {
@@ -36,6 +40,9 @@ export interface ScheduleEvent {
   start: string;
   end: string;
   libIds: string[];
+  /** 24h "HH:MM" — see src/api/types.ts's copy of this interface for the full comment. */
+  startTime?: string;
+  endTime?: string;
 }
 
 export interface AnnouncementSchedule {
@@ -61,6 +68,8 @@ export interface Group {
   forcedAnnouncementId: string | null;
   /** Date+time windows during which an announcement is shown on every screen at this location, regardless of each screen's own manual toggle. */
   announcementSchedules: AnnouncementSchedule[];
+  /** Emergency override: every screen at this location goes to a plain black screen, above even forcedContentId — see activeContentIds' priority order. */
+  blackout: boolean;
 }
 
 export type DeviceStatus = 'online' | 'offline';
@@ -72,9 +81,18 @@ export interface Device {
   /** Captured once at pairing time from the Pi's own /identify response. Null for a screen paired before this existed, or one paired manually/offline that couldn't be reached to ask. */
   mac: string | null;
   status: DeviceStatus;
-  groupId: string;
+  /** Null for a screen not assigned to any location yet ("misc" screens) — see forcedContentId/blackout below, which fill in for the location-level controls it doesn't have. */
+  groupId: string | null;
   announcementId: string | null;
   announcementOn: boolean;
+  /** Only meaningful/settable while groupId is null — an assigned screen's content comes from its location instead. */
+  forcedContentId: string | null;
+  /** Same scope as forcedContentId — only meaningful while groupId is null. */
+  blackout: boolean;
+  /** Same scope as forcedContentId — mirrors Group.defaultPlaylist for a screen with no location. */
+  defaultPlaylist: string[];
+  /** Same scope as forcedContentId — mirrors Group.events for a screen with no location. */
+  events: ScheduleEvent[];
   /**
    * Which copy of a video this screen is served. 'auto' (default): the resolution-capped
    * copy, sized for a Pi 3B+'s hardware decoder — right for most screens. 'full': always
@@ -84,6 +102,13 @@ export interface Device {
   videoQuality: 'auto' | 'full';
   /** ms since epoch of the last heartbeat received. Not exposed to the control app. */
   lastSeenAt?: number;
+  /** Reported by the Pi's own poller alongside every heartbeat (pi-player/src/diagnostics.ts) — undefined for a device that's never sent one yet. */
+  tempC?: number | null;
+  /** Raw hex string from `vcgencmd get_throttled` — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot." */
+  throttled?: string | null;
+  uptimeSec?: number | null;
+  diskFreeMb?: number | null;
+  diskTotalMb?: number | null;
 }
 
 export interface DiscoveredDevice {
@@ -101,11 +126,20 @@ export interface PlayerItem {
   duration: number | null;
   /** For PDFs: total page count, each shown for `duration` seconds. */
   pageCount?: number;
+  /** NDI sources only — see LibraryItem.ndiSourceName. */
+  ndiSourceName?: string;
 }
 
 export interface PlayerState {
-  kind: 'forced' | 'event' | 'default';
+  kind: 'blackout' | 'forced' | 'event' | 'default';
   label: string;
   items: PlayerItem[];
   announcement: { on: boolean; text: string | null };
+  /**
+   * Settings → Reliability's "Safety hold" toggle, echoed on every poll so a Pi that
+   * later loses touch with the hub already knows which way to behave: true (the
+   * default) keeps showing/caching its last-known content through a disconnect;
+   * false means a disconnected screen goes blank instead. See pi-player/src/poller.ts.
+   */
+  safetyHold: boolean;
 }

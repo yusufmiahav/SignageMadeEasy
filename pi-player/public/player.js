@@ -33,9 +33,11 @@ function showScreen(name) {
 // instead of restarting it from scratch on every tick.
 let playlistKey = null;
 let activeItems = [];
+let activeKind = 'default'; // 'blackout' | 'forced' | 'event' | 'default' — see playItem's !item branch
 let currentIndex = 0;
 let advanceTimer = null;
 let clockTimer = null; // the 'clock' item's setInterval — not a <video>/<canvas>, so teardownStage's generic child.remove() wouldn't stop it on its own.
+let ndiPollTimer = null; // the 'ndi' item's status-polling setInterval — see playNativeNdi.
 let generation = 0; // bumped whenever rotation is torn down, so late async work (a PDF page render, a video's `ended`) from a previous item can no-op instead of racing the new one.
 
 function teardownStage() {
@@ -43,6 +45,12 @@ function teardownStage() {
   advanceTimer = null;
   clearInterval(clockTimer);
   clockTimer = null;
+  clearInterval(ndiPollTimer);
+  ndiPollTimer = null;
+  // Unconditional and fire-and-forget: a no-op on the Pi if nothing native is playing,
+  // but guarantees switching away from an NDI item always kills the GStreamer process
+  // rather than leaving it running underneath whatever plays next.
+  void fetch('/native-ndi/stop', { method: 'POST' }).catch(() => {});
   for (const child of [...stage.children]) {
     if (child instanceof HTMLVideoElement) {
       child.pause();
@@ -118,16 +126,76 @@ async function playPdf(item, myGeneration) {
   }
 }
 
+// Pi 4/5 or an x86 device only. NDI has no browser decoder, so there's nothing to mount on #stage —
+// the native GStreamer process this starts (see ndiPlayer.ts) renders its own
+// fullscreen Wayland surface on top of this page, the same architectural pattern the
+// mpv-hwdecode branch uses for regular video. Rotation timing races a fixed duration
+// (like image/clock) against polling /native-ndi/status for an early "process died" —
+// whichever comes first advances rotation; see the project plan for why v1 has no
+// richer health signal than process-alive.
+//
+// Sole-item case mirrors video's own restart-in-place special case (see playItem's
+// video branch below): confirmed on real hardware that without this, a lone NDI item
+// would tear down and respawn the GStreamer process every time its duration timer
+// elapsed — "advancing" to the next item just means itself again — causing a
+// periodic black flash purely from the pointless restart, not anything wrong with
+// the feed itself. A live NDI source has no natural end the way a demuxed video's
+// `ended` event does, so the fix is simpler than video's: just never schedule a
+// duration-based restart at all when this is the only thing in rotation, and rely
+// solely on crash detection (a real process death still restarts it).
+function playNativeNdi(item, myGeneration) {
+  const duration = item.duration ?? 8;
+  const isSoleItem = activeItems.length === 1;
+  const advanceOnce = () => {
+    if (myGeneration !== generation) return;
+    currentIndex = (currentIndex + 1) % activeItems.length;
+    playItem(currentIndex);
+  };
+
+  fetch('/native-ndi/play', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ndiSourceName: item.ndiSourceName }),
+  })
+    .then((res) => res.json())
+    .then(({ token }) => {
+      if (myGeneration !== generation) return;
+      if (!isSoleItem) advanceTimer = setTimeout(advanceOnce, duration * 1000);
+      ndiPollTimer = setInterval(() => {
+        fetch(`/native-ndi/status/${token}`)
+          .then((res) => res.json())
+          .then(({ playing }) => {
+            if (myGeneration !== generation || playing) return;
+            clearTimeout(advanceTimer);
+            clearInterval(ndiPollTimer);
+            advanceOnce();
+          })
+          .catch(() => {}); // transient poll failure — self-heals on the next tick a second later regardless
+      }, 1000);
+    })
+    .catch((err) => {
+      console.log('[signage ndi]', 'failed to start playback', err);
+      if (myGeneration === generation) scheduleAdvance(duration, myGeneration);
+    });
+}
+
 function playItem(index) {
   const myGeneration = generation;
   teardownStage();
   preloadUpcoming(index);
   const item = activeItems[index];
   if (!item) {
-    const empty = document.createElement('div');
-    empty.className = 'empty';
-    empty.textContent = 'No content scheduled';
-    stage.appendChild(empty);
+    // Both a genuinely empty default playlist and an active blackout resolve to no
+    // items, but they need to look different: blackout is a deliberate emergency
+    // "nothing shows here" state (see hub/src/store.ts's activeContentIds), so it
+    // stays plain black with no text — the "empty" message is only for the
+    // unconfigured case, where a visible hint actually helps whoever's looking at it.
+    if (activeKind !== 'blackout') {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'No content scheduled';
+      stage.appendChild(empty);
+    }
     return;
   }
 
@@ -231,6 +299,8 @@ function playItem(index) {
     clockTimer = setInterval(tick, 1000);
     stage.appendChild(el);
     scheduleAdvance(item.duration ?? 8, myGeneration);
+  } else if (item.type === 'ndi') {
+    playNativeNdi(item, myGeneration);
   } else {
     // Announcements never appear in the main rotation (server-side filtered), but
     // skip defensively rather than getting stuck if one ever does.
@@ -244,14 +314,49 @@ function renderPlayerState(state) {
   ticker.hidden = !state.announcement.on;
   tickerText.textContent = state.announcement.text ?? '';
 
-  const key = state.items.map((i) => i.id).join(',');
+  // Includes kind, not just item ids: an empty defaultPlaylist and an active
+  // blackout both resolve to zero items (same id-based key otherwise), but
+  // render differently — see playItem's !item branch — so a transition between
+  // the two has to be detected here too, not just a change in the item list.
+  const key = `${state.kind}:${state.items.map((i) => i.id).join(',')}`;
   if (key === playlistKey) return; // same playlist as last poll — leave the current item alone
 
   playlistKey = key;
   activeItems = state.items;
+  activeKind = state.kind;
   currentIndex = 0;
   generation++;
   playItem(0);
+}
+
+// --- Identify flash ----------------------------------------------------------
+// Settings screen's "Identify" button (bulb icon) — helps a technician standing in
+// front of a wall of screens match a physical display to its entry in the control
+// app. Drawn as an overlay on top of #stage rather than touching rotation/teardown
+// state at all, so it works regardless of what's currently playing (including the
+// unpaired/connecting screens) without interrupting it. One exception: while a
+// native NDI item is on screen, its own separate Wayland surface (see ndiPlayer.ts)
+// occludes this browser page entirely, so the flash won't be visible then — a known,
+// low-priority gap for what's still a rare content type.
+let lastFlashToken = null;
+
+function triggerIdentifyFlash() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed; inset:0; z-index:9999; pointer-events:none; background:#fff;';
+  document.body.appendChild(overlay);
+
+  const PHASE_MS = 250;
+  const phases = ['#000', '#fff', '#000']; // starts on #fff (already applied above): white, black, white, black
+  let i = 0;
+  const tick = () => {
+    if (i >= phases.length) {
+      overlay.remove();
+      return;
+    }
+    overlay.style.background = phases[i++];
+    setTimeout(tick, PHASE_MS);
+  };
+  setTimeout(tick, PHASE_MS);
 }
 
 // --- Polling -----------------------------------------------------------------
@@ -262,7 +367,7 @@ function renderPlayerState(state) {
 // duplicate. Only shown when there's genuinely no hub content to fall back on
 // (see pollOnce below) — the moment the hub has real state again, it wins.
 function localContentState(item) {
-  return { items: [item], announcement: { on: false, text: null } };
+  return { kind: 'default', items: [item], announcement: { on: false, text: null } };
 }
 
 async function pollOnce() {
@@ -270,6 +375,13 @@ async function pollOnce() {
     const res = await fetch('/state');
     const data = await res.json();
     const localUrl = data.ip ? `http://${data.ip}:8088/network-setup.html` : null;
+
+    // Checked unconditionally, before the screen-state branching below, so identify
+    // works no matter what's currently showing. Skips the very first poll after page
+    // load (lastFlashToken starts null) so an old token from before this page loaded
+    // doesn't trigger a spurious flash.
+    if (lastFlashToken !== null && data.flashToken !== lastFlashToken) triggerIdentifyFlash();
+    lastFlashToken = data.flashToken;
 
     if (data.networkSetup) {
       // Takes priority over everything else: while broadcasting its own fallback

@@ -23,12 +23,17 @@ export interface SignageApiClient {
   addAnnouncement(name: string, text: string): Promise<LibraryItem>;
   /** Current time of day on a black background, rendered live on the Pi — no file involved. */
   addClock(name: string): Promise<LibraryItem>;
+  /** No file either — the hub only stores `ndiSourceName`; the actual video flows directly from the NDI source to a Pi 4/5 or x86 device's own receiver, bypassing the hub entirely. */
+  addNdiSource(name: string, ndiSourceName: string): Promise<LibraryItem>;
+  /** Pi 4/5 or x86 device only — asks the given paired device to run its own NDI discovery for AddNdiSourceDialog's "Scan for sources" button. Empty array (never throws) when the device is unreachable, isn't NDI-capable, or has no discovery helper built yet — the dialog just falls back to manual entry. */
+  listNdiSources(deviceId: string): Promise<string[]>;
   removeLibraryItem(id: string): Promise<void>;
   renameLibraryItem(id: string, name: string): Promise<void>;
   /** Persists a drag-and-drop reorder from the Library screen — the complete new display order. */
   reorderLibrary(ids: string[]): Promise<void>;
-  /** Images and clocks only — anything else is a server-side no-op. */
+  /** Images, clocks, and NDI sources only — anything else is a server-side no-op. */
   setItemDuration(id: string, durationSec: number): Promise<void>;
+  setLibraryItemTags(id: string, tags: string[]): Promise<void>;
 
   // Locations (groups)
   listGroups(): Promise<Group[]>;
@@ -36,6 +41,8 @@ export interface SignageApiClient {
   renameGroup(id: string, name: string): Promise<void>;
   /** No-op if the location still has devices assigned. Returns whether it deleted. */
   deleteGroup(id: string): Promise<boolean>;
+  /** Persists a reorder of locations on the Home screen — the complete new display order. */
+  reorderGroups(ids: string[]): Promise<void>;
   setDefaultPlaylist(groupId: string, libIds: string[]): Promise<void>;
   addToDefaultPlaylist(groupId: string, libIds: string[]): Promise<void>;
   removeFromDefaultPlaylist(groupId: string, libId: string): Promise<void>;
@@ -47,17 +54,36 @@ export interface SignageApiClient {
   setForcedAnnouncement(groupId: string, announcementId: string | null): Promise<void>;
   addAnnouncementSchedule(groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>): Promise<AnnouncementSchedule>;
   removeAnnouncementSchedule(groupId: string, scheduleId: string): Promise<void>;
+  /** Emergency override: every screen at this location goes to a plain black screen, above even forced content, until cleared with `false`. */
+  setGroupBlackout(groupId: string, blackout: boolean): Promise<void>;
 
   // Devices
   listDevices(): Promise<Device[]>;
-  pairDevice(input: { name: string; ip: string; groupId: string; status?: DeviceStatus }): Promise<Device>;
+  /** `groupId: null` pairs it with no location yet ("misc" screen, assignable later). */
+  pairDevice(input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }): Promise<Device>;
   renameDevice(id: string, name: string): Promise<void>;
-  moveDevice(id: string, groupId: string): Promise<void>;
+  /** Persists a reorder of screens shown under one location (or the misc/no-location list) on Settings/Home/Schedule — the complete new display order for that one scope, not a global list. */
+  reorderDevices(ids: string[]): Promise<void>;
+  /** `groupId: null` unassigns it — a legitimate end state, not just an intermediate one. */
+  moveDevice(id: string, groupId: string | null): Promise<void>;
   removeDevice(id: string): Promise<void>;
   restartDevice(id: string): Promise<void>;
+  /** Makes this screen's physical display blink white/black twice — helps identify which real screen an entry in Settings corresponds to. No-op in standalone/localStorage mode (no real Pi to ask). */
+  flashDevice(id: string): Promise<void>;
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
   setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;
+  /** Misc-screen (no location) equivalent of setForcedContent — only meaningful while the device has no groupId. */
+  setDeviceForcedContent(id: string, libId: string | null): Promise<void>;
+  /** Misc-screen (no location) equivalent of setGroupBlackout — only meaningful while the device has no groupId. */
+  setDeviceBlackout(id: string, blackout: boolean): Promise<void>;
+  /** Misc-screen (no location) equivalents of the location-level default-playlist/event methods above — only meaningful while the device has no groupId. */
+  setDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void>;
+  addToDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void>;
+  removeFromDeviceDefaultPlaylist(deviceId: string, libId: string): Promise<void>;
+  reorderDeviceDefaultPlaylist(deviceId: string, libId: string, direction: 'up' | 'down'): Promise<void>;
+  addDeviceEvent(deviceId: string, event: Omit<ScheduleEvent, 'id'>): Promise<ScheduleEvent>;
+  removeDeviceEvent(deviceId: string, eventId: string): Promise<void>;
 
   // Pairing helpers (simulated placeholders until the hub can do a real LAN scan)
   scanNetwork(): Promise<DiscoveredDevice[]>;
@@ -66,6 +92,17 @@ export interface SignageApiClient {
   exportBackup(): Promise<Backup>;
   /** Wipes and replaces everything currently saved with the backup's contents. */
   importBackup(backup: Backup): Promise<void>;
+
+  // Hub-wide settings (unlike the frontend's own purely-local Settings toggles —
+  // dark mode, advanced device info — these need to be known by every Pi too, so
+  // they live on the hub, not localStorage).
+  getSettings(): Promise<{ safetyHold: boolean }>;
+  /**
+   * Defaults to true (see hub/src/store.ts's getSafetyHold): a Pi already caches its
+   * last-resolved content and keeps showing it through a disconnect from the hub.
+   * Turning this off makes a disconnected screen go blank instead.
+   */
+  setSafetyHold(enabled: boolean): Promise<void>;
 }
 
 // Setting VITE_API_BASE_URL at build time (even to an empty string, for a same-origin

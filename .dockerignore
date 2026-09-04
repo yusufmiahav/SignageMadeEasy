@@ -1,0 +1,24 @@
+# hub/Dockerfile builds with the repo root as context (see hub/docker-compose.yml),
+# so this file lives here rather than under hub/ — Docker only reads a
+# .dockerignore from the context root.
+
+# Reinstalled inside each build stage — never needed (or wanted) in the context.
+node_modules
+*/node_modules
+
+# Rebuilt inside the image from source; shipping a stale local build would be
+# silently ignored anyway, but there's no reason to send it over.
+dist
+*/dist
+
+.git
+
+# Real uploaded media + the SQLite database on a deployed hub — must never end up
+# baked into an image layer.
+hub/data
+
+# Editor/OS cruft and local logs/env files that have no place in an image.
+.DS_Store
+*.log
+.env
+.env.*

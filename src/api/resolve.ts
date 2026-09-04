@@ -1,10 +1,10 @@
-import type { Group, LibraryItem } from './types';
+import type { Device, Group, LibraryItem } from './types';
 
 export interface ActiveContent {
   ids: string[];
-  /** "forced" | "event" | "default" */
-  kind: 'forced' | 'event' | 'default';
-  /** "Forced" | the event's name | "Default playlist" */
+  /** "blackout" | "forced" | "event" | "default" */
+  kind: 'blackout' | 'forced' | 'event' | 'default';
+  /** "Blackout" | "Forced" | the event's name | "Default playlist" */
   label: string;
 }
 
@@ -15,16 +15,29 @@ function toISODate(d: Date): string {
 
 /**
  * Resolution order (highest priority first):
- * 1. forcedContentId, if set — that single item, shown until cleared.
- * 2. An event whose date range includes today — that event's item set,
- *    replacing the default playlist entirely for the range.
- * 3. Otherwise the location's defaultPlaylist, looping.
+ * 1. blackout, if set — every screen at this location goes plain black, above
+ *    even forced content (an emergency override).
+ * 2. forcedContentId, if set — that single item, shown until cleared.
+ * 3. An event whose date range includes today — that event's item set,
+ *    replacing the default playlist entirely for the range. If the event also has
+ *    a startTime/endTime, it only applies during that daily window; outside it,
+ *    the default playlist plays as usual (doesn't support crossing midnight).
+ * 4. Otherwise the location's defaultPlaylist, looping.
  */
-export function activeContentIds(group: Group, today: string = toISODate(new Date())): ActiveContent {
+export function activeContentIds(group: Group, now: Date = new Date()): ActiveContent {
+  if (group.blackout) {
+    return { ids: [], kind: 'blackout', label: 'Blackout' };
+  }
   if (group.forcedContentId) {
     return { ids: [group.forcedContentId], kind: 'forced', label: 'Forced' };
   }
-  const event = group.events.find((e) => today >= e.start && today <= e.end);
+  const today = toISODate(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const event = group.events.find((e) => {
+    if (today < e.start || today > e.end) return false;
+    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
+    return true;
+  });
   if (event) {
     return { ids: event.libIds, kind: 'event', label: event.name };
   }
@@ -45,10 +58,48 @@ export function nowPlayingItem(group: Group, libraryById: Map<string, LibraryIte
   return firstResolvedItem(group, libraryById);
 }
 
+/**
+ * A screen with no location has no location-level schedule to fall back on, but
+ * does have its own — forcedContentId/blackout (the misc-screen equivalents of a
+ * location's controls), then its own events/defaultPlaylist, same priority order
+ * and time-window matching as activeContentIds above (mirrors
+ * hub/src/store.ts's activeContentIdsForDevice).
+ */
+export function activeContentIdsForDevice(device: Device, now: Date = new Date()): ActiveContent {
+  if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
+  if (device.forcedContentId) return { ids: [device.forcedContentId], kind: 'forced', label: 'Forced' };
+  const today = toISODate(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const event = device.events.find((e) => {
+    if (today < e.start || today > e.end) return false;
+    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
+    return true;
+  });
+  if (event) return { ids: event.libIds, kind: 'event', label: event.name };
+  if (device.defaultPlaylist.length > 0) return { ids: device.defaultPlaylist, kind: 'default', label: 'Default playlist' };
+  return { ids: [], kind: 'default', label: 'No content' };
+}
+
+export function nowPlayingItemForDevice(device: Device, libraryById: Map<string, LibraryItem>): LibraryItem | undefined {
+  const { ids } = activeContentIdsForDevice(device);
+  return ids.map((id) => libraryById.get(id)).find((item): item is LibraryItem => !!item);
+}
+
+export function nowPlayingNameForDevice(device: Device, libraryById: Map<string, LibraryItem>): string {
+  return nowPlayingItemForDevice(device, libraryById)?.name ?? '—';
+}
+
 export function itemsForDate(group: Group, date: string): { ids: string[]; kind: 'event' | 'default'; label: string } {
   const event = group.events.find((e) => date >= e.start && date <= e.end);
   if (event) return { ids: event.libIds, kind: 'event', label: event.name };
   return { ids: group.defaultPlaylist, kind: 'default', label: 'Default playlist' };
+}
+
+/** Mirrors itemsForDate — see Device.events' comment in types.ts. */
+export function itemsForDateForDevice(device: Device, date: string): { ids: string[]; kind: 'event' | 'default'; label: string } {
+  const event = device.events.find((e) => date >= e.start && date <= e.end);
+  if (event) return { ids: event.libIds, kind: 'event', label: event.name };
+  return { ids: device.defaultPlaylist, kind: 'default', label: 'Default playlist' };
 }
 
 // Mirrors hub/src/store.ts's activeAnnouncementId exactly — see its comment for the

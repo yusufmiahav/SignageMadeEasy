@@ -1,4 +1,4 @@
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi';
 
 export interface LibraryItem {
   id: string;
@@ -8,8 +8,10 @@ export interface LibraryItem {
   size?: string;
   /** Human-readable duration, e.g. "0:42". Videos only. */
   duration?: string;
-  /** Seconds this item stays on screen before advancing. Images and clocks only; defaults to 8 when unset. */
+  /** Seconds this item stays on screen before advancing. Images, clocks, and NDI sources only; defaults to 8 when unset. */
   durationSec?: number;
+  /** NDI sources only — the NDI network name of the source to receive, e.g. "DESKTOP-ABC (Camera 1)". Resolved directly by a paired Pi 4/5 or x86 device's own NDI discovery at playback time; the hub never touches the actual video stream. */
+  ndiSourceName?: string;
   /** Data URL thumbnail. Images only. */
   thumb?: string;
   /** Message body. Announcements only. */
@@ -23,6 +25,8 @@ export interface LibraryItem {
    * the original, same as 'skipped'.
    */
   transcodeStatus?: 'processing' | 'done' | 'skipped' | 'failed';
+  /** Free-form labels for search/filtering in the Library screen. Empty array, never undefined. */
+  tags: string[];
 }
 
 export interface ScheduleEvent {
@@ -33,6 +37,16 @@ export interface ScheduleEvent {
   /** ISO date, e.g. "2026-08-28" */
   end: string;
   libIds: string[];
+  /**
+   * 24h "HH:MM", e.g. "09:00". Set together with endTime to restrict this event to a
+   * daily time window within [start, end] — outside that window the default playlist
+   * plays as usual. Unset on both (the default): the event runs all day, every day in
+   * range, same as before this field existed. Doesn't support a window that crosses
+   * midnight (e.g. 22:00–02:00).
+   */
+  startTime?: string;
+  /** 24h "HH:MM", e.g. "17:00" — see startTime. */
+  endTime?: string;
 }
 
 export interface AnnouncementSchedule {
@@ -58,6 +72,8 @@ export interface Group {
   forcedAnnouncementId: string | null;
   /** Date+time windows during which an announcement is shown on every screen at this location, regardless of each screen's own manual toggle. */
   announcementSchedules: AnnouncementSchedule[];
+  /** Emergency override: every screen at this location goes to a plain black screen, above even forcedContentId. */
+  blackout: boolean;
 }
 
 export type DeviceStatus = 'online' | 'offline';
@@ -69,9 +85,18 @@ export interface Device {
   /** Captured once at pairing time from the Pi's own agent. Null for a screen paired before this existed, one paired while offline, or any device in standalone/localStorage mode (no real Pi to ask). */
   mac: string | null;
   status: DeviceStatus;
-  groupId: string;
+  /** Null for a screen not assigned to any location yet ("misc" screens) — see forcedContentId/blackout below, which fill in for the location-level controls it doesn't have. */
+  groupId: string | null;
   announcementId: string | null;
   announcementOn: boolean;
+  /** Only meaningful/settable while groupId is null — an assigned screen's content comes from its location instead. */
+  forcedContentId: string | null;
+  /** Same scope as forcedContentId — only meaningful while groupId is null. */
+  blackout: boolean;
+  /** Same scope as forcedContentId — mirrors Group.defaultPlaylist for a screen with no location. */
+  defaultPlaylist: string[];
+  /** Same scope as forcedContentId — mirrors Group.events for a screen with no location. */
+  events: ScheduleEvent[];
   /**
    * Which copy of a video this screen is served. 'auto' (default): the resolution-capped
    * copy, sized for a Pi 3B+'s hardware decoder — right for most screens. 'full': always
@@ -79,6 +104,13 @@ export interface Device {
    * display where the cap buys nothing.
    */
   videoQuality: 'auto' | 'full';
+  /** Reported by the Pi's own poller alongside every heartbeat — undefined for a device that's never sent one yet, or any device in standalone/localStorage mode (no real Pi to ask). */
+  tempC?: number | null;
+  /** Raw hex string from `vcgencmd get_throttled` — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot." */
+  throttled?: string | null;
+  uptimeSec?: number | null;
+  diskFreeMb?: number | null;
+  diskTotalMb?: number | null;
 }
 
 export interface AppData {

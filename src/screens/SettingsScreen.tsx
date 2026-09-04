@@ -1,10 +1,20 @@
 import { useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
-import type { Backup } from '../api/types';
+import type { Theme } from '../hooks/useTheme';
+import type { Backup, Device } from '../api/types';
+import { copyText } from '../utils/clipboard';
+import { authGateEnabled, logout } from '../api/auth';
 
 interface SettingsScreenProps {
   app: AppState;
+  onLogout: () => void;
+  theme: Theme;
+  onSetTheme: (theme: Theme) => void;
+  advancedDeviceInfo: boolean;
+  onSetAdvancedDeviceInfo: (value: boolean) => void;
+  hideAnnouncementRow: boolean;
+  onSetHideAnnouncementRow: (value: boolean) => void;
 }
 
 function isBackup(value: unknown): value is Backup {
@@ -13,22 +23,66 @@ function isBackup(value: unknown): value is Backup {
   return Array.isArray(v.library) && Array.isArray(v.groups) && Array.isArray(v.devices);
 }
 
-export function SettingsScreen({ app }: SettingsScreenProps) {
-  const { groups, devices, renameGroup, deleteGroup, showToast, exportBackup, importBackup } = app;
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+export function SettingsScreen({
+  app,
+  onLogout,
+  theme,
+  onSetTheme,
+  advancedDeviceInfo,
+  onSetAdvancedDeviceInfo,
+  hideAnnouncementRow,
+  onSetHideAnnouncementRow,
+}: SettingsScreenProps) {
+  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, reorderDevices, moveDevice, addGroup, showToast, exportBackup, importBackup, safetyHold, setSafetyHold, flashDevice } = app;
+  const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' } | null>(null);
   const [editingName, setEditingName] = useState('');
+  const miscDevices = devices.filter((d) => !d.groupId);
   const [restoring, setRestoring] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  // Batch-move: select screens across any location (or the misc list) and move them
+  // all to one target at once — same underlying moveDevice as the single-screen move
+  // arrows/dialog, just applied to the whole selection in one go.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [moveTarget, setMoveTarget] = useState('');
+  const [newLocationName, setNewLocationName] = useState('');
+  const isNewLocationTarget = moveTarget === '__new__';
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setMoveTarget('');
+    setNewLocationName('');
+  };
+  const moveSelected = async () => {
+    if (!moveTarget) return;
+    let targetId: string | null = moveTarget === '__none__' ? null : moveTarget;
+    if (isNewLocationTarget) {
+      if (!newLocationName.trim()) return;
+      const group = await addGroup(newLocationName);
+      targetId = group.id;
+    }
+    const ids = [...selectedIds];
+    await Promise.all(ids.map((id) => moveDevice(id, targetId)));
+    showToast(`Moved ${ids.length} screen${ids.length === 1 ? '' : 's'}`);
+    exitSelectMode();
+  };
+
   const devicesWithMac = devices.filter((d): d is typeof d & { mac: string } => !!d.mac);
   const copyMacAddresses = async () => {
-    const text = devicesWithMac.map((d) => `${d.name}\t${d.mac}`).join('\n');
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast(`Copied ${devicesWithMac.length} MAC address${devicesWithMac.length === 1 ? '' : 'es'}`);
-    } catch {
-      showToast('Could not copy — clipboard access denied');
-    }
+    const text = devicesWithMac
+      .map((d) => `(Screen Name: "${d.name}" - IP: "${d.ip}" - MAC: "${d.mac}")`)
+      .join(',');
+    const ok = await copyText(text);
+    showToast(ok ? `Copied ${devicesWithMac.length} MAC address${devicesWithMac.length === 1 ? '' : 'es'}` : 'Could not copy — clipboard access denied');
   };
 
   const downloadBackup = async () => {
@@ -68,13 +122,100 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
     }
   };
 
-  const startEdit = (id: string, name: string) => {
-    setEditingGroupId(id);
+  const startEdit = (id: string, name: string, kind: 'group' | 'device') => {
+    setEditing({ id, kind });
     setEditingName(name);
   };
   const save = () => {
-    if (editingGroupId) renameGroup(editingGroupId, editingName);
-    setEditingGroupId(null);
+    if (editing) {
+      if (editing.kind === 'group') renameGroup(editing.id, editingName);
+      else renameDevice(editing.id, editingName);
+    }
+    setEditing(null);
+  };
+
+  // `scopeDevices` is one location's (or the misc list's) screens in their current
+  // display order — reorderDevices expects the complete reordered set for that one
+  // scope, so this swaps within the scope's own id list and sends the whole thing back.
+  const moveDeviceInScope = (scopeDevices: Device[], deviceId: string, direction: 'up' | 'down') => {
+    const idx = scopeDevices.findIndex((d) => d.id === deviceId);
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || swapWith < 0 || swapWith >= scopeDevices.length) return;
+    const ids = scopeDevices.map((d) => d.id);
+    [ids[idx], ids[swapWith]] = [ids[swapWith], ids[idx]];
+    void reorderDevices(ids);
+  };
+
+  // Shared row renderer for a screen nested under its location (or the misc list) —
+  // `scope` is that one location's/list's screens in display order, used both to know
+  // whether the up/down arrows are at a boundary and as the reorder payload.
+  const renderScreenRow = (device: Device, scope: Device[], idx: number) => {
+    const isEditing = editing?.kind === 'device' && editing.id === device.id;
+    return (
+      <div
+        key={device.id}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px', borderTop: '1px solid var(--color-divider)' }}
+      >
+        {selectMode && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${device.name}`}
+            checked={selectedIds.has(device.id)}
+            onChange={() => toggleSelect(device.id)}
+          />
+        )}
+        {isEditing ? (
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            value={editingName}
+            onChange={(e) => setEditingName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            autoFocus
+          />
+        ) : (
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13 }}>{device.name}</div>
+            <div className="text-muted" style={{ fontSize: 11 }}>Screen</div>
+          </div>
+        )}
+        {selectMode ? null : isEditing ? (
+          <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
+            <Icon name="check" size={13} />
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon"
+              aria-label="Move up"
+              disabled={idx === 0}
+              onClick={() => moveDeviceInScope(scope, device.id, 'up')}
+            >
+              <Icon name="chevronUp" size={13} />
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon"
+              aria-label="Move down"
+              disabled={idx === scope.length - 1}
+              onClick={() => moveDeviceInScope(scope, device.id, 'down')}
+            >
+              <Icon name="chevronDown" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Identify" title="Blink this screen's display" onClick={() => void flashDevice(device)}>
+              <Icon name="lightbulb" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(device.id, device.name, 'device')}>
+              <Icon name="pencil" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeDevice(device.id)}>
+              <Icon name="trash" size={13} />
+            </button>
+          </>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -82,52 +223,201 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
       <h1 style={{ margin: 0 }}>Settings</h1>
 
       <div className="card" style={{ gap: 8 }}>
-        <div className="card-kicker">Locations</div>
+        <div className="card-kicker">Appearance</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>Dark mode</span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={theme === 'dark'}
+              onChange={(e) => onSetTheme(e.target.checked ? 'dark' : 'light')}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Device cards</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>
+            Show advanced device info
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>Temperature, throttling, uptime, and disk space — off shows just IP and online/offline</span>
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={advancedDeviceInfo}
+              onChange={(e) => onSetAdvancedDeviceInfo(e.target.checked)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>
+            Show announcement row on each screen
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>The per-screen announcement picker and on/off toggle under each device card</span>
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={!hideAnnouncementRow}
+              onChange={(e) => onSetHideAnnouncementRow(!e.target.checked)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Reliability</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>
+            Safety hold
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
+              Assigned by the hub: every screen keeps caching and showing its last-known content if it loses touch
+              with the hub, instead of going blank. On by default — turn off to have a disconnected screen show
+              nothing instead.
+            </span>
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={safetyHold}
+              onChange={(e) => void setSafetyHold(e.target.checked)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="card-kicker">Locations & Screens</div>
+          {devices.length > 1 && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: 12, padding: '4px 8px' }}
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            >
+              {selectMode ? 'Cancel select' : 'Select screens'}
+            </button>
+          )}
+        </div>
+
+        {selectMode && (
+          <div className="select-toolbar">
+            <span style={{ fontSize: 13 }}>{selectedIds.size} selected</span>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ fontSize: 12 }}
+              onClick={() => setSelectedIds(new Set(devices.map((d) => d.id)))}
+            >
+              Select all
+            </button>
+            <select
+              className="input"
+              style={{ width: 'auto', fontSize: 12 }}
+              value={moveTarget}
+              onChange={(e) => setMoveTarget(e.target.value)}
+              aria-label="Move selected screens to"
+            >
+              <option value="" disabled>Move to…</option>
+              <option value="__none__">No location</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+              <option value="__new__">+ New location</option>
+            </select>
+            {isNewLocationTarget && (
+              <input
+                className="input"
+                style={{ width: 140, fontSize: 12 }}
+                placeholder="e.g. Reception"
+                value={newLocationName}
+                onChange={(e) => setNewLocationName(e.target.value)}
+                autoFocus
+              />
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: 12 }}
+              disabled={selectedIds.size === 0 || !moveTarget || (isNewLocationTarget && !newLocationName.trim())}
+              onClick={() => void moveSelected()}
+            >
+              Move
+            </button>
+          </div>
+        )}
+
         {groups.map((group) => {
-          const count = devices.filter((d) => d.groupId === group.id).length;
-          const isEditing = group.id === editingGroupId;
-          const cannotDelete = count > 0;
+          const screens = devices.filter((d) => d.groupId === group.id);
+          const isEditing = editing?.kind === 'group' && editing.id === group.id;
+          const cannotDelete = screens.length > 0;
           return (
-            <div key={group.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-              {isEditing ? (
-                <input
-                  className="input"
-                  style={{ flex: 1 }}
-                  value={editingName}
-                  onChange={(e) => setEditingName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && save()}
-                  autoFocus
-                />
-              ) : (
-                <>
-                  <span style={{ flex: 1, fontSize: 13 }}>{group.name}</span>
-                  <span className="tag tag-neutral">{count} screen{count === 1 ? '' : 's'}</span>
-                </>
-              )}
-              {isEditing ? (
-                <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
-                  <Icon name="check" size={13} />
-                </button>
-              ) : (
-                <>
-                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(group.id, group.name)}>
-                    <Icon name="pencil" size={13} />
+            <div key={group.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                {isEditing ? (
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && save()}
+                    autoFocus
+                  />
+                ) : (
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13 }}>{group.name}</div>
+                    <div className="text-muted" style={{ fontSize: 11 }}>Location</div>
+                  </div>
+                )}
+                {!isEditing && <span className="tag tag-neutral">{screens.length} screen{screens.length === 1 ? '' : 's'}</span>}
+                {isEditing ? (
+                  <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
+                    <Icon name="check" size={13} />
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-icon"
-                    aria-label="Delete"
-                    disabled={cannotDelete}
-                    title={cannotDelete ? 'Remove its screens first' : 'Delete location'}
-                    onClick={() => deleteGroup(group.id)}
-                  >
-                    <Icon name="trash" size={13} />
-                  </button>
-                </>
-              )}
+                ) : (
+                  <>
+                    <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(group.id, group.name, 'group')}>
+                      <Icon name="pencil" size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-icon"
+                      aria-label="Delete"
+                      disabled={cannotDelete}
+                      title={cannotDelete ? 'Remove its screens first' : 'Delete location'}
+                      onClick={() => deleteGroup(group.id)}
+                    >
+                      <Icon name="trash" size={13} />
+                    </button>
+                  </>
+                )}
+              </div>
+              {screens.map((device, idx) => renderScreenRow(device, screens, idx))}
             </div>
           );
         })}
+        {miscDevices.length > 0 && (
+          <div>
+            <div style={{ padding: '4px 0' }}>
+              <div className="text-muted" style={{ fontSize: 11 }}>No location</div>
+            </div>
+            {miscDevices.map((device, idx) => renderScreenRow(device, miscDevices, idx))}
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ gap: 8 }}>
@@ -140,8 +430,9 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
         <div className="card-kicker">IT</div>
         <div className="card-title">Device inventory</div>
         <p className="card-body">
-          Copies every paired screen's name and MAC address (tab-separated, one per line) —
-          for network whitelisting, asset tracking, or handing off to IT.
+          Copies every paired screen's name, IP, and MAC address as{' '}
+          <code>(Screen Name: "" - IP: "" - MAC: "")</code>, one per screen — for network
+          whitelisting, asset tracking, or handing off to IT.
         </p>
         <button
           type="button"
@@ -215,6 +506,19 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
             : 'Standalone mode — content is saved in this browser only. Deploy the hub to manage screens from any device on your network.'}
         </p>
         <p className="card-body text-muted" style={{ fontSize: 12 }}>Created by Yusuf Miah with Claude.</p>
+        {authGateEnabled && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ alignSelf: 'flex-start', marginTop: 4 }}
+            onClick={() => {
+              void logout();
+              onLogout();
+            }}
+          >
+            Log out
+          </button>
+        )}
       </div>
     </div>
   );

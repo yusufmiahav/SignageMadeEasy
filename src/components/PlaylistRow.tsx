@@ -5,6 +5,7 @@ function playlistMeta(item: LibraryItem): string {
   switch (item.type) {
     case 'image':
     case 'clock':
+    case 'ndi':
       return '';
     case 'video':
       return item.duration ?? '';
@@ -32,7 +33,7 @@ export function PlaylistRow({ item, order, upDisabled, downDisabled, onMoveUp, o
       <div className="text-muted" style={{ width: 16, textAlign: 'center', fontSize: 12 }}>{order}.</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
-        {item.type === 'image' || item.type === 'clock' ? (
+        {item.type === 'image' || item.type === 'clock' || item.type === 'ndi' ? (
           <div className="text-muted" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
             Plays for
             <input

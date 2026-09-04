@@ -87,36 +87,98 @@ file, then reboot. You can check which target a unit is pulled in by with
 `systemctl status signage-kiosk.service`; `inactive (dead)` with zero log lines is
 the signature of this specific issue.
 
-**A mouse cursor is visible, parked in the bottom-right corner of the display.**
-This is expected and, on cage, as good as it gets — confirmed on real hardware
-across several attempts that cage cannot be made to render a truly invisible
-cursor: neither a transparent Xcursor theme (`XCURSOR_THEME`/`XCURSOR_SIZE`/
-`XCURSOR_PATH`) nor CSS `cursor: none` on the page changes what cage itself
-draws, since cage's cursor isn't something a client can hide — cage's own
-maintainers have said outright that hiding it isn't something they support.
-What *does* work: `signage-kiosk.service`'s `ExecStartPost` warps the cursor via
-a synthetic input device (`ydotoold`/`ydotool`) to the bottom-right corner at
-startup, off the main content — that's the corner cursor you're seeing, and
-it's intentional, not a bug. `provision.sh` installs `ydotool`/`ydotoold`
-best-effort (not every Raspberry Pi OS release has it in its default repo) — if
-it's missing, the warp is skipped and the cursor stays centered instead. A
-compositor with a real "hide the cursor" feature (e.g. `labwc`, instead of
-`cage`) could do better here, at the cost of a bigger, less-tested change —
-not pursued for this project since the corner cursor is a minor cosmetic
-issue, not a functional one.
+**A mouse cursor is visible on the display.** Shouldn't happen — see `pi-player/
+README.md`'s "Cursor" section for how this is meant to work. Historical note:
+this kiosk originally ran on `cage`, a minimal Wayland compositor confirmed on
+real hardware to have no way to actually hide its cursor at all (not a
+transparent Xcursor theme, not CSS `cursor: none`, not warping it via synthetic
+input — that last one only relocates a still-visible cursor to a corner, it
+doesn't hide it). Switched to `sway` specifically because it has a real,
+documented `hide_cursor` feature (`sway-kiosk.config`), which does actually work
+— if you're seeing a cursor at all, something's wrong with that config or the
+`signage-kiosk.service` unit, not an inherent platform limitation to work
+around.
 
-**The kiosk service shows "Failed to start" once or twice right after boot, then
-recovers on its own within ~30s** (`journalctl -u signage-kiosk.service -b` shows
-`XDG_RUNTIME_DIR is not set in the environment`). A startup race: `pam_systemd`/
-logind hadn't finished setting up the signage user's session by the time cage's
-first attempt or two ran. Fixed via an `ExecStartPre` in `signage-kiosk.service`
-that waits (up to 10s) for `pam_systemd`'s own `/run/user/<uid>/bus` to actually
-exist before starting cage — re-run `provision.sh` and reboot to pick it up. (An
-earlier attempt at this fix pointed `XDG_RUNTIME_DIR` at a directory systemd
-created itself instead of waiting for the real one — don't do that: cage's
-`libseat` needs the *actual* pam_systemd-managed runtime directory specifically,
-since that's where the D-Bus session socket it uses to reach logind lives;
-pointing it elsewhere breaks device access entirely with no self-healing.)
+**The kiosk service shows "Failed to start" once or twice (sometimes more) right
+after boot, then recovers on its own** (`journalctl -u signage-kiosk.service -b`
+shows `XDG_RUNTIME_DIR is not set in the environment`). A startup race:
+`pam_systemd`/logind hadn't finished setting up the signage user's session by the
+time cage's first attempt or two ran. Two earlier fix attempts here were each
+confirmed insufficient on real hardware before landing on the real one:
+
+- Pointing `XDG_RUNTIME_DIR` at a directory systemd created itself, instead of
+  waiting for the real one — broke device access entirely with no self-healing:
+  cage's `libseat` needs the *actual* pam_systemd-managed runtime directory
+  specifically, since that's where the D-Bus session socket it uses to reach
+  logind lives.
+- An `ExecStartPre` wait for `pam_systemd`'s own `/run/user/<uid>/bus` to exist,
+  plus ordering the unit after `systemd-logind.service`/`dbus.service` — reduced
+  but didn't eliminate the race: those units being "active" doesn't mean logind
+  has finished registering *this specific* new session yet, and the bus-socket
+  check could pass near-instantly by observing its own just-opened session
+  rather than proving pam_systemd's separate env injection had actually landed.
+
+The actual fix: `provision.sh` now runs `loginctl enable-linger signage`, which
+makes logind create `/run/user/<uid>` (and its D-Bus session) at boot, before any
+login session exists at all — no race to lose. `signage-kiosk.service`'s
+`ExecStart` also now exports `XDG_RUNTIME_DIR` explicitly from that same real
+path rather than trusting `pam_systemd`'s per-invocation injection to land in
+time. Re-run `provision.sh` and reboot to pick it up.
+
+**The boot splash never appears — you just see plain `[ OK ] Starting...` text
+scrolling instead**, even though the theme is installed and set as default,
+`splash quiet` is present in `cmdline.txt`, `dtoverlay=vc4-kms-v3d` is present,
+and `journalctl -u plymouth-start.service` shows a clean start with no errors.
+Root-caused via `plymouth.debug=file:/var/log/plymouth-debug.log` on the kernel
+command line (temporary, real-hardware-only diagnostic) and reading the
+resulting log: Plymouth detected a serial console (`/dev/ttyS0`, alongside the
+real HDMI `/dev/tty1`) and logged `"serial consoles detected, managing them
+with details forced"` — it hardcodes a fallback to its plain-text "details"
+plugin whenever a serial console is present, regardless of what theme is
+configured. That plain-text output *is* the `[ OK ] Starting...` text you're
+seeing; every other prerequisite was genuinely fine, Plymouth just never loaded
+our theme at all. Raspberry Pi OS's default `cmdline.txt` sets `console=serial0,...`
+(or `ttyS0`/`ttyAMA0` depending on model/overlay) alongside `console=tty1`
+together, and this isn't something `plymouthd.conf` can override — the fix is
+removing the serial console entry, which `provision.sh` now does automatically.
+This trades away UART-cable boot debugging, which isn't used on a deployed
+kiosk with HDMI + SSH available. Re-run `provision.sh` and reboot to pick it up.
+
+**Screen stays blank/frozen after boot even though `signage-kiosk.service` shows
+"active (running)"** with a real compositor/Chromium process tree using real CPU —
+`journalctl -u signage-kiosk.service -b` shows a tight, unending loop of
+`[backend/drm/atomic.c] connector HDMI-A-1: Atomic commit failed: Permission
+denied` (and often `[libseat] Could not close device: Unknown object
+'/org/freedesktop/login1/session/_N'`). Two fix attempts here were each
+confirmed insufficient on real hardware before landing on the real one:
+
+- First suspected a Plymouth/DRM handoff race, since this surfaced right after
+  the boot splash fix above started working: added `plymouth-quit-wait.service`
+  (which actually blocks until Plymouth has released DRM master, unlike
+  `plymouth-quit.service` alone, which only *signals* it to start quitting) to
+  the unit's `After=`. Confirmed on real hardware this did **not** fix it — the
+  identical failure recurred, immediately, on the very next boot.
+- The real root cause, found by correlating `journalctl -b | grep -iE "new
+  session|removed session"` timestamps against `systemctl status`'s reported
+  start time: back when this ran on cage, the cursor-warp workaround (see the
+  "cursor is visible" entry above — no longer needed at all now that `sway`
+  replaced cage) was a separate `ExecStartPost=`, sharing this unit's single
+  `PAMName=login` session with `ExecStart`. That shared session was torn down
+  the instant `ExecStartPost`'s own short-lived process exited (its ~15s retry
+  loop finishing lined up almost exactly with the session's "Removed"
+  timestamp) — even though cage's own process was still running. Losing that
+  session mid-flight is what actually produced the "Atomic commit failed"
+  loop; Plymouth was never the culprit, the two issues just surfaced around
+  the same time.
+
+Fixed by never giving anything its own separate systemd-tracked process in
+this unit at all: `ExecStart` is a single `sh -c` that exports
+`XDG_RUNTIME_DIR` and then `exec`s straight into the compositor, so there is
+exactly one process (and one PAM session) for the entire unit's lifetime —
+nothing left to exit early and pull the session out from under it. The
+`plymouth-quit-wait.service` ordering is harmless and worth keeping (it's
+still the correct ordering in principle), it just wasn't what was actually
+broken here. Re-run `provision.sh` and reboot to pick it up.
 
 **Deleting a screen in the control app doesn't disconnect it / the Pi still shows
 "connected".** Fixed in the hub/Pi-player pairing logic — the hub now pushes an
@@ -184,7 +246,7 @@ SIGNAGE_CONFIG_PATH=./dev-config.json PORT=8088 npm run dev
 - **Hub**: Node + Express + `better-sqlite3` + `multer`, single Docker image also
   serving the control app's static build.
 - **Pi player**: Node + Express agent/poller, plain HTML/CSS/JS kiosk page (no
-  bundler), `cage` + Chromium for the actual kiosk display session.
+  bundler), `sway` + Chromium for the actual kiosk display session.
 
 ## Architecture
 

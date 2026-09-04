@@ -6,6 +6,14 @@ services:
       dockerfile: hub/Dockerfile
     container_name: signagemadeeasy-hub
     restart: unless-stopped
+    # Without this, Docker's default json-file driver keeps every line the hub has
+    # ever logged, forever — fine for weeks, not for a NAS meant to stay up for
+    # months. Caps it at 3 x 10MB (~30MB) per container.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # REQUIRED: the hub calls Pi IPs directly (pairing handshake, restart) and scans
     # its own /24 for unpaired displays. A default bridge network puts the container
     # on a different subnet than your physical LAN, so neither works — host
@@ -16,9 +24,19 @@ services:
     environment:
       - PORT=4000
       - SIGNAGE_DATA_DIR=/app/data
+      # The PIN the control app asks for before it'll show or change anything on this
+      # hub — see hub/README.md's "Login PIN" section. Defaults to Abc123 if unset;
+      # change it here.
+      - SIGNAGE_PIN=Abc123
       # Only needed on a multi-homed NAS (more than one NIC/subnet) — see
       # hub/README.md's "Multi-homed NAS" section. Uncomment and set to an address
       # every Pi can reach, regardless of which interface a pairing request arrives on.
       # - SIGNAGE_PUBLIC_HUB_URL=http://10.21.0.5:4000
+    # The hub image runs its server process as a non-root user (uid/gid 1000, not
+    # 0), but the container itself starts as root — docker-entrypoint.sh fixes
+    # ./data's ownership (a host bind mount, so Docker itself never touches it)
+    # before dropping to that non-root user, on every start. No manual chown
+    # needed, including the first time this directory is created or after
+    # upgrading from an older image version.
     volumes:
       - ./data:/app/data

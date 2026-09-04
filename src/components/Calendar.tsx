@@ -1,5 +1,5 @@
 import { Icon } from './icons/Icon';
-import type { Group } from '../api/types';
+import type { ScheduleEvent } from '../api/types';
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
@@ -12,7 +12,8 @@ function toISODate(d: Date): string {
 }
 
 interface CalendarProps {
-  group: Group;
+  /** A location's or a device's own events — whichever this calendar is scoped to. */
+  events: ScheduleEvent[];
   monthOffset: number;
   selectedDate: string;
   onSelectDate: (date: string) => void;
@@ -20,7 +21,7 @@ interface CalendarProps {
   onNextMonth: () => void;
 }
 
-export function Calendar({ group, monthOffset, selectedDate, onSelectDate, onPrevMonth, onNextMonth }: CalendarProps) {
+export function Calendar({ events, monthOffset, selectedDate, onSelectDate, onPrevMonth, onNextMonth }: CalendarProps) {
   const now = new Date();
   const viewed = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
   const year = viewed.getFullYear();
@@ -33,7 +34,7 @@ export function Calendar({ group, monthOffset, selectedDate, onSelectDate, onPre
   const cells: { day: number; dateStr: string; eventName: string }[] = [];
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${pad2(month + 1)}-${pad2(d)}`;
-    const ev = group.events.find((e) => dateStr >= e.start && dateStr <= e.end);
+    const ev = events.find((e) => dateStr >= e.start && dateStr <= e.end);
     cells.push({ day: d, dateStr, eventName: ev ? ev.name : '' });
   }
 

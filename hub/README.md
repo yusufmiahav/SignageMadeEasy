@@ -7,13 +7,41 @@ app (`../src`) talks to over the network. One container serves both the REST API
 ## Deploying on your NAS (Ugreen DXP4800 or similar)
 
 ```bash
-git clone <this repo>
+git clone https://github.com/yusufmiahav/SignageMadeEasy.git
 cd SignageMadeEasy
+git checkout claude/signage-made-easy-dev-r00fl6
 docker compose -f hub/docker-compose.yml up -d --build
 ```
 
+**That branch checkout matters**: this repo's `main` branch does not yet have
+everything described in this README (or in the code) — active work happens on
+`claude/signage-made-easy-dev-r00fl6` and gets merged to `main` only
+periodically. Deploying from `main` right now would silently miss fixes,
+including ones referenced elsewhere in this file.
+
 Then open `http://<nas-ip>:4000` from any phone or laptop on the same LAN — that's
 the control app, now talking to a real hub instead of `localStorage`.
+
+## Updating
+
+```bash
+cd SignageMadeEasy
+git pull
+docker compose -f hub/docker-compose.yml up -d --build
+```
+
+`git pull` updates whichever branch you're currently on — since the initial
+clone above already checked out `claude/signage-made-easy-dev-r00fl6`, this
+just needs to run from inside that same checkout. `--build` matters: without
+it, `up -d` will happily restart the container using whatever image was built
+last time, silently skipping the update. `hub/data` (your library, locations,
+paired screens) lives outside the git checkout entirely and is untouched by
+either command.
+
+If `git pull` ever refuses because of local changes it doesn't want to
+overwrite (rare — nothing in this repo expects to be hand-edited on the NAS),
+check `git status` before doing anything destructive; `git stash` is usually
+the safe way to get `pull` moving again without losing whatever changed.
 
 **Networking is not optional here**: the compose file runs the container with
 `network_mode: host` on purpose. The hub needs to reach Pi IPs directly (to finish
@@ -24,6 +52,43 @@ macvlan network bound to your LAN interface instead.
 
 Everything persists under `hub/data/` (bind-mounted): `signage.db` (SQLite) and
 `uploads/` (the media library). Back that directory up; that's the whole hub's state.
+
+## Running as a non-root user
+
+The hub's server process runs as a non-root user (uid/gid 1000) rather than root,
+for defense in depth. Nothing to do on your end — `docker-entrypoint.sh` starts
+as root, fixes `hub/data`'s ownership (a host bind mount, so Docker itself never
+touches it), and drops to the non-root user before starting the server, every
+time the container starts. This self-heals a `hub/data` left root-owned by an
+older version of this image too — just rebuild/pull and restart.
+
+If you're instead seeing `EACCES: permission denied, mkdir '/app/data/uploads'`
+right now, you're on an image from before this self-healing entrypoint existed —
+pull the latest hub image (or rebuild from the latest source) and restart; no
+manual `chown` should be needed after that. If you'd rather not rebuild
+immediately, running `sudo chown -R 1000:1000 hub/data` once before
+`docker compose ... up -d` unblocks the current image too.
+
+## Login PIN
+
+The control app asks for a PIN before showing or changing anything on this hub — a
+single shared PIN, not per-user accounts, since this is a small LAN control panel
+rather than a multi-tenant system. **Defaults to `Abc123`** if you don't set
+anything, so a fresh hub is usable immediately.
+
+**Change it** by setting `SIGNAGE_PIN` on the hub container (see `docker-compose.yml`,
+already there commented in with the default value) — edit that line and
+`docker compose -f hub/docker-compose.yml up -d --build` again to apply it. Anyone
+already logged in stays logged in until they log out; the new PIN only applies to
+the next login.
+
+This only gates the management API (library, groups, screens, network scan, backup)
+— it does **not** encrypt traffic. Over plain HTTP (the default LAN deployment,
+before you set up HTTPS) the PIN and session cookie both travel in the clear, so
+anyone on the same network with a packet sniffer could capture them; this is a lock
+on the front door, not a wall around the building. Put the hub behind HTTPS (a
+reverse proxy with a self-signed or real certificate) before relying on this PIN to
+keep out anyone more determined than a casual LAN user.
 
 **Multi-homed NAS (more than one network)**: when pairing a screen, the hub tells it
 which address to poll based on whatever host the *browser* used to reach the hub —
