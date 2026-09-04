@@ -10,7 +10,7 @@ export interface LibraryItem {
   duration?: string;
   /** Seconds this item stays on screen before advancing. Images, clocks, and NDI sources only; defaults to 8 when unset. */
   durationSec?: number;
-  /** NDI sources only — the NDI network name of the source to receive, e.g. "DESKTOP-ABC (Camera 1)". Resolved directly by a paired Pi 4/5's own NDI discovery at playback time; the hub never touches the actual video stream. */
+  /** NDI sources only — the NDI network name of the source to receive, e.g. "DESKTOP-ABC (Camera 1)". Resolved directly by a paired Pi 4/5 or x86 device's own NDI discovery at playback time; the hub never touches the actual video stream. */
   ndiSourceName?: string;
   /** Data URL thumbnail. Images only. */
   thumb?: string;

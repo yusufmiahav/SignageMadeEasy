@@ -119,11 +119,11 @@ devicesRouter.post('/:id/restart', async (req, res) => {
   }
 });
 
-// Pi 4/5 only — relays the paired Pi's own NDI discovery for AddNdiSourceDialog's
-// "Scan for sources" button (see pi-player/src/ndiPlayer.ts's findSources). 502 on
-// unreachable/not-a-Pi-4/5/discovery-helper-missing mirrors /restart above — there's
-// no way to distinguish those cases from here, so the dialog just falls back to
-// manual entry either way.
+// Pi 4/5 or x86 device only — relays the paired device's own NDI discovery for
+// AddNdiSourceDialog's "Scan for sources" button (see pi-player/src/ndiPlayer.ts's
+// findSources). 502 on unreachable/not-NDI-capable/discovery-helper-missing mirrors
+// /restart above — there's no way to distinguish those cases from here, so the dialog
+// just falls back to manual entry either way.
 devicesRouter.get('/:id/ndi-sources', async (req, res) => {
   const device = store.getDevice(req.params.id);
   if (!device) return res.status(404).json({ error: 'not found' });

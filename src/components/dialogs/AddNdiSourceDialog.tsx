@@ -36,8 +36,8 @@ export function AddNdiSourceDialog({ app, onClose }: AddNdiSourceDialogProps) {
     <DialogShell title="Add an NDI source" onClose={onClose}>
       <p className="dialog-body" style={{ margin: 0 }}>
         Displays a live NDI video feed (a camera, encoder, or another computer on the
-        network) full-screen. Only Pi 4/5 screens can receive it — the video streams
-        directly from the source to that screen, never through the hub.
+        network) full-screen. Only Pi 4/5 or x86 mini PC/stick screens can receive it —
+        the video streams directly from the source to that screen, never through the hub.
       </p>
       <div className="field">
         <label htmlFor="ndi-name">Label (optional)</label>
@@ -87,9 +87,9 @@ export function AddNdiSourceDialog({ app, onClose }: AddNdiSourceDialogProps) {
             </>
           ) : (
             <p className="dialog-body" style={{ margin: 0 }}>
-              No sources found — the screen may be unreachable, not a Pi 4/5, or have no
-              NDI sources currently broadcasting on the network. Enter the source name
-              manually below instead.
+              No sources found — the screen may be unreachable, not NDI-capable (a Pi 3B+
+              can't receive NDI), or have no NDI sources currently broadcasting on the
+              network. Enter the source name manually below instead.
             </p>
           )}
         </div>
