@@ -87,6 +87,14 @@ export async function scanNetworks(): Promise<string[]> {
 
 export async function applyCredentials(ssid: string, password: string): Promise<{ ok: boolean; error?: string }> {
   try {
+    // Confirmed on real hardware: `nmcli device wifi connect` fails outright with a
+    // spurious "802-11-wireless-security.key-mgmt: property is missing" error
+    // whenever a connection profile named after this SSID already exists — even a
+    // previously-working one (e.g. left behind by an earlier successful connect, or
+    // NetworkManager's own auto-reconnect), not just a genuinely malformed one.
+    // Deleting it first forces nmcli to build a fresh profile from scratch every
+    // time, which reliably works; harmless (and a no-op) on a first-ever connect.
+    await nmcli(['connection', 'delete', ssid]).catch(() => {});
     await nmcli(['device', 'wifi', 'connect', ssid, 'password', password]);
     hotspotActive = false;
     hotspotSsid = null;
