@@ -87,23 +87,17 @@ file, then reboot. You can check which target a unit is pulled in by with
 `systemctl status signage-kiosk.service`; `inactive (dead)` with zero log lines is
 the signature of this specific issue.
 
-**A mouse cursor is visible, parked in the bottom-right corner of the display.**
-This is expected and, on cage, as good as it gets — confirmed on real hardware
-across several attempts that cage cannot be made to render a truly invisible
-cursor: neither a transparent Xcursor theme (`XCURSOR_THEME`/`XCURSOR_SIZE`/
-`XCURSOR_PATH`) nor CSS `cursor: none` on the page changes what cage itself
-draws, since cage's cursor isn't something a client can hide — cage's own
-maintainers have said outright that hiding it isn't something they support.
-What *does* work: `signage-kiosk.service`'s `ExecStartPost` warps the cursor via
-a synthetic input device (`ydotoold`/`ydotool`) to the bottom-right corner at
-startup, off the main content — that's the corner cursor you're seeing, and
-it's intentional, not a bug. `provision.sh` installs `ydotool`/`ydotoold`
-best-effort (not every Raspberry Pi OS release has it in its default repo) — if
-it's missing, the warp is skipped and the cursor stays centered instead. A
-compositor with a real "hide the cursor" feature (e.g. `labwc`, instead of
-`cage`) could do better here, at the cost of a bigger, less-tested change —
-not pursued for this project since the corner cursor is a minor cosmetic
-issue, not a functional one.
+**A mouse cursor is visible on the display.** Shouldn't happen — see `pi-player/
+README.md`'s "Cursor" section for how this is meant to work. Historical note:
+this kiosk originally ran on `cage`, a minimal Wayland compositor confirmed on
+real hardware to have no way to actually hide its cursor at all (not a
+transparent Xcursor theme, not CSS `cursor: none`, not warping it via synthetic
+input — that last one only relocates a still-visible cursor to a corner, it
+doesn't hide it). Switched to `sway` specifically because it has a real,
+documented `hide_cursor` feature (`sway-kiosk.config`), which does actually work
+— if you're seeing a cursor at all, something's wrong with that config or the
+`signage-kiosk.service` unit, not an inherent platform limitation to work
+around.
 
 **The kiosk service shows "Failed to start" once or twice (sometimes more) right
 after boot, then recovers on its own** (`journalctl -u signage-kiosk.service -b`
@@ -151,7 +145,7 @@ This trades away UART-cable boot debugging, which isn't used on a deployed
 kiosk with HDMI + SSH available. Re-run `provision.sh` and reboot to pick it up.
 
 **Screen stays blank/frozen after boot even though `signage-kiosk.service` shows
-"active (running)"** with a real cage/Chromium process tree using real CPU —
+"active (running)"** with a real compositor/Chromium process tree using real CPU —
 `journalctl -u signage-kiosk.service -b` shows a tight, unending loop of
 `[backend/drm/atomic.c] connector HDMI-A-1: Atomic commit failed: Permission
 denied` (and often `[libseat] Could not close device: Unknown object
@@ -166,23 +160,25 @@ confirmed insufficient on real hardware before landing on the real one:
   identical failure recurred, immediately, on the very next boot.
 - The real root cause, found by correlating `journalctl -b | grep -iE "new
   session|removed session"` timestamps against `systemctl status`'s reported
-  start time: the cursor-warp used to be a separate `ExecStartPost=`, sharing
-  this unit's single `PAMName=login` session with `ExecStart`. That shared
-  session was torn down the instant `ExecStartPost`'s own short-lived process
-  exited (its ~15s retry loop finishing lined up almost exactly with the
-  session's "Removed" timestamp) — even though cage's own process was still
-  running. Losing that session mid-flight is what actually produced the
-  "Atomic commit failed" loop; Plymouth was never the culprit, the two issues
-  just surfaced around the same time.
+  start time: back when this ran on cage, the cursor-warp workaround (see the
+  "cursor is visible" entry above — no longer needed at all now that `sway`
+  replaced cage) was a separate `ExecStartPost=`, sharing this unit's single
+  `PAMName=login` session with `ExecStart`. That shared session was torn down
+  the instant `ExecStartPost`'s own short-lived process exited (its ~15s retry
+  loop finishing lined up almost exactly with the session's "Removed"
+  timestamp) — even though cage's own process was still running. Losing that
+  session mid-flight is what actually produced the "Atomic commit failed"
+  loop; Plymouth was never the culprit, the two issues just surfaced around
+  the same time.
 
-Fixed by never giving the cursor warp its own systemd-tracked process at all:
-it now runs as a background job launched from inside `ExecStart`'s own `sh -c`,
-before `exec` replaces the shell with cage, so there is exactly one process
-(and one PAM session) for the entire unit's lifetime — nothing left to exit
-early and pull the session out from under cage. The `plymouth-quit-wait.service`
-ordering is harmless and worth keeping (it's still the correct ordering in
-principle), it just wasn't what was actually broken here. Re-run `provision.sh`
-and reboot to pick it up.
+Fixed by never giving anything its own separate systemd-tracked process in
+this unit at all: `ExecStart` is a single `sh -c` that exports
+`XDG_RUNTIME_DIR` and then `exec`s straight into the compositor, so there is
+exactly one process (and one PAM session) for the entire unit's lifetime —
+nothing left to exit early and pull the session out from under it. The
+`plymouth-quit-wait.service` ordering is harmless and worth keeping (it's
+still the correct ordering in principle), it just wasn't what was actually
+broken here. Re-run `provision.sh` and reboot to pick it up.
 
 **Deleting a screen in the control app doesn't disconnect it / the Pi still shows
 "connected".** Fixed in the hub/Pi-player pairing logic — the hub now pushes an
@@ -250,7 +246,7 @@ SIGNAGE_CONFIG_PATH=./dev-config.json PORT=8088 npm run dev
 - **Hub**: Node + Express + `better-sqlite3` + `multer`, single Docker image also
   serving the control app's static build.
 - **Pi player**: Node + Express agent/poller, plain HTML/CSS/JS kiosk page (no
-  bundler), `cage` + Chromium for the actual kiosk display session.
+  bundler), `sway` + Chromium for the actual kiosk display session.
 
 ## Architecture
 

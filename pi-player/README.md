@@ -46,10 +46,11 @@ Same command on both platforms — the script detects Raspberry Pi hardware and
 branches the handful of steps that differ (how the boot-splash kernel command
 line is set, and a couple of Pi-only hardware tweaks with no x86 equivalent).
 
-It installs Node.js, `cage` (a minimal single-app Wayland kiosk compositor —
-lighter than a full X11 desktop for exactly this one-app-fullscreen use case) and
-Chromium, builds and deploys the player app to `/opt/signage/app`, sets up two
-systemd services (`signage-player`, `signage-kiosk`), configures auto-login on
+It installs Node.js, `sway` (a wlroots-based Wayland compositor, run here in a
+minimal single-app kiosk configuration — see `sway-kiosk.config` — lighter than a
+full desktop for exactly this one-app-fullscreen use case) and Chromium, builds and
+deploys the player app to `/opt/signage/app`, sets up two systemd services
+(`signage-player`, `signage-kiosk`), configures auto-login on
 `tty1`, and disables console screen blanking. Re-run it after a `git pull` to
 redeploy player updates — it's idempotent. On an x86 stick, Chromium's own
 hardware video decode (VAAPI) is used instead of the Pi's software-decode
@@ -72,8 +73,9 @@ IP — any of those has the hub reach the Pi directly to finish pairing.
   rotation — smoother video in particular, since it's no longer subject to WiFi
   jitter mid-playback. Downloads happen in the background after each poll; playback
   falls back to the hub's own URL for anything not cached yet, so it never blocks.
-- **`signage-kiosk.service`** — `cage` launching Chromium in kiosk mode pointed at
-  `http://localhost:8088`.
+- **`signage-kiosk.service`** — `sway` (configured via `sway-kiosk.config` for a
+  single fullscreen app with no cursor, no bar, no window chrome) launching
+  Chromium in kiosk mode pointed at `http://localhost:8088`.
 - **The player page** (`public/`) — hard-cuts between playlist items (no crossfade):
   images for their configured duration (8s by default, editable per-image from the
   control app's Schedule screen), video to its natural end, PDF pages 8s each
@@ -92,6 +94,20 @@ IP — any of those has the hub reach the Pi directly to finish pairing.
   SSH or laptop needed. The kiosk screen itself shows the network name, password,
   and the address to visit — nothing to look up in documentation. See
   "Configuring Wi-Fi in the field" below.
+
+## Cursor
+
+The kiosk display shows no visible mouse cursor. This used to run on `cage`, a
+minimal Wayland compositor with no cursor-management API at all — cage's own
+maintainers confirmed hiding it isn't something they support, and every
+workaround tried (a transparent Xcursor theme, warping the cursor off-screen
+with synthetic input) either had no effect or only relocated a still-visible
+cursor to a screen corner, confirmed on real Pi and x86 hardware. Switching to
+`sway` (still a minimal wlroots-based compositor, just one with an actual
+cursor API) fixed it properly: `sway-kiosk.config`'s `seat seat0 hide_cursor
+100` genuinely hides the cursor after 100ms of inactivity — trivially true on a
+kiosk with no real mouse ever attached, so it's hidden almost immediately after
+boot and stays that way.
 
 ## Configuring Wi-Fi in the field (no SSH needed)
 
@@ -311,5 +327,5 @@ SIGNAGE_CONFIG_PATH=./dev-config.json PORT=8088 npm run dev
 ```
 
 Open `http://localhost:8088` in a browser — behaves exactly like the kiosk view
-(minus `cage`/Chromium's actual fullscreen kiosk chrome). Point it at a hub running
+(minus `sway`/Chromium's actual fullscreen kiosk chrome). Point it at a hub running
 locally by `POST`ing to `/configure` with a real `deviceId` from that hub.
