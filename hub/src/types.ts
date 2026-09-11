@@ -102,6 +102,17 @@ export interface Device {
    * display where the cap buys nothing.
    */
   videoQuality: 'auto' | 'full';
+  /**
+   * 'landscape' (default): no change. 'portrait': the physical screen is mounted
+   * sideways (a standard landscape panel on a portrait mount, or a portrait panel
+   * with no on-board rotation of its own — confirmed on real hardware to need
+   * this, not just a theoretical case) — the Pi rotates its sway output 90°
+   * clockwise to compensate (see pi-player/src/displayOrientation.ts), which
+   * covers the pairing/QR screen and all content since they're the same Wayland
+   * client. Does NOT rotate the Plymouth boot splash (drawn by the kernel before
+   * sway starts) — a known, deliberate gap, see pi-player/README.md.
+   */
+  orientation: 'landscape' | 'portrait';
   /** ms since epoch of the last heartbeat received. Not exposed to the control app. */
   lastSeenAt?: number;
   /** Reported by the Pi's own poller alongside every heartbeat (pi-player/src/diagnostics.ts) — undefined for a device that's never sent one yet. */
@@ -146,4 +157,6 @@ export interface PlayerState {
    * false means a disconnected screen goes blank instead. See pi-player/src/poller.ts.
    */
   safetyHold: boolean;
+  /** Echoed on every poll, same reasoning as safetyHold — see Device.orientation. */
+  orientation: 'landscape' | 'portrait';
 }

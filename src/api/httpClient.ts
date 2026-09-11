@@ -113,6 +113,7 @@ export const httpClient: SignageApiClient = {
   setDeviceAnnouncement: (id, announcementId) => request<void>(`/api/devices/${id}/announcement`, { method: 'PUT', ...json({ announcementId }) }),
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
   setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),
+  setDeviceOrientation: (id, orientation) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ orientation }) }),
   setDeviceForcedContent: (id, libId) => request<void>(`/api/devices/${id}/forced`, { method: 'PUT', ...json({ libId }) }),
   setDeviceBlackout: (id, blackout) => request<void>(`/api/devices/${id}/blackout`, { method: 'PUT', ...json({ blackout }) }),
   setDeviceDefaultPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/playlist`, { method: 'PUT', ...json({ libIds }) }),

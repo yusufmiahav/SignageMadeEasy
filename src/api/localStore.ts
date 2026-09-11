@@ -340,6 +340,7 @@ class LocalStoreClient implements SignageApiClient {
       blackout: false,
       defaultPlaylist: [],
       events: [],
+      orientation: 'landscape',
     };
     this.data.devices.push(device);
     this.persist();
@@ -458,6 +459,12 @@ class LocalStoreClient implements SignageApiClient {
   async setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device) device.videoQuality = videoQuality;
+    this.persist();
+  }
+
+  async setDeviceOrientation(id: string, orientation: 'landscape' | 'portrait'): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === id);
+    if (device) device.orientation = orientation;
     this.persist();
   }
 

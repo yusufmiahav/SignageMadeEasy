@@ -112,6 +112,39 @@ cursor API) fixed it properly: `sway-kiosk.config`'s `seat seat0 hide_cursor
 kiosk with no real mouse ever attached, so it's hidden almost immediately after
 boot and stays that way.
 
+## Screen orientation (portrait-mounted panels)
+
+Per-screen setting (control app → Home/Settings → that screen's card → the
+orientation dropdown next to the video-quality one). **Landscape** (default): no
+change. **Portrait**: rotates sway's output 90° clockwise via `swaymsg output '*'
+transform 90` (`src/displayOrientation.ts`), applied live on the next poll — no
+reboot, no restart needed. Confirmed necessary on real hardware for a portrait
+digital-signage panel with no rotation logic of its own: it's a standard landscape
+LCD controller mounted sideways, so it just displays whatever landscape signal the
+Pi sends as-is, appearing rotated unless the source itself pre-rotates the image.
+Since sway's `transform` rotates the whole compositor output, Chromium (a Wayland
+client) automatically sees the resulting swapped logical resolution and adapts on
+its own — nothing in `player.js`/`player.css` needs to know or care, and this
+covers the pairing/QR screen and every content type, since they're all the same
+Wayland client.
+
+**Known gap, not yet fixed**: this does not rotate the Plymouth boot splash (see
+"Boot splash" below) — that's drawn directly by the kernel before sway even
+starts, and needs a separate kernel/DRM-level rotation setting that's genuinely
+easy to get wrong blind (a bad value can leave a Pi with no display output until
+someone's physically at it to fix `/boot/firmware/config.txt`). Deliberately left
+as a real-hardware follow-up rather than guessing at it here — for now, a
+portrait-mounted screen briefly shows a *sideways* boot splash for the few
+seconds before the kiosk starts, then displays correctly for everything after
+that.
+
+**UNVERIFIED on real hardware as of writing** — no portrait-mounted panel was
+available to confirm this against directly (see `displayOrientation.ts`'s own
+comment). The mechanism (`sway output transform`) is standard/documented
+behavior, but the exact `swaymsg` invocation and the socket-discovery approach
+(finding sway's IPC socket file, since the player agent isn't a child process of
+sway and has no `SWAYSOCK` env var to inherit) need a real confirm-or-fix pass.
+
 ## Configuring Wi-Fi in the field (no SSH needed)
 
 If a Pi loses its Wi-Fi connection for about a minute, its screen switches to

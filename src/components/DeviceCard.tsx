@@ -33,6 +33,7 @@ interface DeviceCardProps {
   onPickAnnouncement: (device: Device) => void;
   onToggleAnnouncement: (id: string) => void;
   onSetVideoQuality: (id: string, videoQuality: 'auto' | 'full') => void;
+  onSetOrientation: (id: string, orientation: 'landscape' | 'portrait') => void;
   onPreview: (item: LibraryItem) => void;
   /** Off by default (see Settings → Device cards) — shows just IP + online/offline until turned on. */
   advancedInfo: boolean;
@@ -63,6 +64,7 @@ export function DeviceCard({
   onPickAnnouncement,
   onToggleAnnouncement,
   onSetVideoQuality,
+  onSetOrientation,
   onPreview,
   advancedInfo,
   hideAnnouncementRow,
@@ -212,6 +214,19 @@ export function DeviceCard({
         >
           <option value="auto">Optimized video (recommended)</option>
           <option value="full">Full-resolution video</option>
+        </select>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Icon name="monitor" size={12} style={{ opacity: 0.6, flexShrink: 0 }} />
+        <select
+          className="input"
+          style={{ flex: 1, fontSize: 11, padding: '3px 6px' }}
+          value={device.orientation}
+          onChange={(e) => onSetOrientation(device.id, e.target.value as 'landscape' | 'portrait')}
+          title="Rotate this screen's output 90° clockwise for a sideways-mounted panel"
+        >
+          <option value="landscape">Landscape</option>
+          <option value="portrait">Portrait (rotate 90°)</option>
         </select>
       </div>
       {!hideAnnouncementRow && (

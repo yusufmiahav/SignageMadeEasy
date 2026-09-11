@@ -99,6 +99,12 @@ documented `hide_cursor` feature (`sway-kiosk.config`), which does actually work
 `signage-kiosk.service` unit, not an inherent platform limitation to work
 around.
 
+**A screen is mounted sideways (portrait) and content displays rotated.** Set
+that screen's orientation to "Portrait" from its card on Home/Settings — rotates
+the display output live, no reboot needed. See `pi-player/README.md`'s "Screen
+orientation" section for how this works and a known gap (the few-second boot
+splash isn't rotated by this).
+
 **The kiosk service shows "Failed to start" once or twice (sometimes more) right
 after boot, then recovers on its own** (`journalctl -u signage-kiosk.service -b`
 shows `XDG_RUNTIME_DIR is not set in the environment`). A startup race:
