@@ -180,6 +180,18 @@ class LocalStoreClient implements SignageApiClient {
     return item;
   }
 
+  async setTflModes(id: string, tflModes: string[]): Promise<void> {
+    const item = this.data.library.find((i) => i.id === id && i.type === 'tfl-status');
+    if (item) item.tflModes = tflModes;
+    this.persist();
+  }
+
+  async setTflArrivalLines(id: string, tflArrivalLines: string[]): Promise<void> {
+    const item = this.data.library.find((i) => i.id === id && i.type === 'tfl-arrivals');
+    if (item) item.tflArrivalLines = tflArrivalLines.length > 0 ? tflArrivalLines : undefined;
+    this.persist();
+  }
+
   async setLibraryItemTags(id: string, tags: string[]): Promise<void> {
     const item = this.data.library.find((i) => i.id === id);
     if (item) item.tags = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];

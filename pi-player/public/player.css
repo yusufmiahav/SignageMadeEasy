@@ -25,6 +25,25 @@ body { font-family: system-ui, sans-serif; color: #fff; }
    Regular sans-serif digits are tabular-width by default in virtually every UI font,
    so the colon/digits don't jitter as the time ticks even without forcing monospace. */
 #stage .clock { font-family: system-ui, sans-serif; font-size: min(24vw, 34vh); font-weight: 700; letter-spacing: 0.03em; color: #fff; }
+/* This formula assumes width is the long axis (true in landscape, where 34vh —
+   34% of the short dimension — is what actually governs; 24vw is a non-binding
+   ceiling). On a portrait-rotated screen the axes swap: vw becomes the short
+   (narrow) dimension, so 24vw governs instead and is far too large a fraction of
+   it — confirmed on a real portrait panel to clip the clock text off both edges,
+   not just render it small. 20vw is sized to actually fit an 8-character
+   "HH:MM:SS" string within a typical portrait width with comfortable margin;
+   45vh is a non-binding ceiling, mirroring 24vw's role in the landscape rule
+   above. (orientation: portrait) reflects Chromium's actual post-rotation
+   viewport — see displayOrientation.ts — so this needs no JS, just this rule. */
+@media (orientation: portrait) {
+  /* 20vw (a first attempt at this value) still overflowed both edges on a real
+     rendering check — this bold system-ui font's actual digit advance width
+     (plus the 0.03em letter-spacing above) runs noticeably wider than a rough
+     per-character estimate predicted. 16vw was verified via a real headless
+     rendering pass (getBoundingClientRect) to comfortably fit an 8-character
+     "HH:MM:SS" string with margin to spare on a 1080px-wide portrait output. */
+  #stage .clock { font-size: min(16vw, 40vh); }
+}
 
 /* TfL live status board — white background + per-line brand-color badges,
    matching TfL's own app/site look (not the dark theme every other content type
@@ -32,22 +51,37 @@ body { font-family: system-ui, sans-serif; color: #fff; }
    real-hardware feedback: a white card floating on #stage's own black background
    left visible black bars around the edges — the ask was for the whole screen to
    go white while this is showing, not just a card on top of the usual black stage.
-   column-count is set inline by player.js's renderTflBoard/renderTflArrivalsBoard,
-   not here — it depends on how many lines/platforms are actually shown, so a fixed
-   CSS value can't get it right for both a 3-line and a 25-line board. */
+   display:flex + centering: CSS multi-column content (.tfl-rows below) always
+   flows from the top of its own box and stops when it runs out — it never
+   stretches to fill unused space — confirmed on a real portrait render to leave
+   a large blank gap under a short line list even after column-count itself was
+   fixed to account for the taller screen (see computeTflColumnCount in
+   player.js). Centering the single child (.tfl-rows, or .tfl-content when an
+   arrivals header is present) means leftover height splits evenly above/below
+   instead of dumping it all at the bottom. */
 #stage .tfl-board {
-  width: 100vw; height: 100vh; overflow: hidden; /* overflow: hidden is the last-resort backstop — column-count above is what actually prevents this in practice */
+  width: 100vw; height: 100vh; overflow: hidden; /* overflow: hidden is the last-resort backstop — column-count is what actually prevents this in practice */
   background: #fff; color: #111;
   padding: 28px 32px; font-family: system-ui, sans-serif;
-  column-gap: 28px;
+  display: flex; align-items: center; justify-content: center;
 }
-/* 'tfl-arrivals' boards only — names the station this board's countdowns are for,
-   since every row already shows a train's *destination*, not the station the
-   board itself is sitting at; confirmed on a real render that this was genuinely
-   ambiguous without a header. Spans every column via column-span so it always
-   reads as one title across the whole board, not repeated per column. */
+/* The actual multi-column rows block — column-count is set inline by player.js's
+   renderTflBoard/renderTflArrivalsBoard, not here — it depends on how many
+   lines/platforms are actually shown, so a fixed CSS value can't get it right for
+   both a 3-line and a 25-line board. A separate element from .tfl-board itself
+   (which is now the flex-centering container, not the multi-column one — see
+   comment above) so centering and column-flow don't have to be the same box. */
+#stage .tfl-rows { width: 100%; column-gap: 28px; }
+/* 'tfl-arrivals' boards only — wraps the station-name header together with its
+   .tfl-rows so .tfl-board's centering treats them as one labeled unit, rather
+   than a header pinned at the very top with an awkward gap before centered rows
+   below it (see .tfl-board's own comment on why centering exists at all). */
+#stage .tfl-content { display: flex; flex-direction: column; width: 100%; }
+/* Names the station this board's countdowns are for, since every row already
+   shows a train's *destination*, not the station the board itself is sitting at;
+   confirmed on a real render that this was genuinely ambiguous without a header. */
 #stage .tfl-arrivals-header {
-  column-span: all; font-size: min(2.6vw, 32px); font-weight: 800;
+  font-size: min(2.6vw, 32px); font-weight: 800;
   padding-bottom: 16px; margin-bottom: 8px; border-bottom: 2px solid #111;
 }
 #stage .tfl-row {

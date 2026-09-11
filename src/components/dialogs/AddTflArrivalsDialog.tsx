@@ -1,21 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DialogShell } from './DialogShell';
 import type { AppState } from '../../hooks/useAppState';
-import type { TflStationResult } from '../../api/types';
+import type { LibraryItem, TflStationResult } from '../../api/types';
 
 interface AddTflArrivalsDialogProps {
   app: AppState;
   onClose: () => void;
+  /** When set, reconfigures this existing item's line filter instead of adding a new one — the station itself isn't editable here (only "which lines"), since changing station is really a different item. */
+  editItem?: LibraryItem;
 }
 
-export function AddTflArrivalsDialog({ app, onClose }: AddTflArrivalsDialogProps) {
-  const { addTflArrivals, searchTflStations } = app;
-  const [name, setName] = useState('');
+export function AddTflArrivalsDialog({ app, onClose, editItem }: AddTflArrivalsDialogProps) {
+  const { addTflArrivals, setTflArrivalLines, searchTflStations } = app;
+  const [name, setName] = useState(editItem?.name ?? '');
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<TflStationResult[] | null>(null);
   const [station, setStation] = useState<TflStationResult | null>(null);
   const [lines, setLines] = useState<Set<string>>(new Set());
+  // Edit mode only — the item itself only ever stored the *selected* line ids, not
+  // the full set of lines this station actually has (see hub/src/tflArrivals.ts's
+  // header comment on why a station's complete line list is never persisted on the
+  // item), so re-showing every option requires re-searching for it by name here.
+  const [lookupFailed, setLookupFailed] = useState(false);
 
   const search = async () => {
     if (!query.trim()) return;
@@ -33,6 +40,29 @@ export function AddTflArrivalsDialog({ app, onClose }: AddTflArrivalsDialogProps
     setLines(new Set(s.lines.map((l) => l.id))); // every line at this station selected by default
   };
 
+  useEffect(() => {
+    if (!editItem || editItem.type !== 'tfl-arrivals' || !editItem.tflStopPointName) return;
+    let cancelled = false;
+    setSearching(true);
+    setLookupFailed(false);
+    void searchTflStations(editItem.tflStopPointName).then((found) => {
+      if (cancelled) return;
+      const match = found.find((r) => r.id === editItem.tflStopPointId);
+      if (match) {
+        setStation(match);
+        // Empty/undefined tflArrivalLines means "every line" at add-time — reflect
+        // that same effective state here rather than showing nothing checked.
+        setLines(new Set(editItem.tflArrivalLines && editItem.tflArrivalLines.length > 0 ? editItem.tflArrivalLines : match.lines.map((l) => l.id)));
+      } else {
+        setLookupFailed(true);
+      }
+    }).finally(() => {
+      if (!cancelled) setSearching(false);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editItem]);
+
   const toggleLine = (id: string) => {
     setLines((prev) => {
       const next = new Set(prev);
@@ -44,9 +74,45 @@ export function AddTflArrivalsDialog({ app, onClose }: AddTflArrivalsDialogProps
 
   const confirm = async () => {
     if (!station) return;
-    await addTflArrivals(name, station.id, station.name, [...lines]);
+    if (editItem) await setTflArrivalLines(editItem.id, [...lines]);
+    else await addTflArrivals(name, station.id, station.name, [...lines]);
     onClose();
   };
+
+  if (editItem) {
+    return (
+      <DialogShell title="Edit TfL station arrivals" onClose={onClose}>
+        <p className="dialog-body" style={{ margin: 0 }}>
+          Change which lines show on this board — the station itself ({editItem.tflStopPointName}) can't be
+          changed here; add a new TfL arrivals item instead if you need a different station.
+        </p>
+        {searching && <p className="dialog-body text-muted" style={{ margin: 0 }}>Looking up this station's lines…</p>}
+        {!searching && lookupFailed && (
+          <p className="dialog-body" style={{ margin: 0, color: 'var(--color-danger, #c0392b)' }}>
+            Couldn't look up this station's available lines right now — the hub may be
+            unable to reach TfL. Close this and try again shortly.
+          </p>
+        )}
+        {!searching && station && station.lines.length > 0 && (
+          <div className="field">
+            <label>Show arrivals for</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {station.lines.map((l) => (
+                <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={lines.has(l.id)} onChange={() => toggleLine(l.id)} />
+                  <span style={{ flex: 1, fontSize: 13 }}>{l.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" disabled={!station || lines.size === 0} onClick={() => void confirm()}>Save</button>
+        </div>
+      </DialogShell>
+    );
+  }
 
   return (
     <DialogShell title="Add TfL station arrivals" onClose={onClose}>

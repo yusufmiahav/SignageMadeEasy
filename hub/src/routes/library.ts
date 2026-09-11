@@ -170,7 +170,7 @@ libraryRouter.post('/tfl-arrivals', (req, res) => {
 });
 
 libraryRouter.patch('/:id', (req, res) => {
-  const { durationSec, name, tags } = req.body ?? {};
+  const { durationSec, name, tags, tflModes, tflArrivalLines } = req.body ?? {};
   if (durationSec !== undefined) {
     if (typeof durationSec !== 'number' || !Number.isFinite(durationSec) || durationSec < 1) {
       return res.status(400).json({ error: 'durationSec must be a positive number' });
@@ -186,6 +186,25 @@ libraryRouter.patch('/:id', (req, res) => {
       return res.status(400).json({ error: 'tags must be an array of strings' });
     }
     store.setLibraryItemTags(req.params.id, tags);
+  }
+  // Reconfigures an existing 'tfl-status' item's modes — see AddTflStatusDialog.tsx's
+  // edit mode. A no-op (WHERE ... AND type = 'tfl-status' in store.ts) if this id
+  // isn't actually a tfl-status item, same defensive posture as the durationSec
+  // type-IN clause above.
+  if (tflModes !== undefined) {
+    if (!Array.isArray(tflModes) || tflModes.length === 0 || !tflModes.every((m) => VALID_TFL_MODES.includes(m))) {
+      return res.status(400).json({ error: `tflModes must be a non-empty array from: ${VALID_TFL_MODES.join(', ')}` });
+    }
+    store.setLibraryItemTflModes(req.params.id, tflModes);
+  }
+  // Same reasoning, for an existing 'tfl-arrivals' item's line filter — see
+  // AddTflArrivalsDialog.tsx's edit mode. Empty array means "every line at this
+  // station," same as at creation time (routes/library.ts's POST /tfl-arrivals).
+  if (tflArrivalLines !== undefined) {
+    if (!Array.isArray(tflArrivalLines) || !tflArrivalLines.every((l) => typeof l === 'string')) {
+      return res.status(400).json({ error: 'tflArrivalLines must be an array of strings' });
+    }
+    store.setLibraryItemTflArrivalLines(req.params.id, tflArrivalLines);
   }
   res.status(204).end();
 });

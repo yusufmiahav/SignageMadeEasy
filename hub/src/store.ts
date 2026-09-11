@@ -135,6 +135,16 @@ export function setLibraryItemTags(id: string, tags: string[]): void {
   db.prepare('UPDATE library SET tags = ? WHERE id = ?').run(JSON.stringify(clean), id);
 }
 
+/** Reconfigures an existing 'tfl-status' item's modes — see AddTflStatusDialog.tsx, now reused in an edit mode rather than only at creation time. */
+export function setLibraryItemTflModes(id: string, tflModes: string[]): void {
+  db.prepare("UPDATE library SET tflModes = ? WHERE id = ? AND type = 'tfl-status'").run(JSON.stringify(tflModes), id);
+}
+
+/** Reconfigures an existing 'tfl-arrivals' item's line filter — see AddTflArrivalsDialog.tsx's edit mode. Empty array means "every line at this station," same as at creation time. */
+export function setLibraryItemTflArrivalLines(id: string, tflArrivalLines: string[]): void {
+  db.prepare("UPDATE library SET tflArrivalLines = ? WHERE id = ? AND type = 'tfl-arrivals'").run(JSON.stringify(tflArrivalLines), id);
+}
+
 // ---- Groups ----
 
 interface GroupRow { id: string; name: string; defaultPlaylist: string; forcedContentId: string | null; forcedAnnouncementId: string | null; blackout: number }

@@ -242,6 +242,27 @@ function tflIsDisrupted(description) {
   return description !== 'Good Service';
 }
 
+// Shared by renderTflBoard and renderTflArrivalsBoard's column-count calculation.
+// A fixed "6 rows per column" constant (this project's original approach) was
+// tuned by eye against a landscape screen and turned out to badly under-fill a
+// portrait one — a portrait screen is typically much taller, so capping every
+// column at 6 rows regardless left most of the (much larger) available height
+// blank below a short block of content. TFL_ROW_HEIGHT_PX is a real measured
+// value (getBoundingClientRect on an actual rendered .tfl-row — 78px unwrapped,
+// a little more for a row whose line name wraps to 2 lines), not a guess — a
+// first attempt using a much larger guessed value technically fixed portrait but
+// still left most of the height unused, for the same reason the original "6" did.
+// TFL_BOARD_VERTICAL_PADDING_PX matches .tfl-board's own 28px top+bottom padding.
+// Deriving rows-per-column from the screen's *actual* height (not a per-
+// orientation special case) means this scales correctly for any resolution.
+const TFL_ROW_HEIGHT_PX = 85;
+const TFL_BOARD_VERTICAL_PADDING_PX = 56;
+function computeTflColumnCount(itemCount) {
+  const availableHeight = window.innerHeight - TFL_BOARD_VERTICAL_PADDING_PX;
+  const rowsPerColumn = Math.max(4, Math.floor(availableHeight / TFL_ROW_HEIGHT_PX));
+  return Math.max(1, Math.ceil(itemCount / rowsPerColumn));
+}
+
 function renderTflBoard(item) {
   const board = document.createElement('div');
   board.className = 'tfl-board';
@@ -250,6 +271,17 @@ function renderTflBoard(item) {
     board.innerHTML = '<div class="tfl-empty">No TfL status available right now</div>';
     return board;
   }
+  // A separate inner element for the actual rows (column-count applies here, not
+  // on .tfl-board itself) — see .tfl-board/.tfl-rows in player.css for why: CSS
+  // multi-column content always flows from the top of its own box and simply
+  // stops when it runs out, it never stretches to fill unused space below —
+  // confirmed on a real render to leave a large blank gap under a short line
+  // list on a tall portrait screen even after fixing the column-count math above.
+  // Making .tfl-board a flex container that vertically centers this inner block
+  // means leftover space splits evenly above/below instead of dumping it all at
+  // the bottom.
+  const rows = document.createElement('div');
+  rows.className = 'tfl-rows';
   for (const line of lines) {
     const row = document.createElement('div');
     row.className = 'tfl-row';
@@ -276,7 +308,7 @@ function renderTflBoard(item) {
     }
     row.appendChild(badge);
     row.appendChild(statusCol);
-    board.appendChild(row);
+    rows.appendChild(row);
   }
   // Multi-column so a full line roster (e.g. every Tube + Overground + DLR +
   // Elizabeth line mode selected at once, ~25 lines) fits the screen instead of
@@ -284,7 +316,8 @@ function renderTflBoard(item) {
   // requirement, not a nice-to-have. CSS multicol (not a JS-computed grid) lets
   // each column's rows flow and wrap naturally even though disrupted rows are
   // taller than "Good Service" ones (see .tfl-row's break-inside in player.css).
-  board.style.columnCount = String(Math.max(1, Math.ceil(lines.length / 6)));
+  rows.style.columnCount = String(computeTflColumnCount(lines.length));
+  board.appendChild(rows);
   return board;
 }
 
@@ -302,6 +335,13 @@ function formatArrivalMinutes(sec) {
 function renderTflArrivalsBoard(item) {
   const board = document.createElement('div');
   board.className = 'tfl-board';
+  // Header + rows are grouped into one .tfl-content block (see .tfl-board's own
+  // comment in renderTflBoard above) so board.js's vertical centering treats the
+  // station name and its arrivals as one cohesive unit — a short arrivals list
+  // centers the whole labeled group in the middle of the screen, rather than
+  // pinning the header to the very top with an awkward gap before centered rows.
+  const content = document.createElement('div');
+  content.className = 'tfl-content';
   // Names the station this board is for — every row already shows a train's
   // *destination* (e.g. "Ealing Broadway"), not the station the board itself is
   // showing arrivals at, which was genuinely ambiguous on a real render with no
@@ -310,16 +350,19 @@ function renderTflArrivalsBoard(item) {
     const header = document.createElement('div');
     header.className = 'tfl-arrivals-header';
     header.textContent = item.tflStopPointName;
-    board.appendChild(header);
+    content.appendChild(header);
   }
   const boards = item.tflArrivalBoards ?? [];
   if (boards.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'tfl-empty';
     empty.textContent = 'No arrivals available right now';
-    board.appendChild(empty);
+    content.appendChild(empty);
+    board.appendChild(content);
     return board;
   }
+  const rows = document.createElement('div');
+  rows.className = 'tfl-rows';
   for (const b of boards) {
     const row = document.createElement('div');
     row.className = 'tfl-row';
@@ -344,10 +387,12 @@ function renderTflArrivalsBoard(item) {
     infoCol.appendChild(countdown);
     row.appendChild(badge);
     row.appendChild(infoCol);
-    board.appendChild(row);
+    rows.appendChild(row);
   }
   // Same multi-column no-scroll reasoning as renderTflBoard above.
-  board.style.columnCount = String(Math.max(1, Math.ceil(boards.length / 6)));
+  rows.style.columnCount = String(computeTflColumnCount(boards.length));
+  content.appendChild(rows);
+  board.appendChild(content);
   return board;
 }
 

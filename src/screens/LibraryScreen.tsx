@@ -10,6 +10,7 @@ interface LibraryScreenProps {
   onOpenNdiDialog: () => void;
   onOpenTflDialog: () => void;
   onOpenTflArrivalsDialog: () => void;
+  onConfigureTflItem: (item: LibraryItem) => void;
 }
 
 interface InFlightUpload {
@@ -18,7 +19,7 @@ interface InFlightUpload {
   pct: number;
 }
 
-export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOpenTflDialog, onOpenTflArrivalsDialog }: LibraryScreenProps) {
+export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOpenTflDialog, onOpenTflArrivalsDialog, onConfigureTflItem }: LibraryScreenProps) {
   const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, removeLibraryItems, renameLibraryItem, setLibraryItemTags, reorderLibrary, showToast } = app;
   const dropzoneInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -320,6 +321,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
               onRemove={removeLibraryItem}
               onRename={renameLibraryItem}
               onSetTags={setLibraryItemTags}
+              onConfigure={onConfigureTflItem}
               isDragging={draggedIdRef.current === item.id}
               selectMode={selectMode}
               selected={selectedIds.has(item.id)}

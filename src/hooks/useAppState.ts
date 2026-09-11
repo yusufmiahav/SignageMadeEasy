@@ -146,6 +146,18 @@ export function useAppState() {
     return item;
   }, [refreshLibrary, showToast]);
 
+  const setTflModes = useCallback(async (id: string, tflModes: string[]) => {
+    await api.setTflModes(id, tflModes);
+    await refreshLibrary();
+    showToast('TfL status board updated');
+  }, [refreshLibrary, showToast]);
+
+  const setTflArrivalLines = useCallback(async (id: string, tflArrivalLines: string[]) => {
+    await api.setTflArrivalLines(id, tflArrivalLines);
+    await refreshLibrary();
+    showToast('TfL arrivals board updated');
+  }, [refreshLibrary, showToast]);
+
   const setItemDuration = useCallback(async (id: string, durationSec: number) => {
     await api.setItemDuration(id, durationSec);
     await refreshLibrary();
@@ -447,6 +459,8 @@ export function useAppState() {
     addTflStatus,
     searchTflStations,
     addTflArrivals,
+    setTflModes,
+    setTflArrivalLines,
     setItemDuration,
     renameLibraryItem,
     reorderLibrary,

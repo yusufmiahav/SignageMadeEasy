@@ -33,6 +33,10 @@ export interface SignageApiClient {
   searchTflStations(query: string): Promise<TflStationResult[]>;
   /** No file either — a live per-station departure board (e.g. "District · Westbound · 3 min, then 5, 8"), distinct from addTflStatus's line-status board. `tflStopPointId`/`tflStopPointName` come from a searchTflStations result; `tflArrivalLines` (line ids) filters to just those lines, or shows every line reported at the station when empty. */
   addTflArrivals(name: string, tflStopPointId: string, tflStopPointName: string, tflArrivalLines: string[]): Promise<LibraryItem>;
+  /** Reconfigures an existing 'tfl-status' item's modes — e.g. adding/removing DLR — without deleting and re-adding it. */
+  setTflModes(id: string, tflModes: string[]): Promise<void>;
+  /** Reconfigures an existing 'tfl-arrivals' item's line filter — same station, different lines shown. Empty array shows every line at the station, same as at creation time. */
+  setTflArrivalLines(id: string, tflArrivalLines: string[]): Promise<void>;
   removeLibraryItem(id: string): Promise<void>;
   renameLibraryItem(id: string, name: string): Promise<void>;
   /** Persists a drag-and-drop reorder from the Library screen — the complete new display order. */

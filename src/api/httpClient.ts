@@ -74,6 +74,8 @@ export const httpClient: SignageApiClient = {
   searchTflStations: (query) => request<TflStationResult[]>(`/api/tfl/stations/search?q=${encodeURIComponent(query)}`).catch(() => []),
   addTflArrivals: (name, tflStopPointId, tflStopPointName, tflArrivalLines) =>
     request<LibraryItem>('/api/library/tfl-arrivals', { method: 'POST', ...json({ name, tflStopPointId, tflStopPointName, tflArrivalLines }) }),
+  setTflModes: (id, tflModes) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ tflModes }) }),
+  setTflArrivalLines: (id, tflArrivalLines) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ tflArrivalLines }) }),
   removeLibraryItem: (id) => request<void>(`/api/library/${id}`, { method: 'DELETE' }),
   reorderLibrary: (ids) => request<void>('/api/library/reorder', { method: 'PUT', ...json({ ids }) }),
   setItemDuration: (id, durationSec) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ durationSec }) }),

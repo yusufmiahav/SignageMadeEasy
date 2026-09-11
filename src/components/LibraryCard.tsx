@@ -71,9 +71,11 @@ interface LibraryCardProps {
   selectMode?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
+  /** 'tfl-status'/'tfl-arrivals' only — reopens the add dialog in edit mode to change modes/lines without deleting and re-adding the item. Omitted (button hidden) for every other type. */
+  onConfigure?: (item: LibraryItem) => void;
 }
 
-export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandleProps, isDragging, selectMode, selected, onToggleSelect }: LibraryCardProps) {
+export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandleProps, isDragging, selectMode, selected, onToggleSelect, onConfigure }: LibraryCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [editingTags, setEditingTags] = useState(false);
@@ -131,11 +133,16 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
               {item.text || 'Announcement'}
             </span>
           </div>
-        ) : item.type === 'clock' || item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals' ? (
-          // No underlying file for any of these — live-rendered, streamed, or
-          // polled at playback time, so there's no real image to thumbnail. A
-          // full-bleed tile (same treatment as announcement above) reads as
-          // deliberate content rather than a missing/blank thumbnail, which a
+        ) : item.type === 'clock' || item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals' || item.type === 'video' ? (
+          // clock/ndi/tfl-status/tfl-arrivals have no underlying file at all —
+          // live-rendered, streamed, or polled at playback time, so there's no
+          // real image to thumbnail. Video does have a file, but `thumb` there
+          // points at a video URL, not an image one — a CSS background-image
+          // can't render a video frame from it (nothing this project does today
+          // extracts an actual poster frame), so it's grouped with the others
+          // here rather than pretending the tiny `Icon` fallback below is doing
+          // it. Same full-bleed tile as announcement above either way — reads
+          // as deliberate content rather than a missing/blank thumbnail, which a
           // small icon floating on the plain thumb-box background did not.
           <div
             style={{
@@ -172,6 +179,11 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
         <button type="button" className="btn btn-ghost btn-icon thumb-remove" aria-label="Remove" onClick={() => onRemove(item.id)}>
           <Icon name="x" size={12} />
         </button>
+        {(item.type === 'tfl-status' || item.type === 'tfl-arrivals') && onConfigure && (
+          <button type="button" className="btn btn-ghost btn-icon thumb-configure" aria-label="Edit options" title="Change which lines/modes this shows" onClick={() => onConfigure(item)}>
+            <Icon name="sliders" size={12} />
+          </button>
+        )}
         {downloadUrl && (
           <a
             className="btn btn-ghost btn-icon thumb-download"

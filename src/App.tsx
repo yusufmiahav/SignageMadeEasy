@@ -44,6 +44,8 @@ type DialogState =
   | { type: 'addNdiSource' }
   | { type: 'addTflStatus' }
   | { type: 'addTflArrivals' }
+  /** Reopens the corresponding Add dialog in edit mode for an existing item — see LibraryCard.tsx's "Edit options" button. */
+  | { type: 'configureTfl'; item: LibraryItem }
   | { type: 'announcementPicker'; device: Device }
   | { type: 'moveDevice'; device: Device }
   /** `groupId: null` means the global "force on every screen" action from the Home tab. */
@@ -119,6 +121,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onOpenNdiDialog={() => setDialog({ type: 'addNdiSource' })}
             onOpenTflDialog={() => setDialog({ type: 'addTflStatus' })}
             onOpenTflArrivalsDialog={() => setDialog({ type: 'addTflArrivals' })}
+            onConfigureTflItem={(item) => setDialog({ type: 'configureTfl', item })}
           />
         )}
         {tab === 'schedule' && (
@@ -189,6 +192,12 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       {dialog?.type === 'addNdiSource' && <AddNdiSourceDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'addTflStatus' && <AddTflStatusDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'addTflArrivals' && <AddTflArrivalsDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'configureTfl' && dialog.item.type === 'tfl-status' && (
+        <AddTflStatusDialog app={app} editItem={dialog.item} onClose={closeDialog} />
+      )}
+      {dialog?.type === 'configureTfl' && dialog.item.type === 'tfl-arrivals' && (
+        <AddTflArrivalsDialog app={app} editItem={dialog.item} onClose={closeDialog} />
+      )}
       {dialog?.type === 'announcementPicker' && <AnnouncementPickerDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'moveDevice' && <MoveDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'forceContent' && (
