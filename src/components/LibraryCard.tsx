@@ -9,6 +9,7 @@ const TYPE_ICON: Record<LibraryItem['type'], IconName> = {
   announcement: 'messageCircle',
   clock: 'clock',
   ndi: 'radio',
+  'tfl-status': 'activity',
 };
 
 const TYPE_LABEL: Record<LibraryItem['type'], string> = {
@@ -18,6 +19,7 @@ const TYPE_LABEL: Record<LibraryItem['type'], string> = {
   announcement: 'Announcement',
   clock: 'Clock',
   ndi: 'NDI source',
+  'tfl-status': 'TfL status',
 };
 
 // Announcements and clocks have no underlying file — nothing to download for
@@ -29,6 +31,11 @@ function downloadUrlFor(item: LibraryItem): string | undefined {
   if (item.type === 'image' || item.type === 'pdf') return item.thumb;
   return undefined;
 }
+
+// Kept in sync by hand with AddTflStatusDialog.tsx's MODES.
+const TFL_MODE_LABEL: Record<string, string> = {
+  tube: 'Underground', overground: 'Overground', dlr: 'DLR', 'elizabeth-line': 'Elizabeth line',
+};
 
 function metaText(item: LibraryItem): string {
   switch (item.type) {
@@ -44,6 +51,8 @@ function metaText(item: LibraryItem): string {
       return 'Live time of day';
     case 'ndi':
       return item.ndiSourceName ?? '';
+    case 'tfl-status':
+      return (item.tflModes ?? []).map((m) => TFL_MODE_LABEL[m] ?? m).join(', ');
   }
 }
 

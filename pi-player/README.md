@@ -82,7 +82,10 @@ IP — any of those has the hub reach the Pi directly to finish pairing.
   (rendered client-side with a vendored copy of `pdf.js`, not a CDN — the Pi only
   needs the LAN to reach the hub, nothing here should require internet access), and
   a live clock (current time of day on a black background, no file involved) for
-  its own configured duration same as an image. A video that's the sole item in the
+  its own configured duration same as an image, and a live TfL status board (see
+  root README.md/hub/README.md's "TfL live status boards" section) rendered from
+  data the hub resolves fresh on every poll — no native process, works on any
+  platform this player runs on, Pi 3B+ included. A video that's the sole item in the
   active playlist (forced content, or a playlist/event with just one video)
   restarts itself in place instead of reloading via the rotation logic, so it plays
   seamlessly with no reload between passes. An announcement, if one's turned on for

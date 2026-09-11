@@ -136,6 +136,13 @@ if (!(db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some
   db.exec('ALTER TABLE library ADD COLUMN ndiSourceName TEXT');
 }
 
+// Same reasoning, for hubs deployed before 'tfl-status' library items existed — a
+// JSON string array of TfL mode names (see types.ts's LibraryItem.tflModes and
+// tflStatus.ts), null for every non-'tfl-status' item.
+if (!(db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some((c) => c.name === 'tflModes')) {
+  db.exec('ALTER TABLE library ADD COLUMN tflModes TEXT');
+}
+
 const groupCols = (db.prepare("PRAGMA table_info(groups_)").all() as { name: string }[]).map((c) => c.name);
 if (!groupCols.includes('sortOrder')) {
   db.exec('ALTER TABLE groups_ ADD COLUMN sortOrder INTEGER');

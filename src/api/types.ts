@@ -1,4 +1,4 @@
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status';
 
 export interface LibraryItem {
   id: string;
@@ -12,6 +12,8 @@ export interface LibraryItem {
   durationSec?: number;
   /** NDI sources only — the NDI network name of the source to receive, e.g. "DESKTOP-ABC (Camera 1)". Resolved directly by a paired Pi 4/5 or x86 device's own NDI discovery at playback time; the hub never touches the actual video stream. */
   ndiSourceName?: string;
+  /** 'tfl-status' items only — which TfL modes to show (e.g. ['tube', 'overground']). The live line status itself is never stored here; it's resolved fresh from the hub's own TfL poll at playback time. */
+  tflModes?: string[];
   /** Data URL thumbnail. Images only. */
   thumb?: string;
   /** Message body. Announcements only. */

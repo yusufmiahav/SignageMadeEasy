@@ -27,6 +27,8 @@ export interface SignageApiClient {
   addNdiSource(name: string, ndiSourceName: string): Promise<LibraryItem>;
   /** Pi 4/5 or x86 device only — asks the given paired device to run its own NDI discovery for AddNdiSourceDialog's "Scan for sources" button. Empty array (never throws) when the device is unreachable, isn't NDI-capable, or has no discovery helper built yet — the dialog just falls back to manual entry. */
   listNdiSources(deviceId: string): Promise<string[]>;
+  /** No file either — a live TfL (Transport for London) line status board, e.g. red/amber/green for chosen Tube/Overground/DLR/Elizabeth line(s). `tflModes` are mode names from AddTflStatusDialog's checkboxes; the hub polls TfL centrally and resolves the actual line data at playback time, same "hub owns the live piece" pattern as NDI. */
+  addTflStatus(name: string, tflModes: string[]): Promise<LibraryItem>;
   removeLibraryItem(id: string): Promise<void>;
   renameLibraryItem(id: string, name: string): Promise<void>;
   /** Persists a drag-and-drop reorder from the Library screen — the complete new display order. */

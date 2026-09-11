@@ -47,6 +47,14 @@ export function ContentPreviewDialog({ item, onClose }: ContentPreviewDialogProp
             </span>
           </div>
         )}
+        {item.type === 'tfl-status' && (
+          <div style={{ background: '#000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', aspectRatio: '16 / 9', padding: 16, textAlign: 'center' }}>
+            <span style={{ fontSize: 14, opacity: 0.7 }}>
+              Live TfL status board ({(item.tflModes ?? []).join(', ') || 'no modes set'}) — the
+              hub resolves current line status at playback time, not previewable here.
+            </span>
+          </div>
+        )}
         {item.type === 'announcement' && (
           <div style={{ background: '#000', color: '#fff', padding: '24px 16px', textAlign: 'center', fontSize: 16, fontWeight: 600 }}>
             {item.text || 'Announcement'}

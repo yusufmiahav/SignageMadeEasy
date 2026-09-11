@@ -132,6 +132,19 @@ libraryRouter.post('/ndi', (req, res) => {
   res.status(201).json(item);
 });
 
+// No file, no live data stored here either — just which TfL modes to show; the
+// actual line status is resolved fresh from tflStatus.ts's cache every time this
+// item is served (see store.ts's getPlayerState).
+const VALID_TFL_MODES = ['tube', 'overground', 'dlr', 'elizabeth-line'];
+libraryRouter.post('/tfl-status', (req, res) => {
+  const { name, tflModes } = req.body ?? {};
+  if (!Array.isArray(tflModes) || tflModes.length === 0 || !tflModes.every((m) => VALID_TFL_MODES.includes(m))) {
+    return res.status(400).json({ error: `tflModes must be a non-empty array from: ${VALID_TFL_MODES.join(', ')}` });
+  }
+  const item = store.addLibraryItem({ name: (name ?? '').trim() || 'TfL status', type: 'tfl-status', tflModes });
+  res.status(201).json(item);
+});
+
 libraryRouter.patch('/:id', (req, res) => {
   const { durationSec, name, tags } = req.body ?? {};
   if (durationSec !== undefined) {

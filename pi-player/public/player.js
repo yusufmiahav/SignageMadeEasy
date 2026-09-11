@@ -39,6 +39,8 @@ let advanceTimer = null;
 let clockTimer = null; // the 'clock' item's setInterval — not a <video>/<canvas>, so teardownStage's generic child.remove() wouldn't stop it on its own.
 let ndiPollTimer = null; // the 'ndi' item's status-polling setInterval — see playNativeNdi.
 let generation = 0; // bumped whenever rotation is torn down, so late async work (a PDF page render, a video's `ended`) from a previous item can no-op instead of racing the new one.
+let tflBoardEl = null; // the currently-mounted 'tfl-status' board, if any — see syncTflLines.
+let tflBoardItemId = null;
 
 function teardownStage() {
   clearTimeout(advanceTimer);
@@ -47,6 +49,8 @@ function teardownStage() {
   clockTimer = null;
   clearInterval(ndiPollTimer);
   ndiPollTimer = null;
+  tflBoardEl = null;
+  tflBoardItemId = null;
   // Unconditional and fire-and-forget: a no-op on the Pi if nothing native is playing,
   // but guarantees switching away from an NDI item always kills the GStreamer process
   // rather than leaving it running underneath whatever plays next.
@@ -179,6 +183,43 @@ function playNativeNdi(item, myGeneration) {
     });
 }
 
+// Buckets TfL's own statusSeverityDescription text into a color, rather than its
+// numeric statusSeverity code — the exact 0-14 code-to-meaning table isn't
+// documented with enough confidence to hardcode here (see hub/src/tflStatus.ts's
+// header comment), but the description strings TfL already shows humans are
+// stable. Falls back to 'disrupted' (amber) for anything not recognized, so an
+// unfamiliar status still reads as "something's off" instead of silently looking
+// fine or crashing.
+function tflStatusColor(description) {
+  if (description === 'Good Service') return 'good';
+  if (/closure|closed|suspended|not running/i.test(description)) return 'closed';
+  return 'disrupted';
+}
+
+function renderTflBoard(item) {
+  const board = document.createElement('div');
+  board.className = 'tfl-board';
+  const lines = item.tflLines ?? [];
+  if (lines.length === 0) {
+    board.innerHTML = '<div class="tfl-empty">No TfL status available right now</div>';
+  } else {
+    for (const line of lines) {
+      const row = document.createElement('div');
+      row.className = 'tfl-row';
+      const name = document.createElement('span');
+      name.className = 'tfl-line-name';
+      name.textContent = line.name;
+      const pill = document.createElement('span');
+      pill.className = `tfl-status-pill ${tflStatusColor(line.statusSeverityDescription)}`;
+      pill.textContent = line.statusSeverityDescription;
+      row.appendChild(name);
+      row.appendChild(pill);
+      board.appendChild(row);
+    }
+  }
+  return board;
+}
+
 function playItem(index) {
   const myGeneration = generation;
   teardownStage();
@@ -301,10 +342,47 @@ function playItem(index) {
     scheduleAdvance(item.duration ?? 8, myGeneration);
   } else if (item.type === 'ndi') {
     playNativeNdi(item, myGeneration);
+  } else if (item.type === 'tfl-status') {
+    // No native process, no polling of its own — item.tflLines is already resolved
+    // fresh by the hub on every /state poll (see hub/src/store.ts's getPlayerState).
+    // Tracked in tflBoardEl/tflBoardItemId so renderPlayerState's refreshTflBoardIfShowing
+    // can update the displayed line data in place on later polls while this item stays
+    // on screen — the same item ids polling normally short-circuits on otherwise (see
+    // renderPlayerState's playlistKey check) would mean a "live" board that never
+    // actually updates until rotation happens to cycle back to it.
+    const board = renderTflBoard(item);
+    tflBoardEl = board;
+    tflBoardItemId = item.id;
+    stage.appendChild(board);
+    scheduleAdvance(item.duration ?? 8, myGeneration);
   } else {
     // Announcements never appear in the main rotation (server-side filtered), but
     // skip defensively rather than getting stuck if one ever does.
     scheduleAdvance(0.1, myGeneration);
+  }
+}
+
+// A 'tfl-status' item's line data is resolved fresh by the hub on every poll (see
+// hub/src/store.ts's getPlayerState), but its id never changes — so the playlistKey
+// check below, which exists to leave a mid-rotation item alone across identical
+// polls, would otherwise mean a "live" board that never actually updates until
+// rotation happens to cycle back to it. Runs on every poll regardless of whether
+// the key changed, and does two things: (1) if this item is the one currently on
+// screen, updates its rendered board in place without touching rotation/generation
+// state; (2) replaces the (possibly now-stale) entry in `activeItems` so a later
+// rotation cycle back to this same item — which reuses that array, not a fresh
+// server response, since the key won't have changed either — replays current data
+// instead of whatever was first polled.
+function syncTflLines(state) {
+  if (activeItems.length === 0) return;
+  const freshById = new Map(state.items.filter((i) => i.type === 'tfl-status').map((i) => [i.id, i]));
+  if (freshById.size === 0) return;
+  for (let i = 0; i < activeItems.length; i++) {
+    const fresh = freshById.get(activeItems[i].id);
+    if (fresh) activeItems[i] = fresh;
+  }
+  if (tflBoardEl && tflBoardItemId && freshById.has(tflBoardItemId)) {
+    tflBoardEl.replaceChildren(...renderTflBoard(freshById.get(tflBoardItemId)).childNodes);
   }
 }
 
@@ -313,6 +391,7 @@ function renderPlayerState(state) {
 
   ticker.hidden = !state.announcement.on;
   tickerText.textContent = state.announcement.text ?? '';
+  syncTflLines(state);
 
   // Includes kind, not just item ids: an empty defaultPlaylist and an active
   // blackout both resolve to zero items (same id-based key otherwise), but

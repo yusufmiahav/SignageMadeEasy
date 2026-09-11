@@ -26,6 +26,20 @@ body { font-family: system-ui, sans-serif; color: #fff; }
    so the colon/digits don't jitter as the time ticks even without forcing monospace. */
 #stage .clock { font-family: system-ui, sans-serif; font-size: min(24vw, 34vh); font-weight: 700; letter-spacing: 0.03em; color: #fff; }
 
+/* TfL live status board — a simple readable-at-distance list, not a tube-map
+   recreation. Color comes from statusSeverityDescription text (see player.js's
+   tflStatusColor), not TfL's own numeric severity codes, which aren't documented
+   with enough confidence to hardcode a full mapping — see hub/src/tflStatus.ts. */
+#stage .tfl-board { width: min(90vw, 900px); display: flex; flex-direction: column; gap: 14px; font-family: system-ui, sans-serif; }
+#stage .tfl-board h1 { font-size: min(5vw, 40px); font-weight: 800; margin-bottom: 4px; }
+#stage .tfl-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; background: rgba(255,255,255,0.06); border-radius: 8px; }
+#stage .tfl-row .tfl-line-name { font-size: min(3vw, 26px); font-weight: 700; }
+#stage .tfl-row .tfl-status-pill { font-size: min(2.2vw, 18px); font-weight: 600; padding: 6px 14px; border-radius: 999px; color: #000; white-space: nowrap; }
+#stage .tfl-status-pill.good { background: #2ecc71; }
+#stage .tfl-status-pill.disrupted { background: #f5a623; }
+#stage .tfl-status-pill.closed { background: #e74c3c; color: #fff; }
+#stage .tfl-empty { opacity: 0.5; font-size: min(2.5vw, 20px); text-align: center; padding: 20px; }
+
 /* Opaque background, not translucent: a semi-transparent bar forces the
    browser to re-blend the actively-changing video frame underneath it on
    every composite; a fully opaque one lets it skip rendering that covered

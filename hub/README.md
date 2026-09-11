@@ -170,6 +170,31 @@ blocks the upload response.
 **Maximum upload size**: 500MB per file (`hub/src/routes/library.ts`'s `multer`
 config) — generous headroom for looped signage clips, which are typically short.
 
+## TfL live status boards
+
+Adding a "TfL status" library item (Library screen → **Add TfL status**) shows a
+live red/amber/green line-status board for the Tube/Overground/DLR/Elizabeth line
+modes you pick, on any screen — no per-device setup needed, and no restriction to
+Pi 4/5 or x86 hardware the way NDI has, since this is plain HTML/CSS rendered by
+the player page itself.
+
+The hub polls `https://api.tfl.gov.uk` centrally, once every 2 minutes, and caches
+the result in memory — every screen showing a status board just reads from that
+cache via its normal ~5s state poll, rather than each screen hitting TfL directly.
+Works out of the box with no API key (TfL serves this unauthenticated at a lower
+rate limit, plenty for one poll every 2 minutes); for a higher limit, register a
+free key at <https://api-portal.tfl.gov.uk> and set it as `TFL_APP_KEY` on the hub
+container. If TfL is briefly unreachable, the hub logs it and keeps serving the
+last-known-good cache rather than showing nothing.
+
+Line status is colored by TfL's own `statusSeverityDescription` text (e.g. "Good
+Service", "Minor Delays"), not its numeric severity code — see
+`hub/src/tflStatus.ts`'s and `pi-player/public/player.js`'s comments for why.
+Line names/ids themselves are never hardcoded anywhere in this project, so a
+future TfL renaming (like the 2024 London Overground split into Lioness/Mildmay/
+etc.) needs no code change here — whatever the API currently reports for your
+chosen modes is what renders.
+
 ## API surface
 
 Mirrors `../src/api/client.ts`'s `SignageApiClient` method-for-method under `/api/library`,

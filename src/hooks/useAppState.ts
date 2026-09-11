@@ -128,6 +128,13 @@ export function useAppState() {
   // add* callbacks above.
   const listNdiSources = useCallback((deviceId: string) => api.listNdiSources(deviceId), []);
 
+  const addTflStatus = useCallback(async (name: string, tflModes: string[]) => {
+    const item = await api.addTflStatus(name, tflModes);
+    await refreshLibrary();
+    showToast('TfL status board added');
+    return item;
+  }, [refreshLibrary, showToast]);
+
   const setItemDuration = useCallback(async (id: string, durationSec: number) => {
     await api.setItemDuration(id, durationSec);
     await refreshLibrary();
@@ -426,6 +433,7 @@ export function useAppState() {
     addClock,
     addNdiSource,
     listNdiSources,
+    addTflStatus,
     setItemDuration,
     renameLibraryItem,
     reorderLibrary,

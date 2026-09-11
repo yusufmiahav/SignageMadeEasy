@@ -3,7 +3,7 @@
 // too, so both are kept in sync by hand (small, stable shapes; not worth a shared
 // package for two consumers).
 
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status';
 
 export interface LibraryItem {
   id: string;
@@ -15,6 +15,8 @@ export interface LibraryItem {
   durationSec?: number;
   /** NDI sources only — the NDI network name of the source to receive, e.g. "DESKTOP-ABC (Camera 1)". Not a URL or upload; resolved directly by the Pi's own NDI discovery at playback time. */
   ndiSourceName?: string;
+  /** 'tfl-status' items only — which TfL modes to show (e.g. ['tube', 'overground']), from tflStatus.ts's ALL_MODES. The live line data itself is never stored here — it's resolved fresh from tflStatus.ts's cache at playback time (see PlayerItem.tflLines below), same reasoning as NDI never storing video frames. */
+  tflModes?: string[];
   /** URL path (e.g. "/uploads/<id>.jpg"), not a data URL — served statically by the hub. */
   thumb?: string;
   text?: string;
@@ -128,6 +130,8 @@ export interface PlayerItem {
   pageCount?: number;
   /** NDI sources only — see LibraryItem.ndiSourceName. */
   ndiSourceName?: string;
+  /** 'tfl-status' items only — resolved fresh from tflStatus.ts's cache every time this item is served, not stored on the library item itself; see LibraryItem.tflModes. */
+  tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string }[];
 }
 
 export interface PlayerState {

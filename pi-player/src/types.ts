@@ -1,7 +1,7 @@
 // Mirrors ../../hub/src/types.ts's player-facing shapes — kept in sync by hand,
 // same reasoning as hub/src/types.ts's own header comment.
 
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status';
 
 export interface PlayerItem {
   id: string;
@@ -11,6 +11,8 @@ export interface PlayerItem {
   pageCount?: number;
   /** NDI sources only — see hub/src/types.ts's PlayerItem.ndiSourceName. */
   ndiSourceName?: string;
+  /** 'tfl-status' items only — see hub/src/types.ts's PlayerItem.tflLines. */
+  tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string }[];
 }
 
 export interface PlayerState {

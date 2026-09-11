@@ -8,6 +8,7 @@ interface LibraryScreenProps {
   app: AppState;
   onOpenAnnounceDialog: () => void;
   onOpenNdiDialog: () => void;
+  onOpenTflDialog: () => void;
 }
 
 interface InFlightUpload {
@@ -16,7 +17,7 @@ interface InFlightUpload {
   pct: number;
 }
 
-export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog }: LibraryScreenProps) {
+export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOpenTflDialog }: LibraryScreenProps) {
   const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, removeLibraryItems, renameLibraryItem, setLibraryItemTags, reorderLibrary, showToast } = app;
   const dropzoneInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -202,11 +203,15 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog }: Li
           <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add NDI source" onClick={onOpenNdiDialog}>
             <Icon name="radio" size={15} />
           </button>
+          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add TfL status board" onClick={onOpenTflDialog}>
+            <Icon name="activity" size={15} />
+          </button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={() => videoInputRef.current?.click()}>Add video</button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={() => pdfInputRef.current?.click()}>Add PDF</button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={onOpenAnnounceDialog}>Add announcement</button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={() => void addClock('Clock')}>Add clock</button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={onOpenNdiDialog}>Add NDI source</button>
+          <button type="button" className="btn btn-secondary desktop-only" onClick={onOpenTflDialog}>Add TfL status</button>
           {selectMode ? (
             <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Cancel select" onClick={exitSelectMode}>
               <Icon name="x" size={15} />

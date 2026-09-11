@@ -6,6 +6,7 @@ function playlistMeta(item: LibraryItem): string {
     case 'image':
     case 'clock':
     case 'ndi':
+    case 'tfl-status':
       return '';
     case 'video':
       return item.duration ?? '';

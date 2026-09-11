@@ -154,6 +154,13 @@ class LocalStoreClient implements SignageApiClient {
     return [];
   }
 
+  async addTflStatus(name: string, tflModes: string[]): Promise<LibraryItem> {
+    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'TfL status', type: 'tfl-status', tflModes, tags: [] };
+    this.data.library.push(item);
+    this.persist();
+    return item;
+  }
+
   async setLibraryItemTags(id: string, tags: string[]): Promise<void> {
     const item = this.data.library.find((i) => i.id === id);
     if (item) item.tags = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
@@ -161,7 +168,7 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   async setItemDuration(id: string, durationSec: number): Promise<void> {
-    const item = this.data.library.find((i) => i.id === id && (i.type === 'image' || i.type === 'clock' || i.type === 'ndi'));
+    const item = this.data.library.find((i) => i.id === id && (i.type === 'image' || i.type === 'clock' || i.type === 'ndi' || i.type === 'tfl-status'));
     if (item && Number.isFinite(durationSec) && durationSec >= 1) item.durationSec = Math.round(durationSec);
     this.persist();
   }
