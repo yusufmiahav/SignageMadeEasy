@@ -79,6 +79,8 @@ export interface SignageApiClient {
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
   setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;
+  /** See Device.orientation — the Pi rotates its output 90° to compensate for a sideways-mounted panel. */
+  setDeviceOrientation(id: string, orientation: 'landscape' | 'portrait'): Promise<void>;
   /** Misc-screen (no location) equivalent of setForcedContent — only meaningful while the device has no groupId. */
   setDeviceForcedContent(id: string, libId: string | null): Promise<void>;
   /** Misc-screen (no location) equivalent of setGroupBlackout — only meaningful while the device has no groupId. */

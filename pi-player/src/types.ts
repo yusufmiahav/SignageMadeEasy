@@ -24,6 +24,8 @@ export interface PlayerState {
   announcement: { on: boolean; text: string | null };
   /** See hub/src/types.ts's copy of this interface for the full comment. */
   safetyHold: boolean;
+  /** See hub/src/types.ts's Device.orientation — applied via displayOrientation.ts. */
+  orientation: 'landscape' | 'portrait';
 }
 
 export interface PairingConfig {

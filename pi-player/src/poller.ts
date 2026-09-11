@@ -2,6 +2,7 @@ import { clearConfig, loadConfig } from './config.js';
 import { getLocalIp } from './localIp.js';
 import * as mediaCache from './mediaCache.js';
 import * as diagnostics from './diagnostics.js';
+import * as displayOrientation from './displayOrientation.js';
 import type { PlayerState } from './types.js';
 
 const POLL_INTERVAL_MS = 5000;
@@ -44,6 +45,7 @@ async function tick(): Promise<void> {
     // No point caching media the hub won't want us to keep showing anyway once
     // safety hold is off.
     if (lastSafetyHold) mediaCache.warm(lastState.items);
+    void displayOrientation.applyOrientation(lastState.orientation);
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err);
     // Safety hold off: a disconnected screen should go blank, not freeze on

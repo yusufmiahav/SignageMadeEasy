@@ -88,12 +88,13 @@ devicesRouter.post('/pair', async (req, res) => {
 });
 
 devicesRouter.patch('/:id', (req, res) => {
-  const { name, groupId, videoQuality } = req.body ?? {};
+  const { name, groupId, videoQuality, orientation } = req.body ?? {};
   if (typeof name === 'string') store.renameDevice(req.params.id, name);
   // groupId: null moves the device to "no location" — distinct from omitting the
   // key entirely, which leaves its current location untouched.
   if (typeof groupId === 'string' || groupId === null) store.moveDevice(req.params.id, groupId);
   if (videoQuality === 'auto' || videoQuality === 'full') store.setDeviceVideoQuality(req.params.id, videoQuality);
+  if (orientation === 'landscape' || orientation === 'portrait') store.setDeviceOrientation(req.params.id, orientation);
   res.status(204).end();
 });
 
