@@ -552,7 +552,10 @@ export function getPlayerState(deviceId: string): PlayerState | null {
       // Same reasoning, resolved fresh from tflArrivals.ts's per-station cache — see
       // its header comment and getPlayerState's tflArrivals.startPolling wiring in
       // index.ts (which decides which stations are "needed" from these same items).
-      ...(item.type === 'tfl-arrivals' && item.tflStopPointId && { tflArrivalBoards: tflArrivals.getBoardForStop(item.tflStopPointId, item.tflArrivalLines) }),
+      ...(item.type === 'tfl-arrivals' && item.tflStopPointId && {
+        tflArrivalBoards: tflArrivals.getBoardForStop(item.tflStopPointId, item.tflArrivalLines),
+        tflStopPointName: item.tflStopPointName,
+      }),
     }));
 
   const safetyHold = getSafetyHold();

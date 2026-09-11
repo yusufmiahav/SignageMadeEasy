@@ -302,9 +302,22 @@ function formatArrivalMinutes(sec) {
 function renderTflArrivalsBoard(item) {
   const board = document.createElement('div');
   board.className = 'tfl-board';
+  // Names the station this board is for — every row already shows a train's
+  // *destination* (e.g. "Ealing Broadway"), not the station the board itself is
+  // showing arrivals at, which was genuinely ambiguous on a real render with no
+  // other on-screen label. Shown in both the populated and "no arrivals" states.
+  if (item.tflStopPointName) {
+    const header = document.createElement('div');
+    header.className = 'tfl-arrivals-header';
+    header.textContent = item.tflStopPointName;
+    board.appendChild(header);
+  }
   const boards = item.tflArrivalBoards ?? [];
   if (boards.length === 0) {
-    board.innerHTML = '<div class="tfl-empty">No arrivals available right now</div>';
+    const empty = document.createElement('div');
+    empty.className = 'tfl-empty';
+    empty.textContent = 'No arrivals available right now';
+    board.appendChild(empty);
     return board;
   }
   for (const b of boards) {

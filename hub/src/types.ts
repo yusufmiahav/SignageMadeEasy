@@ -140,6 +140,8 @@ export interface PlayerItem {
   tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string; reason?: string }[];
   /** 'tfl-arrivals' items only — resolved fresh from tflArrivals.ts's per-station cache every time this item is served; see LibraryItem.tflStopPointId/tflArrivalLines. */
   tflArrivalBoards?: { lineId: string; lineName: string; platformName: string; towards: string; arrivalsSec: number[] }[];
+  /** 'tfl-arrivals' items only — the station name this board's countdowns are for, e.g. "Westminster Underground Station" — every row already shows a train's *destination*, not this, so the player needs it separately to label the board. Passed straight through from LibraryItem.tflStopPointName. */
+  tflStopPointName?: string;
 }
 
 export interface PlayerState {

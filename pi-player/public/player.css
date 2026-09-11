@@ -28,14 +28,27 @@ body { font-family: system-ui, sans-serif; color: #fff; }
 
 /* TfL live status board — white background + per-line brand-color badges,
    matching TfL's own app/site look (not the dark theme every other content type
-   here uses) per explicit request. column-count is set inline by player.js's
-   renderTflBoard, not here — it depends on how many lines are actually selected,
-   so a fixed CSS value can't get it right for both a 3-line and a 25-line board. */
+   here uses) per explicit request. Full-bleed (100vw/100vh, no rounded card) per
+   real-hardware feedback: a white card floating on #stage's own black background
+   left visible black bars around the edges — the ask was for the whole screen to
+   go white while this is showing, not just a card on top of the usual black stage.
+   column-count is set inline by player.js's renderTflBoard/renderTflArrivalsBoard,
+   not here — it depends on how many lines/platforms are actually shown, so a fixed
+   CSS value can't get it right for both a 3-line and a 25-line board. */
 #stage .tfl-board {
-  width: 92vw; max-height: 88vh; overflow: hidden; /* overflow: hidden is the last-resort backstop — column-count above is what actually prevents this in practice */
-  background: #fff; color: #111; border-radius: 12px;
+  width: 100vw; height: 100vh; overflow: hidden; /* overflow: hidden is the last-resort backstop — column-count above is what actually prevents this in practice */
+  background: #fff; color: #111;
   padding: 28px 32px; font-family: system-ui, sans-serif;
   column-gap: 28px;
+}
+/* 'tfl-arrivals' boards only — names the station this board's countdowns are for,
+   since every row already shows a train's *destination*, not the station the
+   board itself is sitting at; confirmed on a real render that this was genuinely
+   ambiguous without a header. Spans every column via column-span so it always
+   reads as one title across the whole board, not repeated per column. */
+#stage .tfl-arrivals-header {
+  column-span: all; font-size: min(2.6vw, 32px); font-weight: 800;
+  padding-bottom: 16px; margin-bottom: 8px; border-bottom: 2px solid #111;
 }
 #stage .tfl-row {
   display: flex; align-items: center; gap: 18px; padding: 14px 0;

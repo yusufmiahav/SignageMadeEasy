@@ -15,6 +15,8 @@ export interface PlayerItem {
   tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string; reason?: string }[];
   /** 'tfl-arrivals' items only — see hub/src/types.ts's PlayerItem.tflArrivalBoards. */
   tflArrivalBoards?: { lineId: string; lineName: string; platformName: string; towards: string; arrivalsSec: number[] }[];
+  /** 'tfl-arrivals' items only — see hub/src/types.ts's PlayerItem.tflStopPointName. */
+  tflStopPointName?: string;
 }
 
 export interface PlayerState {
