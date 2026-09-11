@@ -127,6 +127,15 @@
       <p style="color: #ffcf6e;">Reboot required for this to take effect.</p>
       <button type="button" id="underclock-reboot">Reboot now</button>
     </div>
+
+    <hr />
+
+    <h2>Device</h2>
+    <p>Restarts this Pi — useful after changing a setting above that needs it, or
+      any time this display seems stuck. Playback resumes on its own once it's
+      back up, no re-pairing needed.</p>
+    <button type="button" id="device-reboot" style="background: transparent; border: 1px solid #444; font-weight: 600;">Reboot this display</button>
+    <p id="device-reboot-status"></p>
   </div>
   <script>
     const select = document.getElementById('ssid-select');
@@ -350,6 +359,25 @@
       underclockReboot.disabled = true;
       underclockStatus.textContent = 'Rebooting…';
       underclockStatus.className = '';
+      try {
+        await fetch('/system/reboot', { method: 'POST' });
+      } catch {
+        // Expected — the Pi is going down.
+      }
+    });
+
+    // --- Device (standalone reboot) -----------------------------------------
+    // Same /system/reboot endpoint the underclock section's own reboot prompt
+    // uses above — this one is just always visible, not tucked behind a specific
+    // setting change, for "this display seems stuck, restart it" without SSH.
+    const deviceReboot = document.getElementById('device-reboot');
+    const deviceRebootStatus = document.getElementById('device-reboot-status');
+
+    deviceReboot.addEventListener('click', async () => {
+      if (!confirm('Reboot this display now? It will go dark for a minute or so while it restarts.')) return;
+      deviceReboot.disabled = true;
+      deviceRebootStatus.textContent = 'Rebooting…';
+      deviceRebootStatus.className = '';
       try {
         await fetch('/system/reboot', { method: 'POST' });
       } catch {
