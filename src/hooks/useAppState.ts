@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DiscoveredDevice } from '../api/client';
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from '../api/types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationConfig } from '../api/types';
 
 export function useAppState() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
@@ -128,6 +128,12 @@ export function useAppState() {
   // add* callbacks above.
   const listNdiSources = useCallback((deviceId: string) => api.listNdiSources(deviceId), []);
 
+  const setNdiSourceName = useCallback(async (id: string, ndiSourceName: string) => {
+    await api.setNdiSourceName(id, ndiSourceName);
+    await refreshLibrary();
+    showToast('NDI source updated');
+  }, [refreshLibrary, showToast]);
+
   const addTflStatus = useCallback(async (name: string, tflModes: string[]) => {
     const item = await api.addTflStatus(name, tflModes);
     await refreshLibrary();
@@ -139,8 +145,8 @@ export function useAppState() {
   // refresh, same reasoning as listNdiSources above.
   const searchTflStations = useCallback((query: string) => api.searchTflStations(query), []);
 
-  const addTflArrivals = useCallback(async (name: string, tflStopPointId: string, tflStopPointName: string, tflArrivalLines: string[]) => {
-    const item = await api.addTflArrivals(name, tflStopPointId, tflStopPointName, tflArrivalLines);
+  const addTflArrivals = useCallback(async (name: string, tflStations: TflStationConfig[]) => {
+    const item = await api.addTflArrivals(name, tflStations);
     await refreshLibrary();
     showToast('TfL arrivals board added');
     return item;
@@ -152,8 +158,8 @@ export function useAppState() {
     showToast('TfL status board updated');
   }, [refreshLibrary, showToast]);
 
-  const setTflArrivalLines = useCallback(async (id: string, tflArrivalLines: string[]) => {
-    await api.setTflArrivalLines(id, tflArrivalLines);
+  const setTflStations = useCallback(async (id: string, tflStations: TflStationConfig[]) => {
+    await api.setTflStations(id, tflStations);
     await refreshLibrary();
     showToast('TfL arrivals board updated');
   }, [refreshLibrary, showToast]);
@@ -456,11 +462,12 @@ export function useAppState() {
     addClock,
     addNdiSource,
     listNdiSources,
+    setNdiSourceName,
     addTflStatus,
     searchTflStations,
     addTflArrivals,
     setTflModes,
-    setTflArrivalLines,
+    setTflStations,
     setItemDuration,
     renameLibraryItem,
     reorderLibrary,

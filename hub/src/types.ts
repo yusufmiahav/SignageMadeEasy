@@ -5,6 +5,16 @@
 
 export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status' | 'tfl-arrivals';
 
+/** One station within a 'tfl-arrivals' item's LibraryItem.tflStations — see its comment. */
+export interface TflStationConfig {
+  /** The real, queryable TfL StopPoint id (e.g. "940GZZLUWSM"), already resolved from any hub/interchange the user searched for — see tflArrivals.ts's searchStations(). */
+  stopPointId: string;
+  /** Display name captured at add-time (e.g. "Westminster Underground Station"), so the Library card/dialog and the player's board header can show it without a live lookup. */
+  stopPointName: string;
+  /** Which line ids (e.g. ['jubilee', 'district']) to show arrivals for at this station; empty/undefined shows every line reported there. */
+  lines?: string[];
+}
+
 export interface LibraryItem {
   id: string;
   name: string;
@@ -17,12 +27,13 @@ export interface LibraryItem {
   ndiSourceName?: string;
   /** 'tfl-status' items only — which TfL modes to show (e.g. ['tube', 'overground']), from tflStatus.ts's ALL_MODES. The live line data itself is never stored here — it's resolved fresh from tflStatus.ts's cache at playback time (see PlayerItem.tflLines below), same reasoning as NDI never storing video frames. */
   tflModes?: string[];
-  /** 'tfl-arrivals' items only — the real, queryable TfL StopPoint id (e.g. "940GZZLUWSM"), already resolved from any hub/interchange the user searched for — see tflArrivals.ts's searchStations(). */
-  tflStopPointId?: string;
-  /** 'tfl-arrivals' items only — display name captured at add-time (e.g. "Westminster Underground Station"), so the Library card and dialog can show it without a live lookup. */
-  tflStopPointName?: string;
-  /** 'tfl-arrivals' items only — which line ids (e.g. ['jubilee', 'district']) to show arrivals for; empty/undefined shows every line reported at this station. */
-  tflArrivalLines?: string[];
+  /**
+   * 'tfl-arrivals' items only — one or more stations shown together on the same
+   * board (e.g. 3 stations side by side), each independently configured. A
+   * single-station board is just the one-element case, not a separate shape —
+   * see AddTflArrivalsDialog.tsx's repeatable "add a station" list.
+   */
+  tflStations?: TflStationConfig[];
   /** URL path (e.g. "/uploads/<id>.jpg"), not a data URL — served statically by the hub. */
   thumb?: string;
   text?: string;
@@ -138,10 +149,15 @@ export interface PlayerItem {
   ndiSourceName?: string;
   /** 'tfl-status' items only — resolved fresh from tflStatus.ts's cache every time this item is served, not stored on the library item itself; see LibraryItem.tflModes. */
   tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string; reason?: string }[];
-  /** 'tfl-arrivals' items only — resolved fresh from tflArrivals.ts's per-station cache every time this item is served; see LibraryItem.tflStopPointId/tflArrivalLines. */
-  tflArrivalBoards?: { lineId: string; lineName: string; platformName: string; towards: string; arrivalsSec: number[] }[];
-  /** 'tfl-arrivals' items only — the station name this board's countdowns are for, e.g. "Westminster Underground Station" — every row already shows a train's *destination*, not this, so the player needs it separately to label the board. Passed straight through from LibraryItem.tflStopPointName. */
-  tflStopPointName?: string;
+  /**
+   * 'tfl-arrivals' items only — one entry per LibraryItem.tflStations station, in
+   * the same order, each resolved fresh from tflArrivals.ts's per-station cache
+   * every time this item is served. stopPointName is carried alongside its own
+   * boards (rather than a single top-level name) since every row already shows a
+   * train's *destination*, not the station itself, so the player needs each
+   * station's own name to label its own panel in a multi-station layout.
+   */
+  tflStationBoards?: { stopPointName: string; boards: { lineId: string; lineName: string; platformName: string; towards: string; arrivalsSec: number[] }[] }[];
 }
 
 export interface PlayerState {

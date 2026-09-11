@@ -211,12 +211,22 @@ guidelines — a one-line fix in `TFL_LINE_COLOR` if one looks off.
 
 Adding a "TfL arrivals" library item (Library screen → **Add TfL arrivals**) shows
 a live per-station countdown board — e.g. "District · Westbound · Platform 1 · 3
-min, then 5, 8" — for one specific station, distinct from the line-status board
-above. Search for the station by name in the dialog; if the name resolves to a
+min, then 5, 8" — for one or more stations, distinct from the line-status board
+above. Search for a station by name in the dialog; if the name resolves to a
 multi-line interchange (e.g. "Westminster"), the hub automatically expands it into
 the individual per-mode stations under it (Westminster Underground vs. Westminster
 Pier, say) so you pick the one you actually mean, then choose which of that
 station's lines to show (or leave every line ticked to show all of them).
+
+**Multiple stations on one board**: add more than one station to the same item
+(e.g. Westminster, Kings Cross St Pancras, Bank) to show them together on the
+same screen — side by side, one column per station, in landscape; stacked one
+above the other in portrait. Each station keeps its own name header and its own
+line filter, and each is capped to its 8 soonest-departing platforms (a narrow
+per-station panel doesn't have room for the single-station board's own
+multi-column layout, described below). Use the "Edit options" button on an
+existing item's library card to add, remove, or reconfigure a station's lines
+without deleting and re-adding it.
 
 The hub polls `https://api.tfl.gov.uk` per-station, once every 30 seconds (more
 often than the line-status board's 2 minutes, since a countdown in minutes goes

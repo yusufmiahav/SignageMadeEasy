@@ -21,6 +21,7 @@ startPolling();
 // store.ts import (circular-import avoidance: store.ts already imports tflArrivals.ts).
 tflArrivals.startPolling(() =>
   store.listLibrary()
-    .filter((item): item is typeof item & { tflStopPointId: string } => item.type === 'tfl-arrivals' && !!item.tflStopPointId)
-    .map((item) => item.tflStopPointId),
+    .filter((item) => item.type === 'tfl-arrivals')
+    .flatMap((item) => item.tflStations ?? [])
+    .map((station) => station.stopPointId),
 );

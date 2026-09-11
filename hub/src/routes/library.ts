@@ -145,32 +145,38 @@ libraryRouter.post('/tfl-status', (req, res) => {
   res.status(201).json(item);
 });
 
-// No file, no live data stored here either — just which station + which lines to
-// show arrivals for; the actual countdowns are resolved fresh from
-// tflArrivals.ts's per-station cache every time this item is served (see
-// store.ts's getPlayerState). tflStopPointId must already be the real, queryable
-// StopPoint id (e.g. "940GZZLUWSM"), not a hub/interchange id — see
-// GET /api/tfl/stations/search, which does that resolution for the dialog.
+// One or more stations shown together on the same board — see types.ts's
+// LibraryItem.tflStations. No live data stored here either; the actual
+// countdowns are resolved fresh from tflArrivals.ts's per-station cache every
+// time this item is served (see store.ts's getPlayerState). Each stopPointId
+// must already be the real, queryable StopPoint id (e.g. "940GZZLUWSM"), not a
+// hub/interchange id — see GET /api/tfl/stations/search, which does that
+// resolution for the dialog.
+function isValidTflStations(value: unknown): value is { stopPointId: string; stopPointName?: string; lines?: string[] }[] {
+  return Array.isArray(value) && value.length > 0 && value.every((s) =>
+    s && typeof s === 'object' &&
+    typeof (s as Record<string, unknown>).stopPointId === 'string' && (s as Record<string, unknown>).stopPointId !== '' &&
+    ((s as Record<string, unknown>).stopPointName === undefined || typeof (s as Record<string, unknown>).stopPointName === 'string') &&
+    ((s as Record<string, unknown>).lines === undefined || (Array.isArray((s as Record<string, unknown>).lines) && ((s as Record<string, unknown>).lines as unknown[]).every((l) => typeof l === 'string'))),
+  );
+}
+
 libraryRouter.post('/tfl-arrivals', (req, res) => {
-  const { name, tflStopPointId, tflStopPointName, tflArrivalLines } = req.body ?? {};
-  if (typeof tflStopPointId !== 'string' || !tflStopPointId.trim()) {
-    return res.status(400).json({ error: 'tflStopPointId is required' });
+  const { name, tflStations } = req.body ?? {};
+  if (!isValidTflStations(tflStations)) {
+    return res.status(400).json({ error: 'tflStations must be a non-empty array of { stopPointId, stopPointName?, lines? }' });
   }
-  if (tflArrivalLines !== undefined && (!Array.isArray(tflArrivalLines) || !tflArrivalLines.every((l) => typeof l === 'string'))) {
-    return res.status(400).json({ error: 'tflArrivalLines must be an array of strings' });
-  }
+  const stations = tflStations.map((s) => ({ stopPointId: s.stopPointId, stopPointName: s.stopPointName || s.stopPointId, ...(s.lines && s.lines.length > 0 && { lines: s.lines }) }));
   const item = store.addLibraryItem({
-    name: (name ?? '').trim() || (typeof tflStopPointName === 'string' && tflStopPointName.trim()) || 'TfL arrivals',
+    name: (name ?? '').trim() || stations.map((s) => s.stopPointName).join(', ') || 'TfL arrivals',
     type: 'tfl-arrivals',
-    tflStopPointId: tflStopPointId.trim(),
-    ...(typeof tflStopPointName === 'string' && tflStopPointName.trim() && { tflStopPointName: tflStopPointName.trim() }),
-    ...(tflArrivalLines && tflArrivalLines.length > 0 && { tflArrivalLines }),
+    tflStations: stations,
   });
   res.status(201).json(item);
 });
 
 libraryRouter.patch('/:id', (req, res) => {
-  const { durationSec, name, tags, tflModes, tflArrivalLines } = req.body ?? {};
+  const { durationSec, name, tags, ndiSourceName, tflModes, tflStations } = req.body ?? {};
   if (durationSec !== undefined) {
     if (typeof durationSec !== 'number' || !Number.isFinite(durationSec) || durationSec < 1) {
       return res.status(400).json({ error: 'durationSec must be a positive number' });
@@ -187,6 +193,12 @@ libraryRouter.patch('/:id', (req, res) => {
     }
     store.setLibraryItemTags(req.params.id, tags);
   }
+  // Reconfigures an existing 'ndi' item's source name — see AddNdiSourceDialog.tsx's
+  // edit mode. Same no-op-if-wrong-type guard as the two TfL branches below.
+  if (typeof ndiSourceName === 'string') {
+    if (!ndiSourceName.trim()) return res.status(400).json({ error: 'ndiSourceName cannot be empty' });
+    store.setLibraryItemNdiSourceName(req.params.id, ndiSourceName.trim());
+  }
   // Reconfigures an existing 'tfl-status' item's modes — see AddTflStatusDialog.tsx's
   // edit mode. A no-op (WHERE ... AND type = 'tfl-status' in store.ts) if this id
   // isn't actually a tfl-status item, same defensive posture as the durationSec
@@ -197,14 +209,14 @@ libraryRouter.patch('/:id', (req, res) => {
     }
     store.setLibraryItemTflModes(req.params.id, tflModes);
   }
-  // Same reasoning, for an existing 'tfl-arrivals' item's line filter — see
-  // AddTflArrivalsDialog.tsx's edit mode. Empty array means "every line at this
-  // station," same as at creation time (routes/library.ts's POST /tfl-arrivals).
-  if (tflArrivalLines !== undefined) {
-    if (!Array.isArray(tflArrivalLines) || !tflArrivalLines.every((l) => typeof l === 'string')) {
-      return res.status(400).json({ error: 'tflArrivalLines must be an array of strings' });
+  // Same reasoning, for an existing 'tfl-arrivals' item's whole station list —
+  // see AddTflArrivalsDialog.tsx's edit mode. A full replace (can add/remove a
+  // station, or change one's line filter), same as at creation time.
+  if (tflStations !== undefined) {
+    if (!isValidTflStations(tflStations)) {
+      return res.status(400).json({ error: 'tflStations must be a non-empty array of { stopPointId, stopPointName?, lines? }' });
     }
-    store.setLibraryItemTflArrivalLines(req.params.id, tflArrivalLines);
+    store.setLibraryItemTflStations(req.params.id, tflStations.map((s) => ({ stopPointId: s.stopPointId, stopPointName: s.stopPointName || s.stopPointId, ...(s.lines && s.lines.length > 0 && { lines: s.lines }) })));
   }
   res.status(204).end();
 });

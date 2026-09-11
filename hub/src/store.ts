@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
 import * as tflStatus from './tflStatus.js';
 import * as tflArrivals from './tflArrivals.js';
-import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, PlayerState, ScheduleEvent } from './types.js';
+import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, PlayerState, ScheduleEvent, TflStationConfig } from './types.js';
 
 // The Pi heartbeats every 5s (pi-player/src/poller.ts's POLL_INTERVAL_MS) — this
 // window needs to be a few multiples of that so one dropped heartbeat (WiFi jitter)
@@ -19,9 +19,14 @@ function uid(prefix: string): string {
 interface LibraryRow {
   id: string; name: string; type: LibraryItem['type']; size: string | null; duration: string | null; durationSec: number | null; thumb: string | null; text: string | null; pageCount: number | null;
   fullUrl: string | null; transcodeStatus: LibraryItem['transcodeStatus'] | null; tags: string; ndiSourceName: string | null; tflModes: string | null;
+  // The three legacy single-station columns are read-only from here on (kept only
+  // for rowToLibraryItem's fallback below) — new rows always write tflStations
+  // instead. See db.ts's tflStations migration comment for why the old columns
+  // aren't dropped.
   tflStopPointId: string | null; tflStopPointName: string | null; tflArrivalLines: string | null;
+  tflStations: string | null;
 }
-const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines';
+const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines, tflStations';
 
 function rowToLibraryItem(r: LibraryRow): LibraryItem {
   const item: LibraryItem = { id: r.id, name: r.name, type: r.type, tags: r.tags ? JSON.parse(r.tags) : [] };
@@ -35,9 +40,18 @@ function rowToLibraryItem(r: LibraryRow): LibraryItem {
   if (r.transcodeStatus != null) item.transcodeStatus = r.transcodeStatus;
   if (r.ndiSourceName != null) item.ndiSourceName = r.ndiSourceName;
   if (r.tflModes != null) item.tflModes = JSON.parse(r.tflModes);
-  if (r.tflStopPointId != null) item.tflStopPointId = r.tflStopPointId;
-  if (r.tflStopPointName != null) item.tflStopPointName = r.tflStopPointName;
-  if (r.tflArrivalLines != null) item.tflArrivalLines = JSON.parse(r.tflArrivalLines);
+  if (r.tflStations != null) {
+    item.tflStations = JSON.parse(r.tflStations);
+  } else if (r.tflStopPointId != null) {
+    // Pre-multi-station row (see db.ts's tflStations migration comment) — synthesize
+    // the one-element array shape on read so an item saved before this feature
+    // existed keeps working with no manual migration.
+    item.tflStations = [{
+      stopPointId: r.tflStopPointId,
+      stopPointName: r.tflStopPointName ?? r.tflStopPointId,
+      ...(r.tflArrivalLines != null && { lines: JSON.parse(r.tflArrivalLines) }),
+    }];
+  }
   return item;
 }
 
@@ -49,17 +63,16 @@ export function listLibrary(): LibraryItem[] {
 export function addLibraryItem(input: {
   name: string; type: LibraryItem['type']; size?: string; duration?: string; thumb?: string; text?: string; pageCount?: number;
   fullUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus']; ndiSourceName?: string; tflModes?: string[];
-  tflStopPointId?: string; tflStopPointName?: string; tflArrivalLines?: string[];
+  tflStations?: TflStationConfig[];
 }): LibraryItem {
   const id = uid('l');
   const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM library').get() as { n: number }).n;
-  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@ndiSourceName,@tflModes,@tflStopPointId,@tflStopPointName,@tflArrivalLines,@sortOrder,@createdAt)').run({
+  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, ndiSourceName, tflModes, tflStations, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@ndiSourceName,@tflModes,@tflStations,@sortOrder,@createdAt)').run({
     id, name: input.name, type: input.type,
     size: input.size ?? null, duration: input.duration ?? null, thumb: input.thumb ?? null, text: input.text ?? null, pageCount: input.pageCount ?? null,
     fullUrl: input.fullUrl ?? null, transcodeStatus: input.transcodeStatus ?? null, ndiSourceName: input.ndiSourceName ?? null,
     tflModes: input.tflModes ? JSON.stringify(input.tflModes) : null,
-    tflStopPointId: input.tflStopPointId ?? null, tflStopPointName: input.tflStopPointName ?? null,
-    tflArrivalLines: input.tflArrivalLines ? JSON.stringify(input.tflArrivalLines) : null,
+    tflStations: input.tflStations ? JSON.stringify(input.tflStations) : null,
     sortOrder: nextOrder,
     createdAt: Date.now(),
   });
@@ -70,9 +83,7 @@ export function addLibraryItem(input: {
     ...(input.fullUrl && { fullUrl: input.fullUrl }), ...(input.transcodeStatus && { transcodeStatus: input.transcodeStatus }),
     ...(input.ndiSourceName && { ndiSourceName: input.ndiSourceName }),
     ...(input.tflModes && { tflModes: input.tflModes }),
-    ...(input.tflStopPointId && { tflStopPointId: input.tflStopPointId }),
-    ...(input.tflStopPointName && { tflStopPointName: input.tflStopPointName }),
-    ...(input.tflArrivalLines && { tflArrivalLines: input.tflArrivalLines }),
+    ...(input.tflStations && { tflStations: input.tflStations }),
   };
 }
 
@@ -135,14 +146,19 @@ export function setLibraryItemTags(id: string, tags: string[]): void {
   db.prepare('UPDATE library SET tags = ? WHERE id = ?').run(JSON.stringify(clean), id);
 }
 
+/** Reconfigures an existing 'ndi' item's source name — see AddNdiSourceDialog.tsx's edit mode, same "change it in place" reasoning as the two TfL setters below. */
+export function setLibraryItemNdiSourceName(id: string, ndiSourceName: string): void {
+  db.prepare("UPDATE library SET ndiSourceName = ? WHERE id = ? AND type = 'ndi'").run(ndiSourceName, id);
+}
+
 /** Reconfigures an existing 'tfl-status' item's modes — see AddTflStatusDialog.tsx, now reused in an edit mode rather than only at creation time. */
 export function setLibraryItemTflModes(id: string, tflModes: string[]): void {
   db.prepare("UPDATE library SET tflModes = ? WHERE id = ? AND type = 'tfl-status'").run(JSON.stringify(tflModes), id);
 }
 
-/** Reconfigures an existing 'tfl-arrivals' item's line filter — see AddTflArrivalsDialog.tsx's edit mode. Empty array means "every line at this station," same as at creation time. */
-export function setLibraryItemTflArrivalLines(id: string, tflArrivalLines: string[]): void {
-  db.prepare("UPDATE library SET tflArrivalLines = ? WHERE id = ? AND type = 'tfl-arrivals'").run(JSON.stringify(tflArrivalLines), id);
+/** Reconfigures an existing 'tfl-arrivals' item's whole station list (add/remove a station, or change one's line filter) — see AddTflArrivalsDialog.tsx's edit mode. A full replace, not a merge, same as setLibraryItemTflModes above. */
+export function setLibraryItemTflStations(id: string, tflStations: TflStationConfig[]): void {
+  db.prepare("UPDATE library SET tflStations = ? WHERE id = ? AND type = 'tfl-arrivals'").run(JSON.stringify(tflStations), id);
 }
 
 // ---- Groups ----
@@ -562,9 +578,13 @@ export function getPlayerState(deviceId: string): PlayerState | null {
       // Same reasoning, resolved fresh from tflArrivals.ts's per-station cache — see
       // its header comment and getPlayerState's tflArrivals.startPolling wiring in
       // index.ts (which decides which stations are "needed" from these same items).
-      ...(item.type === 'tfl-arrivals' && item.tflStopPointId && {
-        tflArrivalBoards: tflArrivals.getBoardForStop(item.tflStopPointId, item.tflArrivalLines),
-        tflStopPointName: item.tflStopPointName,
+      // One entry per configured station, in order, so a multi-station board (see
+      // types.ts's LibraryItem.tflStations) can render each as its own panel.
+      ...(item.type === 'tfl-arrivals' && item.tflStations && {
+        tflStationBoards: item.tflStations.map((station) => ({
+          stopPointName: station.stopPointName,
+          boards: tflArrivals.getBoardForStop(station.stopPointId, station.lines),
+        })),
       }),
     }));
 
@@ -633,8 +653,8 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   db.prepare('DELETE FROM library').run();
 
   const insertLibrary = db.prepare(
-    'INSERT INTO library (id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines, sortOrder, createdAt) ' +
-    'VALUES (@id,@name,@type,@size,@duration,@durationSec,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@tags,@ndiSourceName,@tflModes,@tflStopPointId,@tflStopPointName,@tflArrivalLines,@sortOrder,@createdAt)',
+    'INSERT INTO library (id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStations, sortOrder, createdAt) ' +
+    'VALUES (@id,@name,@type,@size,@duration,@durationSec,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@tags,@ndiSourceName,@tflModes,@tflStations,@sortOrder,@createdAt)',
   );
   backup.library.forEach((item, i) => {
     insertLibrary.run({
@@ -644,8 +664,7 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       fullUrl: item.fullUrl ?? null, transcodeStatus: item.transcodeStatus ?? null, tags: JSON.stringify(item.tags ?? []),
       ndiSourceName: item.ndiSourceName ?? null,
       tflModes: item.tflModes ? JSON.stringify(item.tflModes) : null,
-      tflStopPointId: item.tflStopPointId ?? null, tflStopPointName: item.tflStopPointName ?? null,
-      tflArrivalLines: item.tflArrivalLines ? JSON.stringify(item.tflArrivalLines) : null,
+      tflStations: item.tflStations ? JSON.stringify(item.tflStations) : null,
       sortOrder: i, createdAt: Date.now() + i, // +i keeps insertion order stable if createdAt is ever read as a tiebreaker
     });
   });

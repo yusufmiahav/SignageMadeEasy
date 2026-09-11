@@ -1,28 +1,62 @@
 import { useEffect, useState } from 'react';
 import { DialogShell } from './DialogShell';
 import type { AppState } from '../../hooks/useAppState';
-import type { LibraryItem, TflStationResult } from '../../api/types';
+import type { LibraryItem, TflStationConfig, TflStationLine, TflStationResult } from '../../api/types';
 
 interface AddTflArrivalsDialogProps {
   app: AppState;
   onClose: () => void;
-  /** When set, reconfigures this existing item's line filter instead of adding a new one — the station itself isn't editable here (only "which lines"), since changing station is really a different item. */
+  /** When set, reconfigures this existing item's station list instead of adding a new one — the same repeatable "add a station" UI, just pre-populated. */
   editItem?: LibraryItem;
 }
 
+/** One station added to the board so far, with its own independently-editable line filter. `availableLines` empty means the full list couldn't be determined (only happens re-opening an existing board whose station name no longer resolves) — that station's lines show as a static list instead of checkboxes, but it can still be removed from the board. */
+interface StationEntry {
+  stopPointId: string;
+  stopPointName: string;
+  availableLines: TflStationLine[];
+  selectedLines: Set<string>;
+}
+
 export function AddTflArrivalsDialog({ app, onClose, editItem }: AddTflArrivalsDialogProps) {
-  const { addTflArrivals, setTflArrivalLines, searchTflStations } = app;
+  const { addTflArrivals, setTflStations, searchTflStations } = app;
   const [name, setName] = useState(editItem?.name ?? '');
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(!!editItem);
   const [results, setResults] = useState<TflStationResult[] | null>(null);
-  const [station, setStation] = useState<TflStationResult | null>(null);
-  const [lines, setLines] = useState<Set<string>>(new Set());
-  // Edit mode only — the item itself only ever stored the *selected* line ids, not
-  // the full set of lines this station actually has (see hub/src/tflArrivals.ts's
-  // header comment on why a station's complete line list is never persisted on the
-  // item), so re-showing every option requires re-searching for it by name here.
-  const [lookupFailed, setLookupFailed] = useState(false);
+  const [stations, setStations] = useState<StationEntry[]>([]);
+
+  // Edit mode: re-look-up each already-configured station by name to recover its
+  // full line list (the item itself only ever stored the *selected* subset — see
+  // hub/src/tflArrivals.ts's header comment on why a station's complete line list
+  // is never persisted). Runs once per station in parallel; one that fails to
+  // resolve still shows up (removable), just without editable checkboxes.
+  useEffect(() => {
+    if (!editItem?.tflStations || editItem.tflStations.length === 0) return;
+    let cancelled = false;
+    setLoadingExisting(true);
+    void Promise.all(editItem.tflStations.map(async (station): Promise<StationEntry> => {
+      const found = await searchTflStations(station.stopPointName);
+      const match = found.find((r) => r.id === station.stopPointId);
+      if (match) {
+        return {
+          stopPointId: match.id, stopPointName: match.name, availableLines: match.lines,
+          selectedLines: new Set(station.lines && station.lines.length > 0 ? station.lines : match.lines.map((l) => l.id)),
+        };
+      }
+      return {
+        stopPointId: station.stopPointId, stopPointName: station.stopPointName, availableLines: [],
+        selectedLines: new Set(station.lines ?? []),
+      };
+    })).then((entries) => {
+      if (!cancelled) setStations(entries);
+    }).finally(() => {
+      if (!cancelled) setLoadingExisting(false);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editItem]);
 
   const search = async () => {
     if (!query.trim()) return;
@@ -35,162 +69,140 @@ export function AddTflArrivalsDialog({ app, onClose, editItem }: AddTflArrivalsD
     }
   };
 
-  const pickStation = (s: TflStationResult) => {
-    setStation(s);
-    setLines(new Set(s.lines.map((l) => l.id))); // every line at this station selected by default
+  const addStation = (r: TflStationResult) => {
+    if (stations.some((s) => s.stopPointId === r.id)) return; // already added
+    setStations((prev) => [...prev, { stopPointId: r.id, stopPointName: r.name, availableLines: r.lines, selectedLines: new Set(r.lines.map((l) => l.id)) }]);
+    setResults(null);
+    setQuery('');
   };
 
-  useEffect(() => {
-    if (!editItem || editItem.type !== 'tfl-arrivals' || !editItem.tflStopPointName) return;
-    let cancelled = false;
-    setSearching(true);
-    setLookupFailed(false);
-    void searchTflStations(editItem.tflStopPointName).then((found) => {
-      if (cancelled) return;
-      const match = found.find((r) => r.id === editItem.tflStopPointId);
-      if (match) {
-        setStation(match);
-        // Empty/undefined tflArrivalLines means "every line" at add-time — reflect
-        // that same effective state here rather than showing nothing checked.
-        setLines(new Set(editItem.tflArrivalLines && editItem.tflArrivalLines.length > 0 ? editItem.tflArrivalLines : match.lines.map((l) => l.id)));
-      } else {
-        setLookupFailed(true);
-      }
-    }).finally(() => {
-      if (!cancelled) setSearching(false);
-    });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editItem]);
-
-  const toggleLine = (id: string) => {
-    setLines((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const removeStation = (stopPointId: string) => {
+    setStations((prev) => prev.filter((s) => s.stopPointId !== stopPointId));
   };
+
+  const toggleLine = (stopPointId: string, lineId: string) => {
+    setStations((prev) => prev.map((s) => {
+      if (s.stopPointId !== stopPointId) return s;
+      const next = new Set(s.selectedLines);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
+      return { ...s, selectedLines: next };
+    }));
+  };
+
+  const canSave = stations.length > 0 && stations.every((s) => s.selectedLines.size > 0);
 
   const confirm = async () => {
-    if (!station) return;
-    if (editItem) await setTflArrivalLines(editItem.id, [...lines]);
-    else await addTflArrivals(name, station.id, station.name, [...lines]);
+    if (!canSave) return;
+    const tflStations: TflStationConfig[] = stations.map((s) => ({
+      stopPointId: s.stopPointId, stopPointName: s.stopPointName, lines: [...s.selectedLines],
+    }));
+    if (editItem) await setTflStations(editItem.id, tflStations);
+    else await addTflArrivals(name, tflStations);
     onClose();
   };
 
-  if (editItem) {
-    return (
-      <DialogShell title="Edit TfL station arrivals" onClose={onClose}>
-        <p className="dialog-body" style={{ margin: 0 }}>
-          Change which lines show on this board — the station itself ({editItem.tflStopPointName}) can't be
-          changed here; add a new TfL arrivals item instead if you need a different station.
-        </p>
-        {searching && <p className="dialog-body text-muted" style={{ margin: 0 }}>Looking up this station's lines…</p>}
-        {!searching && lookupFailed && (
-          <p className="dialog-body" style={{ margin: 0, color: 'var(--color-danger, #c0392b)' }}>
-            Couldn't look up this station's available lines right now — the hub may be
-            unable to reach TfL. Close this and try again shortly.
-          </p>
-        )}
-        {!searching && station && station.lines.length > 0 && (
-          <div className="field">
-            <label>Show arrivals for</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {station.lines.map((l) => (
-                <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={lines.has(l.id)} onChange={() => toggleLine(l.id)} />
-                  <span style={{ flex: 1, fontSize: 13 }}>{l.name}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="dialog-actions">
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" disabled={!station || lines.size === 0} onClick={() => void confirm()}>Save</button>
-        </div>
-      </DialogShell>
-    );
-  }
-
   return (
-    <DialogShell title="Add TfL station arrivals" onClose={onClose}>
+    <DialogShell title={editItem ? 'Edit TfL station arrivals' : 'Add TfL station arrivals'} onClose={onClose}>
       <p className="dialog-body" style={{ margin: 0 }}>
-        Shows live train countdowns for one station — e.g. "District · Westbound ·
-        3 min, then 5, 8" — full-screen. Search for the station below; the hub polls
-        Transport for London directly, nothing to configure on the screen itself.
+        Shows live train countdowns for one or more stations — e.g. "District ·
+        Westbound · 3 min, then 5, 8" — full-screen. Add a station below; add more
+        than one to show them together on the same board, side by side in
+        landscape or stacked in portrait. The hub polls Transport for London
+        directly, nothing to configure on the screen itself.
       </p>
-      <div className="field">
-        <label htmlFor="tfl-arrivals-name">Label (optional)</label>
-        <input className="input" id="tfl-arrivals-name" placeholder="e.g. Westminster" value={name} onChange={(e) => setName(e.target.value)} />
-      </div>
-
-      <div className="field">
-        <label htmlFor="tfl-arrivals-search">Search for a station</label>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input
-            className="input"
-            id="tfl-arrivals-search"
-            placeholder="e.g. Westminster"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void search(); } }}
-            style={{ flex: 1 }}
-          />
-          <button type="button" className="btn btn-secondary" onClick={() => void search()} disabled={searching || !query.trim()}>
-            {searching ? 'Searching…' : 'Search'}
-          </button>
-        </div>
-      </div>
-
-      {results != null && (
+      {!editItem && (
         <div className="field">
-          {results.length > 0 ? (
-            <>
-              <label htmlFor="tfl-arrivals-results">Station</label>
-              <select
-                className="input"
-                id="tfl-arrivals-results"
-                aria-label="Station"
-                value={station?.id ?? ''}
-                onChange={(e) => {
-                  const picked = results.find((r) => r.id === e.target.value);
-                  if (picked) pickStation(picked);
-                }}
-              >
-                <option value="" disabled>Choose a station…</option>
-                {results.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
-              </select>
-            </>
-          ) : (
-            <p className="dialog-body" style={{ margin: 0 }}>
-              No stations found for "{query.trim()}" — check the spelling, or try a
-              nearby station name instead.
-            </p>
-          )}
+          <label htmlFor="tfl-arrivals-name">Label (optional)</label>
+          <input className="input" id="tfl-arrivals-name" placeholder="e.g. Westminster" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
       )}
 
-      {station && station.lines.length > 0 && (
-        <div className="field">
-          <label>Show arrivals for</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {station.lines.map((l) => (
-              <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={lines.has(l.id)} onChange={() => toggleLine(l.id)} />
-                <span style={{ flex: 1, fontSize: 13 }}>{l.name}</span>
-              </label>
-            ))}
+      {loadingExisting ? (
+        <p className="dialog-body text-muted" style={{ margin: 0 }}>Looking up this board's stations…</p>
+      ) : (
+        <>
+          {stations.map((s) => (
+            <div className="field" key={s.stopPointId} style={{ border: '1px solid var(--color-divider)', borderRadius: 8, padding: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                <strong style={{ fontSize: 13 }}>{s.stopPointName}</strong>
+                <button type="button" className="btn btn-ghost btn-icon" aria-label={`Remove ${s.stopPointName}`} onClick={() => removeStation(s.stopPointId)}>
+                  ×
+                </button>
+              </div>
+              {s.availableLines.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {s.availableLines.map((l) => (
+                    <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={s.selectedLines.has(l.id)} onChange={() => toggleLine(s.stopPointId, l.id)} />
+                      <span style={{ flex: 1, fontSize: 13 }}>{l.name}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="dialog-body text-muted" style={{ margin: 0, fontSize: 12 }}>
+                  Couldn't refresh this station's available lines — showing what's currently
+                  configured ({[...s.selectedLines].join(', ') || 'none'}). Remove and re-add it to change lines.
+                </p>
+              )}
+            </div>
+          ))}
+
+          <div className="field">
+            <label htmlFor="tfl-arrivals-search">{stations.length > 0 ? 'Add another station' : 'Search for a station'}</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                className="input"
+                id="tfl-arrivals-search"
+                placeholder="e.g. Westminster"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void search(); } }}
+                style={{ flex: 1 }}
+              />
+              <button type="button" className="btn btn-secondary" onClick={() => void search()} disabled={searching || !query.trim()}>
+                {searching ? 'Searching…' : 'Search'}
+              </button>
+            </div>
           </div>
-        </div>
+
+          {results != null && (
+            <div className="field">
+              {results.length > 0 ? (
+                <>
+                  <label htmlFor="tfl-arrivals-results">Station</label>
+                  <select
+                    className="input"
+                    id="tfl-arrivals-results"
+                    aria-label="Station"
+                    value=""
+                    onChange={(e) => {
+                      const picked = results.find((r) => r.id === e.target.value);
+                      if (picked) addStation(picked);
+                    }}
+                  >
+                    <option value="" disabled>Choose a station to add…</option>
+                    {results.map((r) => (
+                      <option key={r.id} value={r.id} disabled={stations.some((s) => s.stopPointId === r.id)}>
+                        {r.name}{stations.some((s) => s.stopPointId === r.id) ? ' (already added)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <p className="dialog-body" style={{ margin: 0 }}>
+                  No stations found for "{query.trim()}" — check the spelling, or try a
+                  nearby station name instead.
+                </p>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <div className="dialog-actions">
         <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button type="button" className="btn btn-primary" disabled={!station} onClick={() => void confirm()}>Add</button>
+        <button type="button" className="btn btn-primary" disabled={!canSave} onClick={() => void confirm()}>{editItem ? 'Save' : 'Add'}</button>
       </div>
     </DialogShell>
   );

@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationResult } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -27,16 +27,18 @@ export interface SignageApiClient {
   addNdiSource(name: string, ndiSourceName: string): Promise<LibraryItem>;
   /** Pi 4/5 or x86 device only — asks the given paired device to run its own NDI discovery for AddNdiSourceDialog's "Scan for sources" button. Empty array (never throws) when the device is unreachable, isn't NDI-capable, or has no discovery helper built yet — the dialog just falls back to manual entry. */
   listNdiSources(deviceId: string): Promise<string[]>;
+  /** Reconfigures an existing 'ndi' item's source name — without deleting and re-adding it. */
+  setNdiSourceName(id: string, ndiSourceName: string): Promise<void>;
   /** No file either — a live TfL (Transport for London) line status board, e.g. red/amber/green for chosen Tube/Overground/DLR/Elizabeth line(s). `tflModes` are mode names from AddTflStatusDialog's checkboxes; the hub polls TfL centrally and resolves the actual line data at playback time, same "hub owns the live piece" pattern as NDI. */
   addTflStatus(name: string, tflModes: string[]): Promise<LibraryItem>;
   /** Searches TfL stations by name for AddTflArrivalsDialog — the hub resolves any hub/interchange result down to its real, per-mode queryable stations server-side, so every result here is already directly usable. Empty array (never throws) in standalone/localStorage mode (no real hub to query) or if the hub's TfL lookup fails. */
   searchTflStations(query: string): Promise<TflStationResult[]>;
-  /** No file either — a live per-station departure board (e.g. "District · Westbound · 3 min, then 5, 8"), distinct from addTflStatus's line-status board. `tflStopPointId`/`tflStopPointName` come from a searchTflStations result; `tflArrivalLines` (line ids) filters to just those lines, or shows every line reported at the station when empty. */
-  addTflArrivals(name: string, tflStopPointId: string, tflStopPointName: string, tflArrivalLines: string[]): Promise<LibraryItem>;
+  /** No file either — a live per-station departure board (e.g. "District · Westbound · 3 min, then 5, 8"), distinct from addTflStatus's line-status board. `tflStations` is one or more stations shown together on the same board (searchTflStations results, each with its own line filter — empty/undefined shows every line reported at that station). */
+  addTflArrivals(name: string, tflStations: TflStationConfig[]): Promise<LibraryItem>;
   /** Reconfigures an existing 'tfl-status' item's modes — e.g. adding/removing DLR — without deleting and re-adding it. */
   setTflModes(id: string, tflModes: string[]): Promise<void>;
-  /** Reconfigures an existing 'tfl-arrivals' item's line filter — same station, different lines shown. Empty array shows every line at the station, same as at creation time. */
-  setTflArrivalLines(id: string, tflArrivalLines: string[]): Promise<void>;
+  /** Reconfigures an existing 'tfl-arrivals' item's whole station list (add/remove a station, or change one's line filter) — a full replace, same as at creation time. */
+  setTflStations(id: string, tflStations: TflStationConfig[]): Promise<void>;
   removeLibraryItem(id: string): Promise<void>;
   renameLibraryItem(id: string, name: string): Promise<void>;
   /** Persists a drag-and-drop reorder from the Library screen — the complete new display order. */

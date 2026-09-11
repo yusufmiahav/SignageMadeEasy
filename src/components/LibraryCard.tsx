@@ -56,7 +56,7 @@ function metaText(item: LibraryItem): string {
     case 'tfl-status':
       return (item.tflModes ?? []).map((m) => TFL_MODE_LABEL[m] ?? m).join(', ');
     case 'tfl-arrivals':
-      return item.tflStopPointName ?? '';
+      return (item.tflStations ?? []).map((s) => s.stopPointName).join(', ');
   }
 }
 
@@ -71,7 +71,7 @@ interface LibraryCardProps {
   selectMode?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
-  /** 'tfl-status'/'tfl-arrivals' only — reopens the add dialog in edit mode to change modes/lines without deleting and re-adding the item. Omitted (button hidden) for every other type. */
+  /** 'ndi'/'tfl-status'/'tfl-arrivals' only — reopens the add dialog in edit mode to change the source name/modes/lines without deleting and re-adding the item. Omitted (button hidden) for every other type. */
   onConfigure?: (item: LibraryItem) => void;
 }
 
@@ -179,8 +179,8 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
         <button type="button" className="btn btn-ghost btn-icon thumb-remove" aria-label="Remove" onClick={() => onRemove(item.id)}>
           <Icon name="x" size={12} />
         </button>
-        {(item.type === 'tfl-status' || item.type === 'tfl-arrivals') && onConfigure && (
-          <button type="button" className="btn btn-ghost btn-icon thumb-configure" aria-label="Edit options" title="Change which lines/modes this shows" onClick={() => onConfigure(item)}>
+        {(item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals') && onConfigure && (
+          <button type="button" className="btn btn-ghost btn-icon thumb-configure" aria-label="Edit options" title="Change the source/lines/modes this shows" onClick={() => onConfigure(item)}>
             <Icon name="sliders" size={12} />
           </button>
         )}

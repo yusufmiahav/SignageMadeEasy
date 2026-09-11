@@ -75,8 +75,26 @@ body { font-family: system-ui, sans-serif; color: #fff; }
 /* 'tfl-arrivals' boards only — wraps the station-name header together with its
    .tfl-rows so .tfl-board's centering treats them as one labeled unit, rather
    than a header pinned at the very top with an awkward gap before centered rows
-   below it (see .tfl-board's own comment on why centering exists at all). */
-#stage .tfl-content { display: flex; flex-direction: column; width: 100%; }
+   below it (see .tfl-board's own comment on why centering exists at all). Used
+   both as a single-station board's sole content and as one panel of a multi-
+   station board — see .tfl-multi-content below. */
+#stage .tfl-content { display: flex; flex-direction: column; width: 100%; min-width: 0; }
+/* Multiple stations shown together on one board (see types.ts's
+   LibraryItem.tflStations and player.js's renderTflArrivalsBoard) — side by side
+   in landscape (row), stacked in portrait (column), same orientation-driven
+   pattern as the clock's font-size rule above: Chromium's own viewport dimensions
+   already reflect the real post-rotation shape (see displayOrientation.ts), so
+   this needs no JS, just a media query. A vertical divider between panels in the
+   row layout (a horizontal one in the column layout) makes each station read as
+   its own section rather than an ambiguous run-on list. */
+#stage .tfl-multi-content { display: flex; flex-direction: row; gap: 32px; width: 100%; height: 100%; align-items: center; }
+#stage .tfl-multi-content > .tfl-content { flex: 1 1 0; height: 100%; justify-content: center; border-left: 1px solid #ddd; padding-left: 32px; }
+#stage .tfl-multi-content > .tfl-content:first-child { border-left: none; padding-left: 0; }
+@media (orientation: portrait) {
+  #stage .tfl-multi-content { flex-direction: column; gap: 24px; }
+  #stage .tfl-multi-content > .tfl-content { flex: 1 1 0; width: 100%; height: auto; border-left: none; padding-left: 0; border-top: 1px solid #ddd; padding-top: 24px; }
+  #stage .tfl-multi-content > .tfl-content:first-child { border-top: none; padding-top: 0; }
+}
 /* Names the station this board's countdowns are for, since every row already
    shows a train's *destination*, not the station the board itself is sitting at;
    confirmed on a real render that this was genuinely ambiguous without a header. */

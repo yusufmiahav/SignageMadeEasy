@@ -328,71 +328,106 @@ function formatArrivalMinutes(sec) {
   return min <= 0 ? 'Due' : `${min} min`;
 }
 
-// Departure-board rendering for 'tfl-arrivals' items — one row per platform+direction
-// (already grouped server-side, see hub/src/tflArrivals.ts's getBoardForStop), reusing
-// the same per-line brand-color badge as the status board (TFL_LINE_COLOR) for visual
-// consistency between the two TfL content types.
-function renderTflArrivalsBoard(item) {
-  const board = document.createElement('div');
-  board.className = 'tfl-board';
-  // Header + rows are grouped into one .tfl-content block (see .tfl-board's own
-  // comment in renderTflBoard above) so board.js's vertical centering treats the
-  // station name and its arrivals as one cohesive unit — a short arrivals list
-  // centers the whole labeled group in the middle of the screen, rather than
-  // pinning the header to the very top with an awkward gap before centered rows.
-  const content = document.createElement('div');
-  content.className = 'tfl-content';
-  // Names the station this board is for — every row already shows a train's
-  // *destination* (e.g. "Ealing Broadway"), not the station the board itself is
-  // showing arrivals at, which was genuinely ambiguous on a real render with no
-  // other on-screen label. Shown in both the populated and "no arrivals" states.
-  if (item.tflStopPointName) {
+// A station with many platforms sharing a screen with 2 other stations (see
+// renderTflArrivalsBoard below) only gets a third of the width — capped rather
+// than letting it multi-column internally (computeTflColumnCount's math is
+// height-only, and would happily choose 2+ columns that don't actually fit a
+// panel this narrow). A single-station board has no such constraint and isn't
+// capped at all — see the `cap` parameter below.
+const TFL_ARRIVALS_MAX_PLATFORMS_PER_STATION = 8;
+
+// One line-badge + towards/platform + countdown row — shared by both the single-
+// and multi-station layouts below.
+function buildTflArrivalRow(b) {
+  const row = document.createElement('div');
+  row.className = 'tfl-row';
+  const badge = document.createElement('span');
+  badge.className = 'tfl-line-badge';
+  const badgeColor = TFL_LINE_COLOR[b.lineId] ?? TFL_LINE_COLOR_FALLBACK;
+  badge.style.background = badgeColor;
+  badge.style.color = contrastTextColor(badgeColor);
+  badge.textContent = b.lineName;
+  const infoCol = document.createElement('div');
+  infoCol.className = 'tfl-status-col';
+  const towards = document.createElement('span');
+  towards.className = 'tfl-status-text';
+  towards.textContent = b.platformName ? `${b.towards} · ${b.platformName}` : b.towards;
+  infoCol.appendChild(towards);
+  const countdown = document.createElement('span');
+  countdown.className = 'tfl-reason';
+  const [first, ...rest] = b.arrivalsSec;
+  countdown.textContent = rest.length > 0
+    ? `${formatArrivalMinutes(first)}, then ${rest.map(formatArrivalMinutes).join(', ')}`
+    : formatArrivalMinutes(first);
+  infoCol.appendChild(countdown);
+  row.appendChild(badge);
+  row.appendChild(infoCol);
+  return row;
+}
+
+// One station's header + rows — used both as the sole content of a single-
+// station board and as one panel of a multi-station board. `multiColumn: true`
+// (single-station only) lets a long roster spread across columns the way the
+// line-status board does; a multi-station panel always stays single-column
+// since computeTflColumnCount's math doesn't know how narrow its own panel is.
+function buildTflStationBlock(station, { multiColumn }) {
+  const block = document.createElement('div');
+  block.className = 'tfl-content';
+  // Names the station this block is for — every row already shows a train's
+  // *destination* (e.g. "Ealing Broadway"), not the station itself, which was
+  // genuinely ambiguous on a real render with no other on-screen label. Shown
+  // in both the populated and "no arrivals" states.
+  if (station.stopPointName) {
     const header = document.createElement('div');
     header.className = 'tfl-arrivals-header';
-    header.textContent = item.tflStopPointName;
-    content.appendChild(header);
+    header.textContent = station.stopPointName;
+    block.appendChild(header);
   }
-  const boards = item.tflArrivalBoards ?? [];
+  const boards = station.boards ?? [];
   if (boards.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'tfl-empty';
     empty.textContent = 'No arrivals available right now';
-    content.appendChild(empty);
-    board.appendChild(content);
-    return board;
+    block.appendChild(empty);
+    return block;
   }
+  const shown = multiColumn ? boards : boards.slice(0, TFL_ARRIVALS_MAX_PLATFORMS_PER_STATION);
   const rows = document.createElement('div');
   rows.className = 'tfl-rows';
-  for (const b of boards) {
-    const row = document.createElement('div');
-    row.className = 'tfl-row';
-    const badge = document.createElement('span');
-    badge.className = 'tfl-line-badge';
-    const badgeColor = TFL_LINE_COLOR[b.lineId] ?? TFL_LINE_COLOR_FALLBACK;
-    badge.style.background = badgeColor;
-    badge.style.color = contrastTextColor(badgeColor);
-    badge.textContent = b.lineName;
-    const infoCol = document.createElement('div');
-    infoCol.className = 'tfl-status-col';
-    const towards = document.createElement('span');
-    towards.className = 'tfl-status-text';
-    towards.textContent = b.platformName ? `${b.towards} · ${b.platformName}` : b.towards;
-    infoCol.appendChild(towards);
-    const countdown = document.createElement('span');
-    countdown.className = 'tfl-reason';
-    const [first, ...rest] = b.arrivalsSec;
-    countdown.textContent = rest.length > 0
-      ? `${formatArrivalMinutes(first)}, then ${rest.map(formatArrivalMinutes).join(', ')}`
-      : formatArrivalMinutes(first);
-    infoCol.appendChild(countdown);
-    row.appendChild(badge);
-    row.appendChild(infoCol);
-    rows.appendChild(row);
+  for (const b of shown) rows.appendChild(buildTflArrivalRow(b));
+  // Same multi-column no-scroll reasoning as renderTflBoard above — only applied
+  // for a single-station board; see this function's own comment for why a panel
+  // in a multi-station layout skips it instead.
+  if (multiColumn) rows.style.columnCount = String(computeTflColumnCount(shown.length));
+  block.appendChild(rows);
+  return block;
+}
+
+// Departure-board rendering for 'tfl-arrivals' items — one row per platform+direction
+// per station (already grouped server-side, see hub/src/tflArrivals.ts's
+// getBoardForStop), reusing the same per-line brand-color badge as the status
+// board (TFL_LINE_COLOR) for visual consistency between the two TfL content types.
+// An item can show more than one station on the same screen (see types.ts's
+// LibraryItem.tflStations) — arranged side by side in landscape, stacked in
+// portrait (see .tfl-multi-content's media query in player.css).
+function renderTflArrivalsBoard(item) {
+  const board = document.createElement('div');
+  board.className = 'tfl-board';
+  const stations = item.tflStationBoards ?? [];
+  if (stations.length <= 1) {
+    // Single station: header + rows form one centered block, same as before
+    // multi-station support existed — see .tfl-board's own comment in
+    // renderTflBoard above for why centering exists at all.
+    const block = stations[0]
+      ? buildTflStationBlock(stations[0], { multiColumn: true })
+      : (() => { const empty = document.createElement('div'); empty.className = 'tfl-empty'; empty.textContent = 'No arrivals available right now'; return empty; })();
+    board.appendChild(block);
+    return board;
   }
-  // Same multi-column no-scroll reasoning as renderTflBoard above.
-  rows.style.columnCount = String(computeTflColumnCount(boards.length));
-  content.appendChild(rows);
-  board.appendChild(content);
+  const multi = document.createElement('div');
+  multi.className = 'tfl-multi-content';
+  for (const station of stations) multi.appendChild(buildTflStationBlock(station, { multiColumn: false }));
+  board.appendChild(multi);
   return board;
 }
 
@@ -532,7 +567,7 @@ function playItem(index) {
     stage.appendChild(board);
     scheduleAdvance(item.duration ?? 8, myGeneration);
   } else if (item.type === 'tfl-arrivals') {
-    // Same reasoning as 'tfl-status' above — item.tflArrivalBoards is already
+    // Same reasoning as 'tfl-status' above — item.tflStationBoards is already
     // resolved fresh by the hub on every poll; tracked so syncTflArrivals can
     // update it in place while this item stays on screen.
     const board = renderTflArrivalsBoard(item);

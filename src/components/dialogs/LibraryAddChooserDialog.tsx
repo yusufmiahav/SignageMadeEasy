@@ -2,6 +2,7 @@ import { DialogShell } from './DialogShell';
 import { Icon, type IconName } from '../icons/Icon';
 
 interface LibraryAddChooserDialogProps {
+  onAddImage: () => void;
   onAddVideo: () => void;
   onAddPdf: () => void;
   onAddAnnouncement: () => void;
@@ -12,15 +13,16 @@ interface LibraryAddChooserDialogProps {
   onClose: () => void;
 }
 
-// Mobile-only entry point (see LibraryScreen.tsx) — a row of 7 icon-only buttons
+// Mobile-only entry point (see LibraryScreen.tsx) — a row of icon-only buttons
 // had no room for labels at that width, and on a real phone there was no way to
 // tell what each one added without tapping it. One "Add" button opening this
 // dialog instead shows every option with its own icon and label, same pattern as
 // the Home tab's own AddChooserDialog.
 export function LibraryAddChooserDialog({
-  onAddVideo, onAddPdf, onAddAnnouncement, onAddClock, onAddNdiSource, onAddTflStatus, onAddTflArrivals, onClose,
+  onAddImage, onAddVideo, onAddPdf, onAddAnnouncement, onAddClock, onAddNdiSource, onAddTflStatus, onAddTflArrivals, onClose,
 }: LibraryAddChooserDialogProps) {
   const options: { icon: IconName; label: string; onClick: () => void }[] = [
+    { icon: 'image', label: 'Add image', onClick: onAddImage },
     { icon: 'video', label: 'Add video', onClick: onAddVideo },
     { icon: 'fileText', label: 'Add PDF', onClick: onAddPdf },
     { icon: 'messageCircle', label: 'Add announcement', onClick: onAddAnnouncement },

@@ -23,6 +23,7 @@ interface InFlightUpload {
 export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOpenTflDialog, onOpenTflArrivalsDialog, onConfigureTflItem }: LibraryScreenProps) {
   const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, removeLibraryItems, renameLibraryItem, setLibraryItemTags, reorderLibrary, showToast } = app;
   const dropzoneInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<InFlightUpload[]>([]);
@@ -167,6 +168,17 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
         }}
       />
       <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          void handleDropped(e.target.files);
+          e.target.value = '';
+        }}
+      />
+      <input
         ref={videoInputRef}
         type="file"
         accept="video/*"
@@ -195,6 +207,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
           <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add" onClick={() => setShowAddChooser(true)}>
             <Icon name="plus" size={15} />
           </button>
+          <button type="button" className="btn btn-secondary desktop-only" onClick={() => imageInputRef.current?.click()}>Add image</button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={() => videoInputRef.current?.click()}>Add video</button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={() => pdfInputRef.current?.click()}>Add PDF</button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={onOpenAnnounceDialog}>Add announcement</button>
@@ -326,6 +339,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
       )}
       {showAddChooser && (
         <LibraryAddChooserDialog
+          onAddImage={() => imageInputRef.current?.click()}
           onAddVideo={() => videoInputRef.current?.click()}
           onAddPdf={() => pdfInputRef.current?.click()}
           onAddAnnouncement={onOpenAnnounceDialog}

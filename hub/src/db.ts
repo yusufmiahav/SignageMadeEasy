@@ -153,6 +153,17 @@ if (!libraryColsTflArrivals.includes('tflStopPointId')) db.exec('ALTER TABLE lib
 if (!libraryColsTflArrivals.includes('tflStopPointName')) db.exec('ALTER TABLE library ADD COLUMN tflStopPointName TEXT');
 if (!libraryColsTflArrivals.includes('tflArrivalLines')) db.exec('ALTER TABLE library ADD COLUMN tflArrivalLines TEXT');
 
+// Same reasoning, for hubs deployed before a 'tfl-arrivals' item could show more
+// than one station on the same board — a JSON array of {stopPointId,
+// stopPointName, lines} (see types.ts's TflStationConfig/LibraryItem.tflStations),
+// superseding the three single-station columns just above. Those older columns
+// are kept rather than dropped (SQLite ALTER TABLE DROP COLUMN on a live
+// production DB is more risk than a few permanently-unused columns are worth) —
+// store.ts's rowToLibraryItem synthesizes a one-element tflStations array from
+// them on read for any row saved before this column existed, so an existing
+// single-station item keeps working with no manual migration.
+if (!libraryColsTflArrivals.includes('tflStations')) db.exec('ALTER TABLE library ADD COLUMN tflStations TEXT');
+
 const groupCols = (db.prepare("PRAGMA table_info(groups_)").all() as { name: string }[]).map((c) => c.name);
 if (!groupCols.includes('sortOrder')) {
   db.exec('ALTER TABLE groups_ ADD COLUMN sortOrder INTEGER');

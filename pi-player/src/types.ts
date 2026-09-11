@@ -13,10 +13,8 @@ export interface PlayerItem {
   ndiSourceName?: string;
   /** 'tfl-status' items only — see hub/src/types.ts's PlayerItem.tflLines. */
   tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string; reason?: string }[];
-  /** 'tfl-arrivals' items only — see hub/src/types.ts's PlayerItem.tflArrivalBoards. */
-  tflArrivalBoards?: { lineId: string; lineName: string; platformName: string; towards: string; arrivalsSec: number[] }[];
-  /** 'tfl-arrivals' items only — see hub/src/types.ts's PlayerItem.tflStopPointName. */
-  tflStopPointName?: string;
+  /** 'tfl-arrivals' items only — see hub/src/types.ts's PlayerItem.tflStationBoards. */
+  tflStationBoards?: { stopPointName: string; boards: { lineId: string; lineName: string; platformName: string; towards: string; arrivalsSec: number[] }[] }[];
 }
 
 export interface PlayerState {

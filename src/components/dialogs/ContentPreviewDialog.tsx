@@ -58,7 +58,7 @@ export function ContentPreviewDialog({ item, onClose }: ContentPreviewDialogProp
         {item.type === 'tfl-arrivals' && (
           <div style={{ background: '#000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', aspectRatio: '16 / 9', padding: 16, textAlign: 'center' }}>
             <span style={{ fontSize: 14, opacity: 0.7 }}>
-              Live TfL arrivals board ({item.tflStopPointName ?? 'no station set'}) — the hub
+              Live TfL arrivals board ({(item.tflStations ?? []).map((s) => s.stopPointName).join(', ') || 'no station set'}) — the hub
               resolves current train times at playback time, not previewable here.
             </span>
           </div>

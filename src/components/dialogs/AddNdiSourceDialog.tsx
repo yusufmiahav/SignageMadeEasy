@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { DialogShell } from './DialogShell';
 import type { AppState } from '../../hooks/useAppState';
+import type { LibraryItem } from '../../api/types';
 
 interface AddNdiSourceDialogProps {
   app: AppState;
   onClose: () => void;
+  /** When set, reconfigures this existing item's source name instead of adding a new one — same "edit in place" pattern as AddTflStatusDialog/AddTflArrivalsDialog. */
+  editItem?: LibraryItem;
 }
 
-export function AddNdiSourceDialog({ app, onClose }: AddNdiSourceDialogProps) {
-  const { devices, addNdiSource, listNdiSources } = app;
-  const [name, setName] = useState('');
-  const [ndiSourceName, setNdiSourceName] = useState('');
+export function AddNdiSourceDialog({ app, onClose, editItem }: AddNdiSourceDialogProps) {
+  const { devices, addNdiSource, listNdiSources, setNdiSourceName: setNdiSourceNameOnItem } = app;
+  const [name, setName] = useState(editItem?.name ?? '');
+  const [ndiSourceName, setNdiSourceName] = useState(editItem?.ndiSourceName ?? '');
   const [scanDeviceId, setScanDeviceId] = useState(devices[0]?.id ?? '');
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<string[] | null>(null);
@@ -28,21 +31,24 @@ export function AddNdiSourceDialog({ app, onClose }: AddNdiSourceDialogProps) {
 
   const confirm = async () => {
     if (!ndiSourceName.trim()) return;
-    await addNdiSource(name, ndiSourceName);
+    if (editItem) await setNdiSourceNameOnItem(editItem.id, ndiSourceName.trim());
+    else await addNdiSource(name, ndiSourceName);
     onClose();
   };
 
   return (
-    <DialogShell title="Add an NDI source" onClose={onClose}>
+    <DialogShell title={editItem ? 'Edit NDI source' : 'Add an NDI source'} onClose={onClose}>
       <p className="dialog-body" style={{ margin: 0 }}>
         Displays a live NDI video feed (a camera, encoder, or another computer on the
         network) full-screen. Only Pi 4/5 or x86 mini PC/stick screens can receive it —
         the video streams directly from the source to that screen, never through the hub.
       </p>
-      <div className="field">
-        <label htmlFor="ndi-name">Label (optional)</label>
-        <input className="input" id="ndi-name" placeholder="e.g. Lobby camera" value={name} onChange={(e) => setName(e.target.value)} />
-      </div>
+      {!editItem && (
+        <div className="field">
+          <label htmlFor="ndi-name">Label (optional)</label>
+          <input className="input" id="ndi-name" placeholder="e.g. Lobby camera" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+      )}
 
       {devices.length > 0 && (
         <div className="field">
@@ -107,7 +113,7 @@ export function AddNdiSourceDialog({ app, onClose }: AddNdiSourceDialogProps) {
       </div>
       <div className="dialog-actions">
         <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button type="button" className="btn btn-primary" onClick={() => void confirm()}>Add</button>
+        <button type="button" className="btn btn-primary" disabled={!ndiSourceName.trim()} onClick={() => void confirm()}>{editItem ? 'Save' : 'Add'}</button>
       </div>
     </DialogShell>
   );

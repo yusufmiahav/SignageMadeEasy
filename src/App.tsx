@@ -192,6 +192,9 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       {dialog?.type === 'addNdiSource' && <AddNdiSourceDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'addTflStatus' && <AddTflStatusDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'addTflArrivals' && <AddTflArrivalsDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'configureTfl' && dialog.item.type === 'ndi' && (
+        <AddNdiSourceDialog app={app} editItem={dialog.item} onClose={closeDialog} />
+      )}
       {dialog?.type === 'configureTfl' && dialog.item.type === 'tfl-status' && (
         <AddTflStatusDialog app={app} editItem={dialog.item} onClose={closeDialog} />
       )}

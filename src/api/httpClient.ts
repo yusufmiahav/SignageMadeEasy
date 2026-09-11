@@ -68,14 +68,15 @@ export const httpClient: SignageApiClient = {
   // 502 (device unreachable / not NDI-capable / discovery helper missing) all collapse to
   // an empty list here — see the SignageApiClient comment for why this never throws.
   listNdiSources: (deviceId) => request<{ sources: string[] }>(`/api/devices/${deviceId}/ndi-sources`).then((r) => r.sources).catch(() => []),
+  setNdiSourceName: (id, ndiSourceName) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ ndiSourceName }) }),
   addTflStatus: (name, tflModes) => request<LibraryItem>('/api/library/tfl-status', { method: 'POST', ...json({ name, tflModes }) }),
   // Mirrors listNdiSources' never-throws reasoning — a failed/unreachable TfL lookup
   // just leaves AddTflArrivalsDialog's results empty rather than surfacing an error.
   searchTflStations: (query) => request<TflStationResult[]>(`/api/tfl/stations/search?q=${encodeURIComponent(query)}`).catch(() => []),
-  addTflArrivals: (name, tflStopPointId, tflStopPointName, tflArrivalLines) =>
-    request<LibraryItem>('/api/library/tfl-arrivals', { method: 'POST', ...json({ name, tflStopPointId, tflStopPointName, tflArrivalLines }) }),
+  addTflArrivals: (name, tflStations) =>
+    request<LibraryItem>('/api/library/tfl-arrivals', { method: 'POST', ...json({ name, tflStations }) }),
   setTflModes: (id, tflModes) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ tflModes }) }),
-  setTflArrivalLines: (id, tflArrivalLines) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ tflArrivalLines }) }),
+  setTflStations: (id, tflStations) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ tflStations }) }),
   removeLibraryItem: (id) => request<void>(`/api/library/${id}`, { method: 'DELETE' }),
   reorderLibrary: (ids) => request<void>('/api/library/reorder', { method: 'PUT', ...json({ ids }) }),
   setItemDuration: (id, durationSec) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ durationSec }) }),

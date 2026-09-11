@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationResult } from './types';
+import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -154,6 +154,12 @@ class LocalStoreClient implements SignageApiClient {
     return [];
   }
 
+  async setNdiSourceName(id: string, ndiSourceName: string): Promise<void> {
+    const item = this.data.library.find((i) => i.id === id && i.type === 'ndi');
+    if (item) item.ndiSourceName = ndiSourceName;
+    this.persist();
+  }
+
   async addTflStatus(name: string, tflModes: string[]): Promise<LibraryItem> {
     const item: LibraryItem = { id: uid('l'), name: name.trim() || 'TfL status', type: 'tfl-status', tflModes, tags: [] };
     this.data.library.push(item);
@@ -167,12 +173,10 @@ class LocalStoreClient implements SignageApiClient {
     return [];
   }
 
-  async addTflArrivals(name: string, tflStopPointId: string, tflStopPointName: string, tflArrivalLines: string[]): Promise<LibraryItem> {
+  async addTflArrivals(name: string, tflStations: TflStationConfig[]): Promise<LibraryItem> {
     const item: LibraryItem = {
-      id: uid('l'), name: name.trim() || tflStopPointName.trim() || 'TfL arrivals', type: 'tfl-arrivals',
-      tflStopPointId: tflStopPointId.trim(),
-      ...(tflStopPointName.trim() && { tflStopPointName: tflStopPointName.trim() }),
-      ...(tflArrivalLines.length > 0 && { tflArrivalLines }),
+      id: uid('l'), name: name.trim() || tflStations.map((s) => s.stopPointName).join(', ') || 'TfL arrivals', type: 'tfl-arrivals',
+      tflStations,
       tags: [],
     };
     this.data.library.push(item);
@@ -186,9 +190,9 @@ class LocalStoreClient implements SignageApiClient {
     this.persist();
   }
 
-  async setTflArrivalLines(id: string, tflArrivalLines: string[]): Promise<void> {
+  async setTflStations(id: string, tflStations: TflStationConfig[]): Promise<void> {
     const item = this.data.library.find((i) => i.id === id && i.type === 'tfl-arrivals');
-    if (item) item.tflArrivalLines = tflArrivalLines.length > 0 ? tflArrivalLines : undefined;
+    if (item) item.tflStations = tflStations;
     this.persist();
   }
 

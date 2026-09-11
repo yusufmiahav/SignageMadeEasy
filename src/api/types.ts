@@ -1,5 +1,15 @@
 export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status' | 'tfl-arrivals';
 
+/** One station within a 'tfl-arrivals' item's LibraryItem.tflStations — see its comment. */
+export interface TflStationConfig {
+  /** The real, queryable TfL StopPoint id (e.g. "940GZZLUWSM"), already resolved server-side from any hub/interchange the user searched for. */
+  stopPointId: string;
+  /** Display name captured at add-time (e.g. "Westminster Underground Station"). */
+  stopPointName: string;
+  /** Which line ids (e.g. ['jubilee', 'district']) to show arrivals for at this station; empty/undefined shows every line reported there. */
+  lines?: string[];
+}
+
 export interface LibraryItem {
   id: string;
   name: string;
@@ -14,12 +24,12 @@ export interface LibraryItem {
   ndiSourceName?: string;
   /** 'tfl-status' items only — which TfL modes to show (e.g. ['tube', 'overground']). The live line status itself is never stored here; it's resolved fresh from the hub's own TfL poll at playback time. */
   tflModes?: string[];
-  /** 'tfl-arrivals' items only — the real, queryable TfL StopPoint id (e.g. "940GZZLUWSM"), already resolved server-side from any hub/interchange the user searched for. */
-  tflStopPointId?: string;
-  /** 'tfl-arrivals' items only — display name captured at add-time (e.g. "Westminster Underground Station"). */
-  tflStopPointName?: string;
-  /** 'tfl-arrivals' items only — which line ids (e.g. ['jubilee', 'district']) to show arrivals for; empty/undefined shows every line reported at this station. */
-  tflArrivalLines?: string[];
+  /**
+   * 'tfl-arrivals' items only — one or more stations shown together on the same
+   * board (e.g. 3 stations side by side in landscape, stacked in portrait). A
+   * single-station board is just the one-element case, not a separate shape.
+   */
+  tflStations?: TflStationConfig[];
   /** Data URL thumbnail. Images only. */
   thumb?: string;
   /** Message body. Announcements only. */
