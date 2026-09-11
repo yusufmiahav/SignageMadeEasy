@@ -1,6 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Icon } from '../components/icons/Icon';
 import { LibraryCard } from '../components/LibraryCard';
+import { LibraryAddChooserDialog } from '../components/dialogs/LibraryAddChooserDialog';
 import type { AppState } from '../hooks/useAppState';
 import type { LibraryItem } from '../api/types';
 
@@ -25,6 +26,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   const videoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<InFlightUpload[]>([]);
+  const [showAddChooser, setShowAddChooser] = useState(false);
 
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | LibraryItem['type']>('all');
@@ -190,26 +192,8 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ margin: 0 }}>Library</h1>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add video" onClick={() => videoInputRef.current?.click()}>
-            <Icon name="video" size={15} />
-          </button>
-          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add PDF" onClick={() => pdfInputRef.current?.click()}>
-            <Icon name="fileText" size={15} />
-          </button>
-          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add announcement" onClick={onOpenAnnounceDialog}>
-            <Icon name="messageCircle" size={15} />
-          </button>
-          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add clock" onClick={() => void addClock('Clock')}>
-            <Icon name="clock" size={15} />
-          </button>
-          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add NDI source" onClick={onOpenNdiDialog}>
-            <Icon name="radio" size={15} />
-          </button>
-          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add TfL status board" onClick={onOpenTflDialog}>
-            <Icon name="activity" size={15} />
-          </button>
-          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add TfL station arrivals" onClick={onOpenTflArrivalsDialog}>
-            <Icon name="train" size={15} />
+          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add" onClick={() => setShowAddChooser(true)}>
+            <Icon name="plus" size={15} />
           </button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={() => videoInputRef.current?.click()}>Add video</button>
           <button type="button" className="btn btn-secondary desktop-only" onClick={() => pdfInputRef.current?.click()}>Add PDF</button>
@@ -339,6 +323,18 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
             />
           ))}
         </div>
+      )}
+      {showAddChooser && (
+        <LibraryAddChooserDialog
+          onAddVideo={() => videoInputRef.current?.click()}
+          onAddPdf={() => pdfInputRef.current?.click()}
+          onAddAnnouncement={onOpenAnnounceDialog}
+          onAddClock={() => void addClock('Clock')}
+          onAddNdiSource={onOpenNdiDialog}
+          onAddTflStatus={onOpenTflDialog}
+          onAddTflArrivals={onOpenTflArrivalsDialog}
+          onClose={() => setShowAddChooser(false)}
+        />
       )}
     </div>
   );
