@@ -98,6 +98,23 @@
 
     <hr />
 
+    <h2>Display orientation</h2>
+    <p>Rotates everything this screen shows — the pairing/QR screen included — to
+      match how this Pi is physically mounted relative to the panel. Takes effect
+      immediately, no reboot needed.</p>
+    <div>
+      <label for="orientation-select">Rotation</label>
+      <select id="orientation-select">
+        <option value="0">0° (normal)</option>
+        <option value="90">90°</option>
+        <option value="180">180°</option>
+        <option value="270">270°</option>
+      </select>
+    </div>
+    <p id="orientation-status"></p>
+
+    <hr />
+
     <h2>Performance</h2>
     <p>Caps the CPU's top speed to run cooler — worth trying if this Pi has no
       heatsink and is throttling from heat. Trades away some headroom, so only
@@ -231,6 +248,50 @@
         ipStatus.className = 'err';
       } finally {
         ipApply.disabled = false;
+      }
+    });
+
+    // --- Display orientation -------------------------------------------------
+    const orientationSelect = document.getElementById('orientation-select');
+    const orientationStatus = document.getElementById('orientation-status');
+
+    async function loadOrientation() {
+      try {
+        const res = await fetch('/orientation');
+        const data = await res.json();
+        orientationSelect.value = data.value;
+      } catch {
+        orientationStatus.textContent = "Couldn't check the current setting.";
+        orientationStatus.className = 'err';
+      }
+    }
+    void loadOrientation();
+
+    orientationSelect.addEventListener('change', async () => {
+      orientationSelect.disabled = true;
+      orientationStatus.textContent = 'Applying…';
+      orientationStatus.className = '';
+      try {
+        const res = await fetch('/orientation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: orientationSelect.value }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          orientationStatus.textContent = data.applied
+            ? 'Applied.'
+            : "Saved, but couldn't apply it live right now (display still starting up?) — it'll apply the next time this Pi boots.";
+          orientationStatus.className = 'ok';
+        } else {
+          orientationStatus.textContent = `Couldn't apply: ${data.error ?? 'unknown error'}.`;
+          orientationStatus.className = 'err';
+        }
+      } catch {
+        orientationStatus.textContent = 'Lost connection to the display — try again.';
+        orientationStatus.className = 'err';
+      } finally {
+        orientationSelect.disabled = false;
       }
     });
 

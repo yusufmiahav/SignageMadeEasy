@@ -267,12 +267,6 @@ if (eventsGroupIdCol?.notnull === 1) {
   })();
 }
 
-// Same reasoning, for hubs deployed before per-screen orientation existed — every
-// existing screen defaults to 'landscape' (no change to current behavior), see
-// types.ts's Device.orientation.
-const deviceCols3 = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
-if (!deviceCols3.includes('orientation')) db.exec("ALTER TABLE devices ADD COLUMN orientation TEXT NOT NULL DEFAULT 'landscape'");
-
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's

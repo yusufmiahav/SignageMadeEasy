@@ -279,10 +279,10 @@ interface DeviceRow {
   id: string; name: string; ip: string; mac: string | null; groupId: string | null; announcementId: string | null; announcementOn: number;
   videoQuality: Device['videoQuality']; lastSeenAt: number | null;
   tempC: number | null; throttled: string | null; uptimeSec: number | null; diskFreeMb: number | null; diskTotalMb: number | null;
-  forcedContentId: string | null; blackout: number; defaultPlaylist: string; orientation: Device['orientation'];
+  forcedContentId: string | null; blackout: number; defaultPlaylist: string;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, forcedContentId, blackout, defaultPlaylist, orientation';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, forcedContentId, blackout, defaultPlaylist';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -296,7 +296,6 @@ function rowToDevice(r: DeviceRow): Device {
     tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
     forcedContentId: r.forcedContentId, blackout: !!r.blackout,
     defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForDevice(r.id),
-    orientation: r.orientation,
   };
 }
 
@@ -319,11 +318,11 @@ export function pairDevice(input: { name: string; ip: string; mac?: string | nul
   // compared within that scope; MAX ignores other locations' devices entirely, so a
   // new screen always lands last in ITS list, not last globally.
   const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM devices WHERE groupId IS ?').get(input.groupId) as { n: number }).n;
-  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, sortOrder, orientation) VALUES (?,?,?,?,?,?,0,?,?,?,?)').run(id, input.name, input.ip, mac, input.groupId, null, 'auto', lastSeenAt, nextOrder, 'landscape');
+  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, sortOrder) VALUES (?,?,?,?,?,?,0,?,?,?)').run(id, input.name, input.ip, mac, input.groupId, null, 'auto', lastSeenAt, nextOrder);
   return {
     id, name: input.name, ip: input.ip, mac, groupId: input.groupId, announcementId: null, announcementOn: false,
     videoQuality: 'auto', status: statusFor(lastSeenAt), forcedContentId: null, blackout: false,
-    defaultPlaylist: [], events: [], orientation: 'landscape',
+    defaultPlaylist: [], events: [],
   };
 }
 
@@ -378,10 +377,6 @@ export function removeDeviceEvent(deviceId: string, eventId: string): void {
 
 export function setDeviceVideoQuality(id: string, videoQuality: Device['videoQuality']): void {
   db.prepare('UPDATE devices SET videoQuality = ? WHERE id = ?').run(videoQuality, id);
-}
-
-export function setDeviceOrientation(id: string, orientation: Device['orientation']): void {
-  db.prepare('UPDATE devices SET orientation = ? WHERE id = ?').run(orientation, id);
 }
 
 /**
@@ -566,7 +561,7 @@ export function getPlayerState(deviceId: string): PlayerState | null {
   // dark, since the whole point is an emergency "nothing shows here" state, not
   // just swapping out the main content.
   if (active.kind === 'blackout') {
-    return { kind: 'blackout', label: active.label, items: [], announcement: { on: false, text: null }, safetyHold, orientation: device.orientation };
+    return { kind: 'blackout', label: active.label, items: [], announcement: { on: false, text: null }, safetyHold };
   }
 
   // Location-level forced/scheduled announcement overrides this device's own manual
@@ -583,7 +578,6 @@ export function getPlayerState(deviceId: string): PlayerState | null {
     items,
     announcement: { on: announcementOn && !!announcement, text: announcement?.text ?? null },
     safetyHold,
-    orientation: device.orientation,
   };
 }
 
@@ -673,8 +667,8 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   });
 
   const insertDevice = db.prepare(
-    'INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedContentId, blackout, defaultPlaylist, sortOrder, orientation) ' +
-    'VALUES (@id,@name,@ip,@mac,@groupId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedContentId,@blackout,@defaultPlaylist,@sortOrder,@orientation)',
+    'INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedContentId, blackout, defaultPlaylist, sortOrder) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedContentId,@blackout,@defaultPlaylist,@sortOrder)',
   );
   backup.devices.forEach((device, i) => {
     insertDevice.run({
@@ -682,7 +676,6 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       announcementId: device.announcementId, announcementOn: device.announcementOn ? 1 : 0, videoQuality: device.videoQuality,
       forcedContentId: device.forcedContentId ?? null, blackout: device.blackout ? 1 : 0,
       defaultPlaylist: JSON.stringify(device.defaultPlaylist ?? []), sortOrder: i,
-      orientation: device.orientation ?? 'landscape',
     });
     for (const event of device.events ?? []) {
       insertEvent.run({

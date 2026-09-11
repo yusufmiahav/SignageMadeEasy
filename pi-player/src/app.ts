@@ -14,6 +14,8 @@ import * as underclock from './underclock.js';
 import * as staticIp from './staticIp.js';
 import * as ndiPlayer from './ndiPlayer.js';
 import * as identifyFlash from './identifyFlash.js';
+import * as orientationConfig from './orientationConfig.js';
+import * as displayOrientation from './displayOrientation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -155,6 +157,24 @@ export function createApp() {
     const result = await wifiManager.applyCredentials(ssid, typeof password === 'string' ? password : '');
     if (result.ok) res.json({ ok: true });
     else res.status(502).json({ ok: false, error: result.error });
+  });
+
+  // Screen rotation (see orientationConfig.ts/displayOrientation.ts) — Pi-local
+  // only, reachable whether or not this screen is paired, unlike the old hub-driven
+  // design that could never rotate the pairing/QR screen itself (no paired device
+  // row existed yet for the hub to attach a setting to).
+  app.get('/orientation', (_req, res) => {
+    res.json({ value: orientationConfig.loadOrientation() });
+  });
+
+  app.post('/orientation', async (req, res) => {
+    const { value } = req.body ?? {};
+    if (!orientationConfig.isOrientation(value)) {
+      return res.status(400).json({ error: "value must be '0', '90', '180', or '270'" });
+    }
+    orientationConfig.saveOrientation(value);
+    const applied = await displayOrientation.applyOrientation(value);
+    res.json({ ok: true, value, applied });
   });
 
   // Native NDI playback (Pi 4/5 or an x86 device only — see ndiPlayer.ts). Mirrors the mpv-branch's own

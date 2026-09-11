@@ -44,7 +44,7 @@ export function HomeScreen({
   hideAnnouncementRow,
 }: HomeScreenProps) {
   const {
-    groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality, setDeviceOrientation,
+    groups, devices, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality,
     setForcedContent, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedContent, setDeviceBlackout,
   } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
@@ -194,7 +194,6 @@ export function HomeScreen({
                       onPickAnnouncement={onPickAnnouncement}
                       onToggleAnnouncement={toggleDeviceAnnouncement}
                       onSetVideoQuality={setDeviceVideoQuality}
-                onSetOrientation={setDeviceOrientation}
                       onPreview={onPreviewContent}
                       advancedInfo={advancedDeviceInfo}
                       hideAnnouncementRow={hideAnnouncementRow}
@@ -234,7 +233,6 @@ export function HomeScreen({
                 onPickAnnouncement={onPickAnnouncement}
                 onToggleAnnouncement={toggleDeviceAnnouncement}
                 onSetVideoQuality={setDeviceVideoQuality}
-                onSetOrientation={setDeviceOrientation}
                 onPreview={onPreviewContent}
                 advancedInfo={advancedDeviceInfo}
                 hideAnnouncementRow={hideAnnouncementRow}

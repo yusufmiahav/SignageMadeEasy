@@ -420,11 +420,6 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
-  const setDeviceOrientation = useCallback(async (id: string, orientation: 'landscape' | 'portrait') => {
-    await api.setDeviceOrientation(id, orientation);
-    await refreshDevices();
-  }, [refreshDevices]);
-
   const scanNetwork = useCallback((): Promise<DiscoveredDevice[]> => api.scanNetwork(), []);
 
   // ---- Backup / restore ----
@@ -486,7 +481,6 @@ export function useAppState() {
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,
-    setDeviceOrientation,
     setDeviceForcedContent,
     setDeviceBlackout,
     setDeviceDefaultPlaylist,

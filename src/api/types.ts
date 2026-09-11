@@ -112,13 +112,6 @@ export interface Device {
    * display where the cap buys nothing.
    */
   videoQuality: 'auto' | 'full';
-  /**
-   * 'landscape' (default): no change. 'portrait': the physical screen is mounted
-   * sideways — the Pi rotates its display output 90° clockwise to compensate,
-   * covering the pairing screen and all content (does not rotate the few-second
-   * boot splash before the kiosk starts — see pi-player/README.md).
-   */
-  orientation: 'landscape' | 'portrait';
   /** Reported by the Pi's own poller alongside every heartbeat — undefined for a device that's never sent one yet, or any device in standalone/localStorage mode (no real Pi to ask). */
   tempC?: number | null;
   /** Raw hex string from `vcgencmd get_throttled` — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot." */

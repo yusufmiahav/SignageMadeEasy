@@ -114,19 +114,26 @@ boot and stays that way.
 
 ## Screen orientation (portrait-mounted panels)
 
-Per-screen setting (control app → Home/Settings → that screen's card → the
-orientation dropdown next to the video-quality one). **Landscape** (default): no
-change. **Portrait**: rotates sway's output 90° clockwise via `swaymsg output '*'
-transform 90` (`src/displayOrientation.ts`), applied live on the next poll — no
-reboot, no restart needed. Confirmed necessary on real hardware for a portrait
-digital-signage panel with no rotation logic of its own: it's a standard landscape
-LCD controller mounted sideways, so it just displays whatever landscape signal the
-Pi sends as-is, appearing rotated unless the source itself pre-rotates the image.
-Since sway's `transform` rotates the whole compositor output, Chromium (a Wayland
-client) automatically sees the resulting swapped logical resolution and adapts on
-its own — nothing in `player.js`/`player.css` needs to know or care, and this
-covers the pairing/QR screen and every content type, since they're all the same
-Wayland client.
+**Pi-local setting, not the hub/control app** — set it at
+`http://<pi-ip>:8088/network-setup.html`'s "Display orientation" section, reachable
+whether or not this screen is paired. Options: **0° (normal, default)**, **90°**,
+**180°**, **270°** — rotates sway's whole output via `swaymsg output '*' transform
+<value>` (`src/displayOrientation.ts`), applied immediately, no reboot needed.
+Persisted to `/opt/signage/orientation.json` (`src/orientationConfig.ts`) so it
+survives unpair/re-pair — it's a property of how this Pi is physically mounted,
+not of whatever it happens to be paired to.
+
+This was originally hub-driven (a per-device dropdown in the control app), moved
+here after a real deployment showed the fundamental problem with that design: the
+hub only has a setting to attach once a device is paired, but the exact screen this
+whole feature exists for — the first-boot IP/QR pairing screen itself — is shown
+*before* pairing, so the old design could never actually rotate it. Applying this
+setting from a file the Pi reads at its own startup (`index.ts`'s
+`applyOrientationAtBoot`, retried every 2s for up to 2 minutes in case sway isn't
+up yet) fixes that: the unpaired screen is correctly rotated from boot, and every
+content type after pairing since they're all the same Wayland client (Chromium)
+automatically adapting to sway's rotated output — nothing in `player.js`/
+`player.css` needs to know or care.
 
 **Known gap, not yet fixed**: this does not rotate the Plymouth boot splash (see
 "Boot splash" below) — that's drawn directly by the kernel before sway even
@@ -134,7 +141,7 @@ starts, and needs a separate kernel/DRM-level rotation setting that's genuinely
 easy to get wrong blind (a bad value can leave a Pi with no display output until
 someone's physically at it to fix `/boot/firmware/config.txt`). Deliberately left
 as a real-hardware follow-up rather than guessing at it here — for now, a
-portrait-mounted screen briefly shows a *sideways* boot splash for the few
+rotated screen briefly shows a boot splash in the *wrong* orientation for the few
 seconds before the kiosk starts, then displays correctly for everything after
 that.
 
