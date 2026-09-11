@@ -145,6 +145,30 @@ libraryRouter.post('/tfl-status', (req, res) => {
   res.status(201).json(item);
 });
 
+// No file, no live data stored here either — just which station + which lines to
+// show arrivals for; the actual countdowns are resolved fresh from
+// tflArrivals.ts's per-station cache every time this item is served (see
+// store.ts's getPlayerState). tflStopPointId must already be the real, queryable
+// StopPoint id (e.g. "940GZZLUWSM"), not a hub/interchange id — see
+// GET /api/tfl/stations/search, which does that resolution for the dialog.
+libraryRouter.post('/tfl-arrivals', (req, res) => {
+  const { name, tflStopPointId, tflStopPointName, tflArrivalLines } = req.body ?? {};
+  if (typeof tflStopPointId !== 'string' || !tflStopPointId.trim()) {
+    return res.status(400).json({ error: 'tflStopPointId is required' });
+  }
+  if (tflArrivalLines !== undefined && (!Array.isArray(tflArrivalLines) || !tflArrivalLines.every((l) => typeof l === 'string'))) {
+    return res.status(400).json({ error: 'tflArrivalLines must be an array of strings' });
+  }
+  const item = store.addLibraryItem({
+    name: (name ?? '').trim() || (typeof tflStopPointName === 'string' && tflStopPointName.trim()) || 'TfL arrivals',
+    type: 'tfl-arrivals',
+    tflStopPointId: tflStopPointId.trim(),
+    ...(typeof tflStopPointName === 'string' && tflStopPointName.trim() && { tflStopPointName: tflStopPointName.trim() }),
+    ...(tflArrivalLines && tflArrivalLines.length > 0 && { tflArrivalLines }),
+  });
+  res.status(201).json(item);
+});
+
 libraryRouter.patch('/:id', (req, res) => {
   const { durationSec, name, tags } = req.body ?? {};
   if (durationSec !== undefined) {

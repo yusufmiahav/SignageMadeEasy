@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationResult } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -29,6 +29,10 @@ export interface SignageApiClient {
   listNdiSources(deviceId: string): Promise<string[]>;
   /** No file either — a live TfL (Transport for London) line status board, e.g. red/amber/green for chosen Tube/Overground/DLR/Elizabeth line(s). `tflModes` are mode names from AddTflStatusDialog's checkboxes; the hub polls TfL centrally and resolves the actual line data at playback time, same "hub owns the live piece" pattern as NDI. */
   addTflStatus(name: string, tflModes: string[]): Promise<LibraryItem>;
+  /** Searches TfL stations by name for AddTflArrivalsDialog — the hub resolves any hub/interchange result down to its real, per-mode queryable stations server-side, so every result here is already directly usable. Empty array (never throws) in standalone/localStorage mode (no real hub to query) or if the hub's TfL lookup fails. */
+  searchTflStations(query: string): Promise<TflStationResult[]>;
+  /** No file either — a live per-station departure board (e.g. "District · Westbound · 3 min, then 5, 8"), distinct from addTflStatus's line-status board. `tflStopPointId`/`tflStopPointName` come from a searchTflStations result; `tflArrivalLines` (line ids) filters to just those lines, or shows every line reported at the station when empty. */
+  addTflArrivals(name: string, tflStopPointId: string, tflStopPointName: string, tflArrivalLines: string[]): Promise<LibraryItem>;
   removeLibraryItem(id: string): Promise<void>;
   renameLibraryItem(id: string, name: string): Promise<void>;
   /** Persists a drag-and-drop reorder from the Library screen — the complete new display order. */

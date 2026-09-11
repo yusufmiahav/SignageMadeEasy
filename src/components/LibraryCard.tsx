@@ -10,6 +10,7 @@ const TYPE_ICON: Record<LibraryItem['type'], IconName> = {
   clock: 'clock',
   ndi: 'radio',
   'tfl-status': 'activity',
+  'tfl-arrivals': 'train',
 };
 
 const TYPE_LABEL: Record<LibraryItem['type'], string> = {
@@ -20,6 +21,7 @@ const TYPE_LABEL: Record<LibraryItem['type'], string> = {
   clock: 'Clock',
   ndi: 'NDI source',
   'tfl-status': 'TfL status',
+  'tfl-arrivals': 'TfL arrivals',
 };
 
 // Announcements and clocks have no underlying file — nothing to download for
@@ -53,6 +55,8 @@ function metaText(item: LibraryItem): string {
       return item.ndiSourceName ?? '';
     case 'tfl-status':
       return (item.tflModes ?? []).map((m) => TFL_MODE_LABEL[m] ?? m).join(', ');
+    case 'tfl-arrivals':
+      return item.tflStopPointName ?? '';
   }
 }
 

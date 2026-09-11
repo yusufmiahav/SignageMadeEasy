@@ -207,6 +207,29 @@ the API currently reports for your chosen modes is what renders. The 6 individua
 best-effort recollection, not independently re-verified against TfL's brand
 guidelines — a one-line fix in `TFL_LINE_COLOR` if one looks off.
 
+## TfL station arrivals (live departure boards)
+
+Adding a "TfL arrivals" library item (Library screen → **Add TfL arrivals**) shows
+a live per-station countdown board — e.g. "District · Westbound · Platform 1 · 3
+min, then 5, 8" — for one specific station, distinct from the line-status board
+above. Search for the station by name in the dialog; if the name resolves to a
+multi-line interchange (e.g. "Westminster"), the hub automatically expands it into
+the individual per-mode stations under it (Westminster Underground vs. Westminster
+Pier, say) so you pick the one you actually mean, then choose which of that
+station's lines to show (or leave every line ticked to show all of them).
+
+The hub polls `https://api.tfl.gov.uk` per-station, once every 30 seconds (more
+often than the line-status board's 2 minutes, since a countdown in minutes goes
+stale much faster than a red/amber/green status) — only for stations an actual
+library item currently references, and only while it's referenced; adding the
+same `TFL_APP_KEY` described above raises the rate limit here too. If a poll fails,
+the hub keeps serving the last-known-good countdowns rather than a blank board.
+
+**Look**: same white-background, brand-color-badge styling as the line-status
+board (see above) for visual consistency between the two TfL content types — one
+row per platform+direction, soonest three arrivals shown per row, rows sorted
+soonest-first.
+
 ## API surface
 
 Mirrors `../src/api/client.ts`'s `SignageApiClient` method-for-method under `/api/library`,

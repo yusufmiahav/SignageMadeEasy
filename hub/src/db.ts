@@ -143,6 +143,16 @@ if (!(db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some
   db.exec('ALTER TABLE library ADD COLUMN tflModes TEXT');
 }
 
+// Same reasoning, for hubs deployed before 'tfl-arrivals' library items existed —
+// tflStopPointId/tflStopPointName identify the real, queryable TfL StopPoint
+// (already resolved from any hub/interchange at add-time — see tflArrivals.ts's
+// searchStations()), tflArrivalLines is a JSON string array of line ids to filter
+// to (see types.ts's LibraryItem fields), all null for every non-'tfl-arrivals' item.
+const libraryColsTflArrivals = (db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).map((c) => c.name);
+if (!libraryColsTflArrivals.includes('tflStopPointId')) db.exec('ALTER TABLE library ADD COLUMN tflStopPointId TEXT');
+if (!libraryColsTflArrivals.includes('tflStopPointName')) db.exec('ALTER TABLE library ADD COLUMN tflStopPointName TEXT');
+if (!libraryColsTflArrivals.includes('tflArrivalLines')) db.exec('ALTER TABLE library ADD COLUMN tflArrivalLines TEXT');
+
 const groupCols = (db.prepare("PRAGMA table_info(groups_)").all() as { name: string }[]).map((c) => c.name);
 if (!groupCols.includes('sortOrder')) {
   db.exec('ALTER TABLE groups_ ADD COLUMN sortOrder INTEGER');

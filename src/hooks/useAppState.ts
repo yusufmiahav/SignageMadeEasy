@@ -135,6 +135,17 @@ export function useAppState() {
     return item;
   }, [refreshLibrary, showToast]);
 
+  // Just a passthrough to AddTflArrivalsDialog's search box — no app state to
+  // refresh, same reasoning as listNdiSources above.
+  const searchTflStations = useCallback((query: string) => api.searchTflStations(query), []);
+
+  const addTflArrivals = useCallback(async (name: string, tflStopPointId: string, tflStopPointName: string, tflArrivalLines: string[]) => {
+    const item = await api.addTflArrivals(name, tflStopPointId, tflStopPointName, tflArrivalLines);
+    await refreshLibrary();
+    showToast('TfL arrivals board added');
+    return item;
+  }, [refreshLibrary, showToast]);
+
   const setItemDuration = useCallback(async (id: string, durationSec: number) => {
     await api.setItemDuration(id, durationSec);
     await refreshLibrary();
@@ -434,6 +445,8 @@ export function useAppState() {
     addNdiSource,
     listNdiSources,
     addTflStatus,
+    searchTflStations,
+    addTflArrivals,
     setItemDuration,
     renameLibraryItem,
     reorderLibrary,

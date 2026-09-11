@@ -14,6 +14,7 @@ import { AddEventDialog } from './components/dialogs/AddEventDialog';
 import { AddAnnouncementDialog } from './components/dialogs/AddAnnouncementDialog';
 import { AddNdiSourceDialog } from './components/dialogs/AddNdiSourceDialog';
 import { AddTflStatusDialog } from './components/dialogs/AddTflStatusDialog';
+import { AddTflArrivalsDialog } from './components/dialogs/AddTflArrivalsDialog';
 import { AnnouncementPickerDialog } from './components/dialogs/AnnouncementPickerDialog';
 import { ForceAnnouncementDialog } from './components/dialogs/ForceAnnouncementDialog';
 import { AddAnnouncementScheduleDialog } from './components/dialogs/AddAnnouncementScheduleDialog';
@@ -42,6 +43,7 @@ type DialogState =
   | { type: 'addAnnouncement' }
   | { type: 'addNdiSource' }
   | { type: 'addTflStatus' }
+  | { type: 'addTflArrivals' }
   | { type: 'announcementPicker'; device: Device }
   | { type: 'moveDevice'; device: Device }
   /** `groupId: null` means the global "force on every screen" action from the Home tab. */
@@ -116,6 +118,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onOpenAnnounceDialog={() => setDialog({ type: 'addAnnouncement' })}
             onOpenNdiDialog={() => setDialog({ type: 'addNdiSource' })}
             onOpenTflDialog={() => setDialog({ type: 'addTflStatus' })}
+            onOpenTflArrivalsDialog={() => setDialog({ type: 'addTflArrivals' })}
           />
         )}
         {tab === 'schedule' && (
@@ -185,6 +188,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       {dialog?.type === 'addAnnouncement' && <AddAnnouncementDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'addNdiSource' && <AddNdiSourceDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'addTflStatus' && <AddTflStatusDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'addTflArrivals' && <AddTflArrivalsDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'announcementPicker' && <AnnouncementPickerDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'moveDevice' && <MoveDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'forceContent' && (

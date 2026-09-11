@@ -41,6 +41,8 @@ let ndiPollTimer = null; // the 'ndi' item's status-polling setInterval — see 
 let generation = 0; // bumped whenever rotation is torn down, so late async work (a PDF page render, a video's `ended`) from a previous item can no-op instead of racing the new one.
 let tflBoardEl = null; // the currently-mounted 'tfl-status' board, if any — see syncTflLines.
 let tflBoardItemId = null;
+let tflArrivalsBoardEl = null; // the currently-mounted 'tfl-arrivals' board, if any — see syncTflArrivals.
+let tflArrivalsBoardItemId = null;
 
 function teardownStage() {
   clearTimeout(advanceTimer);
@@ -51,6 +53,8 @@ function teardownStage() {
   ndiPollTimer = null;
   tflBoardEl = null;
   tflBoardItemId = null;
+  tflArrivalsBoardEl = null;
+  tflArrivalsBoardItemId = null;
   // Unconditional and fire-and-forget: a no-op on the Pi if nothing native is playing,
   // but guarantees switching away from an NDI item always kills the GStreamer process
   // rather than leaving it running underneath whatever plays next.
@@ -284,6 +288,56 @@ function renderTflBoard(item) {
   return board;
 }
 
+// "3 min", or "Due" for anything already at/under a minute out — matches how a
+// real TfL platform departure board rounds (it never shows "0 min").
+function formatArrivalMinutes(sec) {
+  const min = Math.round(sec / 60);
+  return min <= 0 ? 'Due' : `${min} min`;
+}
+
+// Departure-board rendering for 'tfl-arrivals' items — one row per platform+direction
+// (already grouped server-side, see hub/src/tflArrivals.ts's getBoardForStop), reusing
+// the same per-line brand-color badge as the status board (TFL_LINE_COLOR) for visual
+// consistency between the two TfL content types.
+function renderTflArrivalsBoard(item) {
+  const board = document.createElement('div');
+  board.className = 'tfl-board';
+  const boards = item.tflArrivalBoards ?? [];
+  if (boards.length === 0) {
+    board.innerHTML = '<div class="tfl-empty">No arrivals available right now</div>';
+    return board;
+  }
+  for (const b of boards) {
+    const row = document.createElement('div');
+    row.className = 'tfl-row';
+    const badge = document.createElement('span');
+    badge.className = 'tfl-line-badge';
+    const badgeColor = TFL_LINE_COLOR[b.lineId] ?? TFL_LINE_COLOR_FALLBACK;
+    badge.style.background = badgeColor;
+    badge.style.color = contrastTextColor(badgeColor);
+    badge.textContent = b.lineName;
+    const infoCol = document.createElement('div');
+    infoCol.className = 'tfl-status-col';
+    const towards = document.createElement('span');
+    towards.className = 'tfl-status-text';
+    towards.textContent = b.platformName ? `${b.towards} · ${b.platformName}` : b.towards;
+    infoCol.appendChild(towards);
+    const countdown = document.createElement('span');
+    countdown.className = 'tfl-reason';
+    const [first, ...rest] = b.arrivalsSec;
+    countdown.textContent = rest.length > 0
+      ? `${formatArrivalMinutes(first)}, then ${rest.map(formatArrivalMinutes).join(', ')}`
+      : formatArrivalMinutes(first);
+    infoCol.appendChild(countdown);
+    row.appendChild(badge);
+    row.appendChild(infoCol);
+    board.appendChild(row);
+  }
+  // Same multi-column no-scroll reasoning as renderTflBoard above.
+  board.style.columnCount = String(Math.max(1, Math.ceil(boards.length / 6)));
+  return board;
+}
+
 function playItem(index) {
   const myGeneration = generation;
   teardownStage();
@@ -419,6 +473,15 @@ function playItem(index) {
     tflBoardItemId = item.id;
     stage.appendChild(board);
     scheduleAdvance(item.duration ?? 8, myGeneration);
+  } else if (item.type === 'tfl-arrivals') {
+    // Same reasoning as 'tfl-status' above — item.tflArrivalBoards is already
+    // resolved fresh by the hub on every poll; tracked so syncTflArrivals can
+    // update it in place while this item stays on screen.
+    const board = renderTflArrivalsBoard(item);
+    tflArrivalsBoardEl = board;
+    tflArrivalsBoardItemId = item.id;
+    stage.appendChild(board);
+    scheduleAdvance(item.duration ?? 8, myGeneration);
   } else {
     // Announcements never appear in the main rotation (server-side filtered), but
     // skip defensively rather than getting stuck if one ever does.
@@ -450,12 +513,30 @@ function syncTflLines(state) {
   }
 }
 
+// Mirrors syncTflLines above, for 'tfl-arrivals' items — arrivals are minutes away
+// (not hours, like line status), so this matters even more here: without it, a
+// board left on screen across multiple polls would show the same stale countdowns
+// until rotation happened to cycle back to it.
+function syncTflArrivals(state) {
+  if (activeItems.length === 0) return;
+  const freshById = new Map(state.items.filter((i) => i.type === 'tfl-arrivals').map((i) => [i.id, i]));
+  if (freshById.size === 0) return;
+  for (let i = 0; i < activeItems.length; i++) {
+    const fresh = freshById.get(activeItems[i].id);
+    if (fresh) activeItems[i] = fresh;
+  }
+  if (tflArrivalsBoardEl && tflArrivalsBoardItemId && freshById.has(tflArrivalsBoardItemId)) {
+    tflArrivalsBoardEl.replaceChildren(...renderTflArrivalsBoard(freshById.get(tflArrivalsBoardItemId)).childNodes);
+  }
+}
+
 function renderPlayerState(state) {
   showScreen('player');
 
   ticker.hidden = !state.announcement.on;
   tickerText.textContent = state.announcement.text ?? '';
   syncTflLines(state);
+  syncTflArrivals(state);
 
   // Includes kind, not just item ids: an empty defaultPlaylist and an active
   // blackout both resolve to zero items (same id-based key otherwise), but

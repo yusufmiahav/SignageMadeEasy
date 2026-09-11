@@ -1,4 +1,4 @@
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status' | 'tfl-arrivals';
 
 export interface LibraryItem {
   id: string;
@@ -14,6 +14,12 @@ export interface LibraryItem {
   ndiSourceName?: string;
   /** 'tfl-status' items only — which TfL modes to show (e.g. ['tube', 'overground']). The live line status itself is never stored here; it's resolved fresh from the hub's own TfL poll at playback time. */
   tflModes?: string[];
+  /** 'tfl-arrivals' items only — the real, queryable TfL StopPoint id (e.g. "940GZZLUWSM"), already resolved server-side from any hub/interchange the user searched for. */
+  tflStopPointId?: string;
+  /** 'tfl-arrivals' items only — display name captured at add-time (e.g. "Westminster Underground Station"). */
+  tflStopPointName?: string;
+  /** 'tfl-arrivals' items only — which line ids (e.g. ['jubilee', 'district']) to show arrivals for; empty/undefined shows every line reported at this station. */
+  tflArrivalLines?: string[];
   /** Data URL thumbnail. Images only. */
   thumb?: string;
   /** Message body. Announcements only. */
@@ -113,6 +119,20 @@ export interface Device {
   uptimeSec?: number | null;
   diskFreeMb?: number | null;
   diskTotalMb?: number | null;
+}
+
+/** One line serving a searched-for TfL station — see SignageApiClient.searchTflStations. */
+export interface TflStationLine {
+  id: string;
+  name: string;
+}
+
+/** One result from AddTflArrivalsDialog's station search — already resolved to a real, queryable StopPoint (never a hub/interchange id) by the hub. */
+export interface TflStationResult {
+  id: string;
+  name: string;
+  modes: string[];
+  lines: TflStationLine[];
 }
 
 export interface AppData {

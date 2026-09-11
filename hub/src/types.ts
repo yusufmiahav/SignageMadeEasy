@@ -3,7 +3,7 @@
 // too, so both are kept in sync by hand (small, stable shapes; not worth a shared
 // package for two consumers).
 
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status' | 'tfl-arrivals';
 
 export interface LibraryItem {
   id: string;
@@ -17,6 +17,12 @@ export interface LibraryItem {
   ndiSourceName?: string;
   /** 'tfl-status' items only — which TfL modes to show (e.g. ['tube', 'overground']), from tflStatus.ts's ALL_MODES. The live line data itself is never stored here — it's resolved fresh from tflStatus.ts's cache at playback time (see PlayerItem.tflLines below), same reasoning as NDI never storing video frames. */
   tflModes?: string[];
+  /** 'tfl-arrivals' items only — the real, queryable TfL StopPoint id (e.g. "940GZZLUWSM"), already resolved from any hub/interchange the user searched for — see tflArrivals.ts's searchStations(). */
+  tflStopPointId?: string;
+  /** 'tfl-arrivals' items only — display name captured at add-time (e.g. "Westminster Underground Station"), so the Library card and dialog can show it without a live lookup. */
+  tflStopPointName?: string;
+  /** 'tfl-arrivals' items only — which line ids (e.g. ['jubilee', 'district']) to show arrivals for; empty/undefined shows every line reported at this station. */
+  tflArrivalLines?: string[];
   /** URL path (e.g. "/uploads/<id>.jpg"), not a data URL — served statically by the hub. */
   thumb?: string;
   text?: string;
@@ -132,6 +138,8 @@ export interface PlayerItem {
   ndiSourceName?: string;
   /** 'tfl-status' items only — resolved fresh from tflStatus.ts's cache every time this item is served, not stored on the library item itself; see LibraryItem.tflModes. */
   tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string; reason?: string }[];
+  /** 'tfl-arrivals' items only — resolved fresh from tflArrivals.ts's per-station cache every time this item is served; see LibraryItem.tflStopPointId/tflArrivalLines. */
+  tflArrivalBoards?: { lineId: string; lineName: string; platformName: string; towards: string; arrivalsSec: number[] }[];
 }
 
 export interface PlayerState {

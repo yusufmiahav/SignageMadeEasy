@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationResult } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -161,6 +161,25 @@ class LocalStoreClient implements SignageApiClient {
     return item;
   }
 
+  // No real hub to query in standalone/localStorage mode — same "nothing to
+  // discover" answer as listNdiSources above.
+  async searchTflStations(): Promise<TflStationResult[]> {
+    return [];
+  }
+
+  async addTflArrivals(name: string, tflStopPointId: string, tflStopPointName: string, tflArrivalLines: string[]): Promise<LibraryItem> {
+    const item: LibraryItem = {
+      id: uid('l'), name: name.trim() || tflStopPointName.trim() || 'TfL arrivals', type: 'tfl-arrivals',
+      tflStopPointId: tflStopPointId.trim(),
+      ...(tflStopPointName.trim() && { tflStopPointName: tflStopPointName.trim() }),
+      ...(tflArrivalLines.length > 0 && { tflArrivalLines }),
+      tags: [],
+    };
+    this.data.library.push(item);
+    this.persist();
+    return item;
+  }
+
   async setLibraryItemTags(id: string, tags: string[]): Promise<void> {
     const item = this.data.library.find((i) => i.id === id);
     if (item) item.tags = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
@@ -168,7 +187,7 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   async setItemDuration(id: string, durationSec: number): Promise<void> {
-    const item = this.data.library.find((i) => i.id === id && (i.type === 'image' || i.type === 'clock' || i.type === 'ndi' || i.type === 'tfl-status'));
+    const item = this.data.library.find((i) => i.id === id && (i.type === 'image' || i.type === 'clock' || i.type === 'ndi' || i.type === 'tfl-status' || i.type === 'tfl-arrivals'));
     if (item && Number.isFinite(durationSec) && durationSec >= 1) item.durationSec = Math.round(durationSec);
     this.persist();
   }

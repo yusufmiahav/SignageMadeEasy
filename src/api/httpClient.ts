@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationResult } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -69,6 +69,11 @@ export const httpClient: SignageApiClient = {
   // an empty list here — see the SignageApiClient comment for why this never throws.
   listNdiSources: (deviceId) => request<{ sources: string[] }>(`/api/devices/${deviceId}/ndi-sources`).then((r) => r.sources).catch(() => []),
   addTflStatus: (name, tflModes) => request<LibraryItem>('/api/library/tfl-status', { method: 'POST', ...json({ name, tflModes }) }),
+  // Mirrors listNdiSources' never-throws reasoning — a failed/unreachable TfL lookup
+  // just leaves AddTflArrivalsDialog's results empty rather than surfacing an error.
+  searchTflStations: (query) => request<TflStationResult[]>(`/api/tfl/stations/search?q=${encodeURIComponent(query)}`).catch(() => []),
+  addTflArrivals: (name, tflStopPointId, tflStopPointName, tflArrivalLines) =>
+    request<LibraryItem>('/api/library/tfl-arrivals', { method: 'POST', ...json({ name, tflStopPointId, tflStopPointName, tflArrivalLines }) }),
   removeLibraryItem: (id) => request<void>(`/api/library/${id}`, { method: 'DELETE' }),
   reorderLibrary: (ids) => request<void>('/api/library/reorder', { method: 'PUT', ...json({ ids }) }),
   setItemDuration: (id, durationSec) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ durationSec }) }),

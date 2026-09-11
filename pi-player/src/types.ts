@@ -1,7 +1,7 @@
 // Mirrors ../../hub/src/types.ts's player-facing shapes — kept in sync by hand,
 // same reasoning as hub/src/types.ts's own header comment.
 
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status' | 'tfl-arrivals';
 
 export interface PlayerItem {
   id: string;
@@ -13,6 +13,8 @@ export interface PlayerItem {
   ndiSourceName?: string;
   /** 'tfl-status' items only — see hub/src/types.ts's PlayerItem.tflLines. */
   tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string; reason?: string }[];
+  /** 'tfl-arrivals' items only — see hub/src/types.ts's PlayerItem.tflArrivalBoards. */
+  tflArrivalBoards?: { lineId: string; lineName: string; platformName: string; towards: string; arrivalsSec: number[] }[];
 }
 
 export interface PlayerState {
