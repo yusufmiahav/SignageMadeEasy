@@ -1,4 +1,5 @@
 import { Router, type Request } from 'express';
+import QRCode from 'qrcode';
 import * as store from '../store.js';
 import * as piAgent from '../piAgent.js';
 import { requireAuth } from '../auth.js';
@@ -85,6 +86,37 @@ devicesRouter.post('/pair', async (req, res) => {
   }
 
   res.status(201).json(device);
+});
+
+// Android/other browser-only screens (see hub/browser-player/) have no local agent
+// the hub can reach — there's no /identify handshake, no reachable IP to check for
+// uniqueness against (unlike /pair above), and nothing to /configure. Pairing just
+// creates the device record directly and hands back a URL to open in any kiosk
+// browser on that screen; its real ip fills in from the browser's own first
+// heartbeat (the /:id/heartbeat route above already falls back to req.ip when the
+// caller doesn't send one explicitly, which browser-player.js's fetch deliberately
+// doesn't). ip is stored as '' until then — store.pairDevice has no uniqueness
+// constraint on it (that check lives only in the /pair route above), so multiple
+// browser screens can all start out this way with no collision.
+devicesRouter.post('/pair-browser', (req, res) => {
+  const { name, groupId } = req.body ?? {};
+  if (typeof groupId !== 'string' && groupId !== null) {
+    return res.status(400).json({ error: 'groupId must be a string or null (no location)' });
+  }
+  const resolvedName = typeof name === 'string' && name.trim() ? name.trim() : 'Screen';
+  const device = store.pairDevice({ name: resolvedName, ip: '', mac: null, groupId, status: 'offline' });
+  res.status(201).json({ device, screenUrl: `${publicHubUrl(req)}/screen/${device.id}` });
+});
+
+// QR of the same URL /pair-browser returns, for AddAndroidScreenDialog to display
+// once the browser-only device is created — regenerated on demand rather than
+// stored, so it always reflects the current publicHubUrl (e.g. if
+// SIGNAGE_PUBLIC_HUB_URL is set/changed later).
+devicesRouter.get('/:id/screen-qr.png', async (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  res.type('png');
+  await QRCode.toFileStream(res, `${publicHubUrl(req)}/screen/${device.id}`, { margin: 1, width: 400 });
 });
 
 devicesRouter.patch('/:id', (req, res) => {

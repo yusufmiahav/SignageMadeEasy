@@ -109,6 +109,47 @@ player service, pair it from the control app's Settings/Home "Add a screen" dial
 Scan network, Scan QR, or Enter IP all end up calling this hub's `/api/devices/pair`,
 which reaches the Pi directly to complete the handshake.
 
+## Android / browser-only screens
+
+For an Android box, smart TV, or any other display you'd rather run a kiosk
+browser app on than this project's own Pi/x86 software (`../pi-player/`) — image
+and video only, plus the announcement ticker. No local agent, no `provision.sh`,
+nothing to install on the device beyond a kiosk-mode browser app (e.g.
+[Fully Kiosk Browser](https://www.fully-kiosk.com/)).
+
+**Pairing** (control app → "Add a screen" → **Android / browser screen**) doesn't
+reach out to the device at all — unlike the Pi flow above, there's no local agent
+to call `/identify` on, so this just creates the device record directly and hands
+back a URL (`http://<hub>/screen/<deviceId>`) plus a QR code of it. Open that URL
+in the kiosk browser's start-page setting once — that's the entire setup. The
+device's real IP fills in automatically from its own first heartbeat.
+
+**How it works**: `hub/browser-player/` is a small, dependency-free static page
+(no build step) served directly by the hub at `/screen/<deviceId>` — the page
+reads its own device id from the URL and polls `/api/player/<deviceId>/state`
+and posts to `/api/devices/<deviceId>/heartbeat` itself, both same-origin, so
+there's no hub address to configure anywhere.
+
+**Local storage, not just live polling** — two independent layers, since a kiosk
+browser can restart (scheduled reload, device reboot) at any moment:
+- Downloaded images/video are cached via the browser's [Cache Storage
+  API](https://developer.mozilla.org/en-US/docs/Web/API/Cache) and pruned to only
+  what's in the current playlist — playback reads from there once cached instead
+  of re-fetching from the hub every rotation, and keeps working through a brief
+  network drop.
+- The last-known-good resolved state (same `safetyHold`-gated behavior as the Pi
+  player — see `../pi-player/README.md`'s "How it works") is persisted to
+  `localStorage`, so a fresh page load with the hub genuinely unreachable still
+  shows the last real content instead of a blank "connecting" screen, using the
+  cached media above to actually render it.
+
+**What's deliberately not supported here**, since none of it applies without a
+local agent running on the device: restart-from-the-control-app, the "Identify"
+flash button, NDI, the TfL status board, clock, PDF, and the Wi-Fi
+fallback hotspot / local-content failsafe. Clicking Restart/Identify on one of
+these screens just surfaces a clear "could not reach device" error rather than
+doing anything — same as it already does for a Pi that's genuinely offline.
+
 ## Video: resolution, format, and how the automatic capping works
 
 **Why this matters**: a Raspberry Pi 3B+ decodes video in hardware (the VideoCore IV

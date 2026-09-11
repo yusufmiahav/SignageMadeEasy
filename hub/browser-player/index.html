@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SignageMadeEasy Player</title>
+<link rel="stylesheet" href="/screen/player.css" />
+</head>
+<body>
+  <!--
+    No unpaired/network-setup screen the way pi-player has (see ../../pi-player/public/index.html)
+    — this page's own URL already encodes which device it is (see player.js reading
+    location.pathname), so there's nothing to pair from here at all; pairing happens
+    once, in the control app, before this URL is ever opened. "Connecting" below
+    covers both a genuinely unreachable hub and a deviceId the hub doesn't recognize
+    (e.g. the screen was deleted from the control app) — see player.js's pollOnce.
+  -->
+  <section id="connecting-screen" class="screen">
+    <div class="unpaired-card">
+      <h1>SignageMadeEasy</h1>
+      <p class="unpaired-lead">Connecting to the hub&hellip;</p>
+      <p id="connecting-detail" class="ip-label"></p>
+    </div>
+  </section>
+
+  <section id="player-screen" class="screen" hidden>
+    <div id="stage"></div>
+    <div id="ticker" class="ticker" hidden><div id="ticker-text" class="ticker-text"></div></div>
+  </section>
+
+  <script type="module" src="/screen/player.js"></script>
+</body>
+</html>

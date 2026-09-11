@@ -63,6 +63,14 @@ export interface SignageApiClient {
   listDevices(): Promise<Device[]>;
   /** `groupId: null` pairs it with no location yet ("misc" screen, assignable later). */
   pairDevice(input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }): Promise<Device>;
+  /**
+   * Android or any other kiosk-browser-only screen — no local agent to reach, so
+   * pairing just creates the device record directly (no IP/handshake involved) and
+   * hands back a URL to open in that screen's own kiosk browser (e.g. Fully Kiosk
+   * Browser) as its start page; that page then polls the hub itself. `qrImageUrl`
+   * is null in standalone/localStorage mode (no real hub to serve a QR of).
+   */
+  pairBrowserScreen(name: string, groupId: string | null): Promise<{ device: Device; screenUrl: string; qrImageUrl: string | null }>;
   renameDevice(id: string, name: string): Promise<void>;
   /** Persists a reorder of screens shown under one location (or the misc/no-location list) on Settings/Home/Schedule — the complete new display order for that one scope, not a global list. */
   reorderDevices(ids: string[]): Promise<void>;

@@ -310,6 +310,12 @@ export function useAppState() {
     return device;
   }, [refreshDevices, refreshGroups]);
 
+  const pairBrowserScreen = useCallback(async (name: string, groupId: string | null) => {
+    const result = await api.pairBrowserScreen(name, groupId);
+    await Promise.all([refreshDevices(), refreshGroups()]);
+    return result;
+  }, [refreshDevices, refreshGroups]);
+
   const renameDevice = useCallback(async (id: string, name: string) => {
     await api.renameDevice(id, name);
     await refreshDevices();
@@ -459,6 +465,7 @@ export function useAppState() {
     addAnnouncementSchedule,
     removeAnnouncementSchedule,
     pairDevice,
+    pairBrowserScreen,
     renameDevice,
     moveDevice,
     reorderDevices,

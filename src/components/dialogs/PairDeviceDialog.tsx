@@ -2,9 +2,10 @@ import { useRef, useState } from 'react';
 import { DialogShell } from './DialogShell';
 import { Icon } from '../icons/Icon';
 import { QrScanner } from '../QrScanner';
+import { copyText } from '../../utils/clipboard';
 import type { AppState } from '../../hooks/useAppState';
 
-type PairMode = 'scan' | 'qr' | 'manual';
+type PairMode = 'scan' | 'qr' | 'manual' | 'browser';
 
 const NO_LOCATION = '__none__';
 const LAST_LOCATION_KEY = 'signagemadeeasy.lastPairLocation';
@@ -31,7 +32,7 @@ interface PairDeviceDialogProps {
 }
 
 export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
-  const { groups, addGroup, pairDevice, scanNetwork, showToast } = app;
+  const { groups, addGroup, pairDevice, pairBrowserScreen, scanNetwork, showToast } = app;
   // Remembers whatever was picked last time (including "no location") rather than
   // always defaulting to the first location — a location shouldn't be forced on a
   // screen just because it's the first one in the list; "no location, assign later"
@@ -56,6 +57,9 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   // decoded before the first pairFound() call's state update lands from firing
   // pairDevice() more than once for the same scan.
   const qrScanLockRef = useRef(false);
+  const [browserName, setBrowserName] = useState('');
+  const [creatingBrowserScreen, setCreatingBrowserScreen] = useState(false);
+  const [browserResult, setBrowserResult] = useState<{ screenUrl: string; qrImageUrl: string | null } | null>(null);
 
   const isNewGroup = groupId === '__new__';
 
@@ -73,6 +77,7 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     setMode(m);
     setDiscovered([]);
     setScanning(false);
+    setBrowserResult(null);
   };
 
   const startScan = () => {
@@ -104,6 +109,25 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     void pairFound({ id: 'qr', name: 'Scanned Display', ip }).finally(() => {
       qrScanLockRef.current = false;
     });
+  };
+
+  const createBrowserScreen = async () => {
+    setCreatingBrowserScreen(true);
+    try {
+      const gid = await resolveGroupId();
+      const { screenUrl, qrImageUrl } = await pairBrowserScreen(browserName, gid);
+      setBrowserResult({ screenUrl, qrImageUrl });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not create a screen link');
+    } finally {
+      setCreatingBrowserScreen(false);
+    }
+  };
+
+  const copyScreenUrl = async () => {
+    if (!browserResult) return;
+    const ok = await copyText(browserResult.screenUrl);
+    showToast(ok ? 'Link copied' : 'Could not copy — clipboard access denied');
   };
 
   const connectManual = async () => {
@@ -144,6 +168,7 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
         <label className="seg-opt"><input type="radio" name="pairMode" checked={mode === 'scan'} onChange={() => changeMode('scan')} />Scan network</label>
         <label className="seg-opt"><input type="radio" name="pairMode" checked={mode === 'qr'} onChange={() => changeMode('qr')} />Scan QR code</label>
         <label className="seg-opt"><input type="radio" name="pairMode" checked={mode === 'manual'} onChange={() => changeMode('manual')} />Enter IP</label>
+        <label className="seg-opt"><input type="radio" name="pairMode" checked={mode === 'browser'} onChange={() => changeMode('browser')} />Android / browser screen</label>
       </div>
 
       {mode === 'scan' && !scanning && discovered.length === 0 && (
@@ -199,6 +224,43 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
             {pairingIp === manualIp && pairingIp !== null && ' Trying to reach it now — this can take a few seconds if it\'s unreachable.'}
           </p>
         </>
+      )}
+
+      {mode === 'browser' && !browserResult && (
+        <>
+          <p className="dialog-body" style={{ margin: 0 }}>
+            For an Android box, smart TV, or any device you'd rather run a kiosk
+            browser app on than this project's own Pi/x86 software. Creates a screen
+            and gives you a link to open in that browser (e.g. Fully Kiosk Browser)
+            as its start page — nothing to install on this device beyond the browser
+            app itself.
+          </p>
+          <div className="field">
+            <label htmlFor="browser-name">Screen name (optional)</label>
+            <input className="input" id="browser-name" placeholder="e.g. Lobby TV" value={browserName} onChange={(e) => setBrowserName(e.target.value)} />
+          </div>
+          <button type="button" className="btn btn-primary btn-block" disabled={creatingBrowserScreen} onClick={() => void createBrowserScreen()}>
+            {creatingBrowserScreen ? 'Creating…' : 'Create screen link'}
+          </button>
+        </>
+      )}
+
+      {mode === 'browser' && browserResult && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '6px 0', textAlign: 'center' }}>
+          {browserResult.qrImageUrl && (
+            <img src={browserResult.qrImageUrl} alt="QR code encoding this screen's URL" style={{ width: 200, height: 200, background: '#fff', padding: 10, borderRadius: 4 }} />
+          )}
+          <p className="dialog-body" style={{ margin: 0 }}>
+            Open this address in the screen's kiosk browser (or scan the code above):
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+            <input className="input" readOnly value={browserResult.screenUrl} style={{ flex: 1, fontSize: 12 }} onFocus={(e) => e.currentTarget.select()} />
+            <button type="button" className="btn btn-secondary btn-icon" aria-label="Copy link" title="Copy link" onClick={() => void copyScreenUrl()}>
+              <Icon name="copy" size={14} />
+            </button>
+          </div>
+          <button type="button" className="btn btn-primary btn-block" onClick={onClose}>Done</button>
+        </div>
       )}
     </DialogShell>
   );

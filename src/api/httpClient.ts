@@ -104,6 +104,10 @@ export const httpClient: SignageApiClient = {
   listDevices: () => request<Device[]>('/api/devices'),
   pairDevice: (input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }) =>
     request<Device>('/api/devices/pair', { method: 'POST', ...json(input) }),
+  pairBrowserScreen: async (name, groupId) => {
+    const { device, screenUrl } = await request<{ device: Device; screenUrl: string }>('/api/devices/pair-browser', { method: 'POST', ...json({ name, groupId }) });
+    return { device, screenUrl, qrImageUrl: `${BASE_URL}/api/devices/${device.id}/screen-qr.png` };
+  },
   renameDevice: (id, name) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ name }) }),
   reorderDevices: (ids) => request<void>('/api/devices/reorder', { method: 'PUT', ...json({ ids }) }),
   moveDevice: (id, groupId) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ groupId }) }),

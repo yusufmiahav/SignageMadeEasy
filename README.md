@@ -46,6 +46,13 @@ Full details (what the script installs, how the kiosk session works) are in
 → Scan network, Scan QR code, or Enter IP. The app also links to the setup guide
 above from Settings → "Setup".
 
+For an Android box, smart TV, or anything you'd rather run a kiosk browser app on
+than a Pi — the same "Add a screen" dialog's **Android / browser screen** option
+skips provisioning entirely: it hands you a URL (and QR code) to open in that
+device's kiosk browser (e.g. Fully Kiosk Browser), and that's the whole setup. See
+[`hub/README.md`](hub/README.md)'s "Android / browser-only screens" section for
+what's supported (image/video + announcements, not the fuller Pi feature set).
+
 ## Troubleshooting
 
 **Docker build fails on `COPY public ./public`.** Your checkout is missing the

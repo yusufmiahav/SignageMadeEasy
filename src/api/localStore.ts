@@ -346,6 +346,20 @@ class LocalStoreClient implements SignageApiClient {
     return device;
   }
 
+  async pairBrowserScreen(name: string, groupId: string | null): Promise<{ device: Device; screenUrl: string; qrImageUrl: string | null }> {
+    const device: Device = {
+      id: uid('d'), name: name.trim() || 'Screen', ip: '', mac: null, status: 'offline', groupId,
+      announcementId: null, announcementOn: false, videoQuality: 'auto', forcedContentId: null, blackout: false,
+      defaultPlaylist: [], events: [],
+    };
+    this.data.devices.push(device);
+    this.persist();
+    // No real hub to serve /screen/<id> from in standalone mode — nothing to open
+    // on an actual screen or generate a QR of, same "nothing real to do" answer as
+    // restartDevice/flashDevice above.
+    return { device, screenUrl: '(standalone mode — no real hub to open this on a screen)', qrImageUrl: null };
+  }
+
   async renameDevice(id: string, name: string): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device && name.trim()) device.name = name.trim();

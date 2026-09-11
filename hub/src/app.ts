@@ -44,6 +44,20 @@ export function createApp() {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+  // Android/other browser-only screens (see hub/README.md's "Android / browser-only
+  // screens" section) — a small, dependency-free static page, no build step, so
+  // just a plain express.static mount plus a catch-all (mirrors the control app's
+  // own pattern below) rather than another Vite build. Registered before that
+  // control-app catch-all so a /screen/<deviceId> request is fully handled here and
+  // never falls through to it. The deviceId itself needs no server-side templating
+  // — browser-player.js reads it from location.pathname at runtime — so every
+  // /screen/* path serves the identical index.html.
+  const browserPlayerDist = path.resolve(__dirname, '../browser-player');
+  app.use('/screen', express.static(browserPlayerDist));
+  app.get('/screen/:deviceId', (_req, res) => {
+    res.sendFile(path.join(browserPlayerDist, 'index.html'));
+  });
+
   // Serve the control app's production build (apps/web `npm run build` output copied
   // in at Docker build time — see hub/Dockerfile) as the single deployed artifact.
   const webDist = path.resolve(__dirname, '../web-dist');

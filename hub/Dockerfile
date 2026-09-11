@@ -38,6 +38,9 @@ COPY hub/package.json hub/package-lock.json* ./
 RUN npm install --omit=dev
 COPY --from=hub-build --chown=node:node /hub/dist ./dist
 COPY --from=web-build --chown=node:node /web/dist ./web-dist
+# Android/other browser-only screens (see hub/README.md) — plain static files, no
+# build step, so just copied straight in rather than needing its own build stage.
+COPY --chown=node:node hub/browser-player ./browser-player
 COPY hub/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
