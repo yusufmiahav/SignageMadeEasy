@@ -131,6 +131,30 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
               {item.text || 'Announcement'}
             </span>
           </div>
+        ) : item.type === 'clock' || item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals' ? (
+          // No underlying file for any of these — live-rendered, streamed, or
+          // polled at playback time, so there's no real image to thumbnail. A
+          // full-bleed tile (same treatment as announcement above) reads as
+          // deliberate content rather than a missing/blank thumbnail, which a
+          // small icon floating on the plain thumb-box background did not.
+          <div
+            style={{
+              width: '100%', height: '100%', background: 'var(--color-neutral-900)', color: '#fff',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 12px',
+            }}
+          >
+            <Icon name={TYPE_ICON[item.type]} size={28} />
+            {metaText(item) && (
+              <span
+                style={{
+                  fontSize: 11, fontWeight: 600, textAlign: 'center', opacity: 0.8, overflow: 'hidden',
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                }}
+              >
+                {metaText(item)}
+              </span>
+            )}
+          </div>
         ) : (
           <Icon name={TYPE_ICON[item.type]} size={24} style={{ opacity: 0.4 }} />
         )}
