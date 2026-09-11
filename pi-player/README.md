@@ -38,9 +38,21 @@ kiosk autostart. A netinst image is fine:
 
 ```bash
 ssh <user>@<ip-shown-during-first-boot-or-from-your-router>
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/yusufmiahav/SignageMadeEasy/main/pi-player/provision.sh)"
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/yusufmiahav/SignageMadeEasy/claude/signage-made-easy-dev-r00fl6/pi-player/provision.sh)"
 sudo reboot
 ```
+
+**That branch in the URL matters — do not swap in `main`.** Same situation as
+`hub/README.md`'s own warning: `main` is an old, infrequently-merged snapshot of
+this repo. Concretely, `main`'s copy of this very script still installs `cage` as
+the kiosk compositor from before this project switched to `sway` — running it
+installs the wrong compositor entirely, silently, with no error, and every
+sway-dependent feature (screen orientation, in particular) then has nothing to
+talk to. The git checkout this script itself maintains at `/opt/signage/src`
+tracks whatever branch you initially cloned or later `git checkout`'d there — but
+the *provisioning steps* only run once, as whatever text this curl command fetches
+in the moment, so re-running from the wrong branch's URL undoes/skips dev-only
+provisioning changes even if the checked-out source code itself is current.
 
 Same command on both platforms — the script detects Raspberry Pi hardware and
 branches the handful of steps that differ (how the boot-splash kernel command
