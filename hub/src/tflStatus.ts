@@ -13,6 +13,16 @@ export interface TflLine {
   name: string;
   modeName: string;
   statusSeverityDescription: string;
+  /**
+   * TfL's own free-text explanation of a disruption (e.g. "District line: Part
+   * suspended between Turnham Green and Richmond..."), from the standard
+   * LineStatus.reason field — present when there's an actual disruption to explain,
+   * absent/empty for "Good Service". Not verified against a live disrupted line
+   * (nothing was disrupted when this was built — see the live "Good Service"
+   * sample this was written against), so player.js treats this as optional and
+   * degrades to just the status text if it's ever missing.
+   */
+  reason?: string;
 }
 
 // Every mode this feature supports (see AddTflStatusDialog.tsx's checkboxes) is
@@ -24,6 +34,7 @@ const POLL_INTERVAL_MS = 2 * 60 * 1000; // line status doesn't change second-to-
 
 interface RawLineStatus {
   statusSeverityDescription?: string;
+  reason?: string;
 }
 interface RawLine {
   id: string;
@@ -50,6 +61,7 @@ async function pollOnce(): Promise<void> {
       name: l.name,
       modeName: l.modeName,
       statusSeverityDescription: l.lineStatuses?.[0]?.statusSeverityDescription ?? 'Unknown',
+      ...(l.lineStatuses?.[0]?.reason && { reason: l.lineStatuses[0].reason }),
     }));
     lastError = null;
   } catch (err) {

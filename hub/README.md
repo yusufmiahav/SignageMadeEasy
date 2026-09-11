@@ -187,13 +187,25 @@ free key at <https://api-portal.tfl.gov.uk> and set it as `TFL_APP_KEY` on the h
 container. If TfL is briefly unreachable, the hub logs it and keeps serving the
 last-known-good cache rather than showing nothing.
 
-Line status is colored by TfL's own `statusSeverityDescription` text (e.g. "Good
-Service", "Minor Delays"), not its numeric severity code — see
-`hub/src/tflStatus.ts`'s and `pi-player/public/player.js`'s comments for why.
-Line names/ids themselves are never hardcoded anywhere in this project, so a
-future TfL renaming (like the 2024 London Overground split into Lioness/Mildmay/
-etc.) needs no code change here — whatever the API currently reports for your
-chosen modes is what renders.
+**Look**: white background with each line's real TfL brand color as a badge (the
+classic Underground colors plus the 2024 Overground rebrand's individual line
+colors — Lioness, Mildmay, etc.), matching TfL's own app/site rather than this
+project's usual dark kiosk theme. A disrupted line also shows TfL's own `reason`
+text (e.g. which stations are affected) below its status, not just the one-word
+severity. The board lays out in as many columns as needed to fit every selected
+line on screen at once (a kiosk display can't scroll, so this is a hard
+requirement) — selecting every mode at once (~25 lines) still fits.
+
+Which color counts as "disrupted" (shown in red, with a reason line) is decided
+by TfL's own `statusSeverityDescription` text (e.g. "Good Service" vs. anything
+else), not its numeric severity code — see `hub/src/tflStatus.ts`'s and
+`pi-player/public/player.js`'s comments for why. Line names/ids themselves are
+never hardcoded anywhere in this project, so a future TfL renaming (like the 2024
+Overground split into Lioness/Mildmay/etc.) needs no code change here — whatever
+the API currently reports for your chosen modes is what renders. The 6 individual
+2024 Overground brand colors specifically are `pi-player/public/player.js`'s own
+best-effort recollection, not independently re-verified against TfL's brand
+guidelines — a one-line fix in `TFL_LINE_COLOR` if one looks off.
 
 ## API surface
 

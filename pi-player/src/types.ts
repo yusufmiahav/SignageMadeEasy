@@ -12,7 +12,7 @@ export interface PlayerItem {
   /** NDI sources only — see hub/src/types.ts's PlayerItem.ndiSourceName. */
   ndiSourceName?: string;
   /** 'tfl-status' items only — see hub/src/types.ts's PlayerItem.tflLines. */
-  tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string }[];
+  tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string; reason?: string }[];
 }
 
 export interface PlayerState {

@@ -131,7 +131,7 @@ export interface PlayerItem {
   /** NDI sources only — see LibraryItem.ndiSourceName. */
   ndiSourceName?: string;
   /** 'tfl-status' items only — resolved fresh from tflStatus.ts's cache every time this item is served, not stored on the library item itself; see LibraryItem.tflModes. */
-  tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string }[];
+  tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string; reason?: string }[];
 }
 
 export interface PlayerState {

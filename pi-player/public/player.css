@@ -26,19 +26,44 @@ body { font-family: system-ui, sans-serif; color: #fff; }
    so the colon/digits don't jitter as the time ticks even without forcing monospace. */
 #stage .clock { font-family: system-ui, sans-serif; font-size: min(24vw, 34vh); font-weight: 700; letter-spacing: 0.03em; color: #fff; }
 
-/* TfL live status board — a simple readable-at-distance list, not a tube-map
-   recreation. Color comes from statusSeverityDescription text (see player.js's
-   tflStatusColor), not TfL's own numeric severity codes, which aren't documented
-   with enough confidence to hardcode a full mapping — see hub/src/tflStatus.ts. */
-#stage .tfl-board { width: min(90vw, 900px); display: flex; flex-direction: column; gap: 14px; font-family: system-ui, sans-serif; }
-#stage .tfl-board h1 { font-size: min(5vw, 40px); font-weight: 800; margin-bottom: 4px; }
-#stage .tfl-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; background: rgba(255,255,255,0.06); border-radius: 8px; }
-#stage .tfl-row .tfl-line-name { font-size: min(3vw, 26px); font-weight: 700; }
-#stage .tfl-row .tfl-status-pill { font-size: min(2.2vw, 18px); font-weight: 600; padding: 6px 14px; border-radius: 999px; color: #000; white-space: nowrap; }
-#stage .tfl-status-pill.good { background: #2ecc71; }
-#stage .tfl-status-pill.disrupted { background: #f5a623; }
-#stage .tfl-status-pill.closed { background: #e74c3c; color: #fff; }
-#stage .tfl-empty { opacity: 0.5; font-size: min(2.5vw, 20px); text-align: center; padding: 20px; }
+/* TfL live status board — white background + per-line brand-color badges,
+   matching TfL's own app/site look (not the dark theme every other content type
+   here uses) per explicit request. column-count is set inline by player.js's
+   renderTflBoard, not here — it depends on how many lines are actually selected,
+   so a fixed CSS value can't get it right for both a 3-line and a 25-line board. */
+#stage .tfl-board {
+  width: 92vw; max-height: 88vh; overflow: hidden; /* overflow: hidden is the last-resort backstop — column-count above is what actually prevents this in practice */
+  background: #fff; color: #111; border-radius: 12px;
+  padding: 28px 32px; font-family: system-ui, sans-serif;
+  column-gap: 28px;
+}
+#stage .tfl-row {
+  display: flex; align-items: center; gap: 18px; padding: 14px 0;
+  border-bottom: 1px solid #e5e5e5;
+  break-inside: avoid; /* keeps one line's badge+status from splitting across two columns */
+  max-width: 100%; overflow: hidden; /* absolute backstop — a long line name (e.g. "Hammersmith & City") must wrap inside its own column, never bleed into the next one */
+}
+#stage .tfl-line-badge {
+  /* flex-shrink 0 (the flex default's "auto" also disables shrinking below
+     content size) confirmed on a real render to let a long name like
+     "Hammersmith & City" grow wider than its column and overlap the next one.
+     A fixed flex-basis instead (tried first) fixed that but then clipped
+     single-word names with no space to wrap on ("Metropolitan" -> "Metro") —
+     max-width as a *percentage* of the row scales with however many columns
+     actually end up in play, and overflow-wrap covers a name that still can't
+     fit even wrapped (better a readable mid-word break than invisible clipped text). */
+  flex: 0 1 auto; max-width: 58%; min-width: 0; padding: 12px 18px; border-radius: 8px;
+  font-size: min(2vw, 26px); font-weight: 700; text-align: center; line-height: 1.15;
+  overflow-wrap: break-word; /* prefers breaking at the space in e.g. "Hammersmith & City" — word-break: break-word (tried first) broke mid-word instead ("Hammersmit-h") even though a space was available */
+}
+#stage .tfl-status-col { display: flex; flex: 1 1 0; flex-direction: column; gap: 3px; min-width: 0; justify-content: center; }
+#stage .tfl-status-text { font-size: min(2vw, 26px); font-weight: 700; color: #222; }
+#stage .tfl-status-text.disrupted { color: #b30000; }
+/* TfL's own explanation of a disruption (which stations, etc.) — see player.js's
+   line.reason handling. Smaller and lighter than the status line above it, same
+   visual hierarchy as tfl.gov.uk's own status page. */
+#stage .tfl-reason { font-size: min(1.3vw, 16px); color: #555; }
+#stage .tfl-empty { color: #333; opacity: 0.6; font-size: min(2.5vw, 20px); text-align: center; padding: 20px; }
 
 /* Opaque background, not translucent: a semi-transparent bar forces the
    browser to re-blend the actively-changing video frame underneath it on

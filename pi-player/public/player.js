@@ -183,17 +183,59 @@ function playNativeNdi(item, myGeneration) {
     });
 }
 
-// Buckets TfL's own statusSeverityDescription text into a color, rather than its
-// numeric statusSeverity code — the exact 0-14 code-to-meaning table isn't
+// TfL's official per-line brand colors (the Roundel/Overground palette), keyed by
+// the line `id` the API itself returns — not the numeric statusSeverity code or a
+// generic good/amber/red bucket, per explicit request to match real TfL branding.
+// The classic Underground/DLR/Elizabeth line/Tram colors are TfL's long-published,
+// stable brand values (high confidence). The six individual Overground line colors
+// (liberty/lioness/mildmay/suffragette/weaver/windrush) are from the 2024 rebrand
+// and are this file's best-effort recollection, not independently re-verified
+// against TfL's brand guidelines PDF — if one looks off next to the real thing,
+// it's a one-line fix here, not a structural problem.
+const TFL_LINE_COLOR = {
+  bakerloo: '#B36305',
+  central: '#E32017',
+  circle: '#FFD300',
+  district: '#00782A',
+  'hammersmith-city': '#F3A9BB',
+  jubilee: '#A0A5A9',
+  metropolitan: '#9B0056',
+  northern: '#000000',
+  piccadilly: '#003688',
+  victoria: '#0098D4',
+  'waterloo-city': '#95CDBA',
+  dlr: '#00A4A7',
+  elizabeth: '#6950A1',
+  tram: '#84B817',
+  liberty: '#676767',
+  lioness: '#FFA600',
+  mildmay: '#1E90CE',
+  suffragette: '#52BFAB',
+  weaver: '#A5498D',
+  windrush: '#DA291C',
+};
+const TFL_LINE_COLOR_FALLBACK = '#666666'; // any line id TfL adds later that isn't in the map above yet
+
+// TfL's brand colors span both very light (Circle yellow, Waterloo & City teal) and
+// very dark (Northern black, Piccadilly navy) — a single fixed badge text color
+// would be unreadable on roughly half of them. Standard relative-luminance formula
+// rather than a per-line lookup, so this works correctly even for the Overground
+// colors above that are this file's own best-effort guess.
+function contrastTextColor(hex) {
+  const r = Number.parseInt(hex.slice(1, 3), 16);
+  const g = Number.parseInt(hex.slice(3, 5), 16);
+  const b = Number.parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? '#000' : '#fff';
+}
+
+// Buckets TfL's own statusSeverityDescription text to decide whether to show the
+// reason detail line, not to pick a color (colors are per-line brand colors now,
+// see TFL_LINE_COLOR above) — the exact 0-14 statusSeverity code table isn't
 // documented with enough confidence to hardcode here (see hub/src/tflStatus.ts's
-// header comment), but the description strings TfL already shows humans are
-// stable. Falls back to 'disrupted' (amber) for anything not recognized, so an
-// unfamiliar status still reads as "something's off" instead of silently looking
-// fine or crashing.
-function tflStatusColor(description) {
-  if (description === 'Good Service') return 'good';
-  if (/closure|closed|suspended|not running/i.test(description)) return 'closed';
-  return 'disrupted';
+// header comment), but the description strings TfL already shows humans are stable.
+function tflIsDisrupted(description) {
+  return description !== 'Good Service';
 }
 
 function renderTflBoard(item) {
@@ -202,21 +244,43 @@ function renderTflBoard(item) {
   const lines = item.tflLines ?? [];
   if (lines.length === 0) {
     board.innerHTML = '<div class="tfl-empty">No TfL status available right now</div>';
-  } else {
-    for (const line of lines) {
-      const row = document.createElement('div');
-      row.className = 'tfl-row';
-      const name = document.createElement('span');
-      name.className = 'tfl-line-name';
-      name.textContent = line.name;
-      const pill = document.createElement('span');
-      pill.className = `tfl-status-pill ${tflStatusColor(line.statusSeverityDescription)}`;
-      pill.textContent = line.statusSeverityDescription;
-      row.appendChild(name);
-      row.appendChild(pill);
-      board.appendChild(row);
-    }
+    return board;
   }
+  for (const line of lines) {
+    const row = document.createElement('div');
+    row.className = 'tfl-row';
+    const badge = document.createElement('span');
+    badge.className = 'tfl-line-badge';
+    const badgeColor = TFL_LINE_COLOR[line.id] ?? TFL_LINE_COLOR_FALLBACK;
+    badge.style.background = badgeColor;
+    badge.style.color = contrastTextColor(badgeColor);
+    badge.textContent = line.name;
+    const statusCol = document.createElement('div');
+    statusCol.className = 'tfl-status-col';
+    const status = document.createElement('span');
+    status.className = `tfl-status-text${tflIsDisrupted(line.statusSeverityDescription) ? ' disrupted' : ''}`;
+    status.textContent = line.statusSeverityDescription;
+    statusCol.appendChild(status);
+    // TfL's own free-text explanation (e.g. which stations are affected) — only
+    // shown when there's actually a disruption to explain; see TflLine.reason's
+    // comment in hub/src/tflStatus.ts for why this is treated as optional.
+    if (line.reason) {
+      const reason = document.createElement('span');
+      reason.className = 'tfl-reason';
+      reason.textContent = line.reason;
+      statusCol.appendChild(reason);
+    }
+    row.appendChild(badge);
+    row.appendChild(statusCol);
+    board.appendChild(row);
+  }
+  // Multi-column so a full line roster (e.g. every Tube + Overground + DLR +
+  // Elizabeth line mode selected at once, ~25 lines) fits the screen instead of
+  // running off the bottom — a kiosk display can't scroll, so "fits" is a hard
+  // requirement, not a nice-to-have. CSS multicol (not a JS-computed grid) lets
+  // each column's rows flow and wrap naturally even though disrupted rows are
+  // taller than "Good Service" ones (see .tfl-row's break-inside in player.css).
+  board.style.columnCount = String(Math.max(1, Math.ceil(lines.length / 6)));
   return board;
 }
 
