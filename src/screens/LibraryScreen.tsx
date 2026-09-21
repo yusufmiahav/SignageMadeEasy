@@ -3,6 +3,7 @@ import { Icon } from '../components/icons/Icon';
 import { LibraryCard } from '../components/LibraryCard';
 import { FolderCard } from '../components/FolderCard';
 import { LibraryAddChooserDialog } from '../components/dialogs/LibraryAddChooserDialog';
+import { LibraryMoreOptionsDialog } from '../components/dialogs/LibraryMoreOptionsDialog';
 import { NewFolderDialog } from '../components/dialogs/NewFolderDialog';
 import { MoveToFolderDialog } from '../components/dialogs/MoveToFolderDialog';
 import type { AppState } from '../hooks/useAppState';
@@ -34,6 +35,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<InFlightUpload[]>([]);
   const [showAddChooser, setShowAddChooser] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | LibraryItem['type']>('all');
@@ -250,20 +252,24 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ margin: 0 }}>Library</h1>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button type="button" className="btn btn-secondary btn-icon" aria-label="New folder" title="New folder" onClick={() => setShowNewFolder(true)}>
+          <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="New folder" title="New folder" onClick={() => setShowNewFolder(true)}>
             <Icon name="folderPlus" size={15} />
           </button>
           <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add" onClick={() => setShowAddChooser(true)}>
             <Icon name="plus" size={15} />
           </button>
-          <button type="button" className="btn btn-secondary desktop-only" onClick={() => imageInputRef.current?.click()}>Add image</button>
-          <button type="button" className="btn btn-secondary desktop-only" onClick={() => videoInputRef.current?.click()}>Add video</button>
-          <button type="button" className="btn btn-secondary desktop-only" onClick={() => pdfInputRef.current?.click()}>Add PDF</button>
-          <button type="button" className="btn btn-secondary desktop-only" onClick={onOpenAnnounceDialog}>Add announcement</button>
-          <button type="button" className="btn btn-secondary desktop-only" onClick={() => void addClock('Clock')}>Add clock</button>
-          <button type="button" className="btn btn-secondary desktop-only" onClick={onOpenNdiDialog}>Add NDI source</button>
-          <button type="button" className="btn btn-secondary desktop-only" onClick={onOpenTflDialog}>Add TfL status</button>
-          <button type="button" className="btn btn-secondary desktop-only" onClick={onOpenTflArrivalsDialog}>Add TfL arrivals</button>
+          <button type="button" className="btn btn-secondary desktop-only" onClick={() => imageInputRef.current?.click()}>
+            <Icon name="image" size={14} /> Add image
+          </button>
+          <button type="button" className="btn btn-secondary desktop-only" onClick={() => videoInputRef.current?.click()}>
+            <Icon name="video" size={14} /> Add video
+          </button>
+          <button type="button" className="btn btn-secondary desktop-only" onClick={() => setShowNewFolder(true)}>
+            <Icon name="folderPlus" size={14} /> Add folder
+          </button>
+          <button type="button" className="btn btn-secondary desktop-only" onClick={() => setShowMoreOptions(true)}>
+            <Icon name="moreHorizontal" size={14} /> More options
+          </button>
           {selectMode ? (
             <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Cancel select" onClick={exitSelectMode}>
               <Icon name="x" size={15} />
@@ -464,6 +470,17 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
           onAddTflStatus={onOpenTflDialog}
           onAddTflArrivals={onOpenTflArrivalsDialog}
           onClose={() => setShowAddChooser(false)}
+        />
+      )}
+      {showMoreOptions && (
+        <LibraryMoreOptionsDialog
+          onAddPdf={() => pdfInputRef.current?.click()}
+          onAddAnnouncement={onOpenAnnounceDialog}
+          onAddClock={() => void addClock('Clock')}
+          onAddNdiSource={onOpenNdiDialog}
+          onAddTflStatus={onOpenTflDialog}
+          onAddTflArrivals={onOpenTflArrivalsDialog}
+          onClose={() => setShowMoreOptions(false)}
         />
       )}
     </div>
