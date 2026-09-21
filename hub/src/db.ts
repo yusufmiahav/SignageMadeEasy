@@ -70,6 +70,12 @@ db.exec(`
     name TEXT NOT NULL,
     parentId TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS locations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    sortOrder INTEGER
+  );
 `);
 
 // Migration for hubs deployed before durationSec existed: CREATE TABLE IF NOT EXISTS
@@ -261,6 +267,15 @@ if (!deviceCols2.includes('sortOrder')) {
 // own default playlist (misc-screen scheduling) — every existing screen starts with
 // an empty one, same as a brand-new location's defaultPlaylist.
 if (!deviceCols2.includes('defaultPlaylist')) db.exec("ALTER TABLE devices ADD COLUMN defaultPlaylist TEXT NOT NULL DEFAULT '[]'");
+
+// Same reasoning, for hubs deployed before Locations existed — a purely
+// organizational grouping a Group or a standalone screen can optionally be filed
+// under (see types.ts's Location/Group.locationId/Device.locationId). Null for
+// every existing group/device until someone files it under one; no FK, same
+// "application code manages the relationship" pattern as folders.parentId (deleting
+// a Location un-files its contents rather than needing a cascade rule).
+if (!groupCols.includes('locationId')) db.exec('ALTER TABLE groups_ ADD COLUMN locationId TEXT');
+if (!deviceCols2.includes('locationId')) db.exec('ALTER TABLE devices ADD COLUMN locationId TEXT');
 
 // Same reasoning, for hubs deployed before events could belong to a device instead
 // of a location — events.groupId was NOT NULL from launch (same situation as

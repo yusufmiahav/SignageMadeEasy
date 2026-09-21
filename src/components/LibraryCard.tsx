@@ -54,9 +54,11 @@ interface LibraryCardProps {
   onConfigure?: (item: LibraryItem) => void;
   /** Every item type — opens the folder picker to file this item elsewhere (or back to the library root). Omitted (button hidden) when there are no folders yet, same as onConfigure's own pattern. */
   onMove?: (item: LibraryItem) => void;
+  /** Every item type — opens ContentPreviewDialog for a quick look without needing a paired screen. */
+  onPreview?: (item: LibraryItem) => void;
 }
 
-export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandleProps, isDragging, selectMode, selected, onToggleSelect, onConfigure, onMove }: LibraryCardProps) {
+export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandleProps, isDragging, selectMode, selected, onToggleSelect, onConfigure, onMove, onPreview }: LibraryCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [editingTags, setEditingTags] = useState(false);
@@ -160,6 +162,11 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
         <button type="button" className="btn btn-ghost btn-icon thumb-remove" aria-label="Remove" onClick={() => onRemove(item.id)}>
           <Icon name="x" size={12} />
         </button>
+        {onPreview && (
+          <button type="button" className="btn btn-ghost btn-icon thumb-preview" aria-label="Preview" title="Preview" onClick={() => onPreview(item)}>
+            <Icon name="eye" size={12} />
+          </button>
+        )}
         {(item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals') && onConfigure && (
           <button type="button" className="btn btn-ghost btn-icon thumb-configure" aria-label="Edit options" title="Change the source/lines/modes this shows" onClick={() => onConfigure(item)}>
             <Icon name="sliders" size={12} />

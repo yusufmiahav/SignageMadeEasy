@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
 import type { Theme } from '../hooks/useTheme';
-import type { Backup, Device } from '../api/types';
+import type { Backup, Device, Group } from '../api/types';
 import { copyText } from '../utils/clipboard';
 import { authGateEnabled, logout } from '../api/auth';
 
@@ -33,21 +33,35 @@ export function SettingsScreen({
   hideAnnouncementRow,
   onSetHideAnnouncementRow,
 }: SettingsScreenProps) {
-  const { groups, devices, renameGroup, deleteGroup, renameDevice, removeDevice, reorderDevices, moveDevice, addGroup, showToast, exportBackup, importBackup, safetyHold, setSafetyHold, flashDevice } = app;
-  const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' } | null>(null);
+  const {
+    groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation,
+    reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, showToast, exportBackup, importBackup,
+    safetyHold, setSafetyHold, flashDevice,
+  } = app;
+  const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' | 'location' } | null>(null);
   const [editingName, setEditingName] = useState('');
-  const miscDevices = devices.filter((d) => !d.groupId);
+  // Groups/screens filed under a Location render inside that Location's own section
+  // below instead of at the top level — same split as HomeScreen.tsx.
+  const topLevelGroups = groups.filter((g) => !g.locationId);
+  const fullyUnassignedDevices = devices.filter((d) => !d.groupId && !d.locationId);
   const [restoring, setRestoring] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [newLocationName, setNewLocationName] = useState('');
+  const addNewLocation = async () => {
+    if (!newLocationName.trim()) return;
+    const location = await addLocation(newLocationName);
+    showToast(`Added ${location.name}`);
+    setNewLocationName('');
+  };
 
-  // Batch-move: select screens across any location (or the misc list) and move them
-  // all to one target at once — same underlying moveDevice as the single-screen move
-  // arrows/dialog, just applied to the whole selection in one go.
+  // Batch-move: select screens across any group (or the fully-unassigned list) and
+  // move them all to one target at once — same underlying moveDevice as the
+  // single-screen move arrows/dialog, just applied to the whole selection in one go.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [moveTarget, setMoveTarget] = useState('');
-  const [newLocationName, setNewLocationName] = useState('');
-  const isNewLocationTarget = moveTarget === '__new__';
+  const [newGroupName, setNewGroupName] = useState('');
+  const isNewGroupTarget = moveTarget === '__new__';
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -60,14 +74,14 @@ export function SettingsScreen({
     setSelectMode(false);
     setSelectedIds(new Set());
     setMoveTarget('');
-    setNewLocationName('');
+    setNewGroupName('');
   };
   const moveSelected = async () => {
     if (!moveTarget) return;
     let targetId: string | null = moveTarget === '__none__' ? null : moveTarget;
-    if (isNewLocationTarget) {
-      if (!newLocationName.trim()) return;
-      const group = await addGroup(newLocationName);
+    if (isNewGroupTarget) {
+      if (!newGroupName.trim()) return;
+      const group = await addGroup(newGroupName);
       targetId = group.id;
     }
     const ids = [...selectedIds];
@@ -122,21 +136,23 @@ export function SettingsScreen({
     }
   };
 
-  const startEdit = (id: string, name: string, kind: 'group' | 'device') => {
+  const startEdit = (id: string, name: string, kind: 'group' | 'device' | 'location') => {
     setEditing({ id, kind });
     setEditingName(name);
   };
   const save = () => {
     if (editing) {
       if (editing.kind === 'group') renameGroup(editing.id, editingName);
+      else if (editing.kind === 'location') void renameLocation(editing.id, editingName);
       else renameDevice(editing.id, editingName);
     }
     setEditing(null);
   };
 
-  // `scopeDevices` is one location's (or the misc list's) screens in their current
-  // display order — reorderDevices expects the complete reordered set for that one
-  // scope, so this swaps within the scope's own id list and sends the whole thing back.
+  // `scopeDevices` is one group's (or the fully-unassigned list's) screens in their
+  // current display order — reorderDevices expects the complete reordered set for
+  // that one scope, so this swaps within the scope's own id list and sends the whole
+  // thing back.
   const moveDeviceInScope = (scopeDevices: Device[], deviceId: string, direction: 'up' | 'down') => {
     const idx = scopeDevices.findIndex((d) => d.id === deviceId);
     const swapWith = direction === 'up' ? idx - 1 : idx + 1;
@@ -146,10 +162,12 @@ export function SettingsScreen({
     void reorderDevices(ids);
   };
 
-  // Shared row renderer for a screen nested under its location (or the misc list) —
-  // `scope` is that one location's/list's screens in display order, used both to know
-  // whether the up/down arrows are at a boundary and as the reorder payload.
-  const renderScreenRow = (device: Device, scope: Device[], idx: number) => {
+  // Shared row renderer for a screen nested under its group (or the fully-unassigned
+  // list) — `scope` is that one group's/list's screens in display order, used both to
+  // know whether the up/down arrows are at a boundary and as the reorder payload.
+  // `showLocationPicker` only applies to a standalone screen (no group of its own) —
+  // a grouped screen's location comes from its group instead, see Device.locationId.
+  const renderScreenRow = (device: Device, scope: Device[], idx: number, showLocationPicker = false) => {
     const isEditing = editing?.kind === 'device' && editing.id === device.id;
     return (
       <div
@@ -178,6 +196,20 @@ export function SettingsScreen({
             <div style={{ fontSize: 13 }}>{device.name}</div>
             <div className="text-muted" style={{ fontSize: 11 }}>Screen</div>
           </div>
+        )}
+        {showLocationPicker && !selectMode && !isEditing && (
+          <select
+            className="input"
+            style={{ width: 'auto', fontSize: 11, padding: '2px 4px' }}
+            value={device.locationId ?? ''}
+            onChange={(e) => void setDeviceLocation(device.id, e.target.value || null)}
+            aria-label={`Location for ${device.name}`}
+          >
+            <option value="">No location</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
         )}
         {selectMode ? null : isEditing ? (
           <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
@@ -214,6 +246,72 @@ export function SettingsScreen({
             </button>
           </>
         )}
+      </div>
+    );
+  };
+
+  // Shared row renderer for a group, nested under its Location (or top-level) — shows
+  // its own screens via renderScreenRow and a Location picker to file/refile it.
+  const renderGroupRow = (group: Group) => {
+    const screens = devices.filter((d) => d.groupId === group.id);
+    const isEditing = editing?.kind === 'group' && editing.id === group.id;
+    const cannotDelete = screens.length > 0;
+    return (
+      <div key={group.id}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+          {isEditing ? (
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              value={editingName}
+              onChange={(e) => setEditingName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              autoFocus
+            />
+          ) : (
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13 }}>{group.name}</div>
+              <div className="text-muted" style={{ fontSize: 11 }}>Group</div>
+            </div>
+          )}
+          {!isEditing && <span className="tag tag-neutral">{screens.length} screen{screens.length === 1 ? '' : 's'}</span>}
+          {!isEditing && locations.length > 0 && (
+            <select
+              className="input"
+              style={{ width: 'auto', fontSize: 11, padding: '2px 4px' }}
+              value={group.locationId ?? ''}
+              onChange={(e) => void setGroupLocation(group.id, e.target.value || null)}
+              aria-label={`Location for ${group.name}`}
+            >
+              <option value="">No location</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          )}
+          {isEditing ? (
+            <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
+              <Icon name="check" size={13} />
+            </button>
+          ) : (
+            <>
+              <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(group.id, group.name, 'group')}>
+                <Icon name="pencil" size={13} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                aria-label="Delete"
+                disabled={cannotDelete}
+                title={cannotDelete ? 'Remove its screens first' : 'Delete group'}
+                onClick={() => deleteGroup(group.id)}
+              >
+                <Icon name="trash" size={13} />
+              </button>
+            </>
+          )}
+        </div>
+        {screens.map((device, idx) => renderScreenRow(device, screens, idx))}
       </div>
     );
   };
@@ -300,8 +398,71 @@ export function SettingsScreen({
       </div>
 
       <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Locations</div>
+        <p className="card-body" style={{ margin: 0 }}>
+          Purely organizational areas for browsing/managing a whole site at once — e.g. "Warehouse
+          Building". A location has no content of its own: file groups and/or standalone screens
+          under it below.
+        </p>
+        {locations.map((location) => {
+          const isEditing = editing?.kind === 'location' && editing.id === location.id;
+          const count = groups.filter((g) => g.locationId === location.id).length + devices.filter((d) => !d.groupId && d.locationId === location.id).length;
+          return (
+            <div key={location.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)' }}>
+              {isEditing ? (
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && save()}
+                  autoFocus
+                />
+              ) : (
+                <div style={{ flex: 1, fontSize: 13 }}>{location.name}</div>
+              )}
+              {!isEditing && <span className="tag tag-neutral">{count} item{count === 1 ? '' : 's'}</span>}
+              {isEditing ? (
+                <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
+                  <Icon name="check" size={13} />
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(location.id, location.name, 'location')}>
+                    <Icon name="pencil" size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon"
+                    aria-label="Delete"
+                    title="Delete location — its groups/screens are kept, just un-filed"
+                    onClick={() => void deleteLocation(location.id)}
+                  >
+                    <Icon name="trash" size={13} />
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })}
+        <div style={{ display: 'flex', gap: 8, paddingTop: locations.length > 0 ? 4 : 0 }}>
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            placeholder="e.g. Reception"
+            value={newLocationName}
+            onChange={(e) => setNewLocationName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void addNewLocation()}
+          />
+          <button type="button" className="btn btn-secondary" disabled={!newLocationName.trim()} onClick={() => void addNewLocation()}>
+            Add location
+          </button>
+        </div>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="card-kicker">Locations & Screens</div>
+          <div className="card-kicker">Groups & Screens</div>
           {devices.length > 1 && (
             <button
               type="button"
@@ -333,19 +494,19 @@ export function SettingsScreen({
               aria-label="Move selected screens to"
             >
               <option value="" disabled>Move to…</option>
-              <option value="__none__">No location</option>
+              <option value="__none__">No group</option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>{g.name}</option>
               ))}
-              <option value="__new__">+ New location</option>
+              <option value="__new__">+ New group</option>
             </select>
-            {isNewLocationTarget && (
+            {isNewGroupTarget && (
               <input
                 className="input"
                 style={{ width: 140, fontSize: 12 }}
-                placeholder="e.g. Reception"
-                value={newLocationName}
-                onChange={(e) => setNewLocationName(e.target.value)}
+                placeholder="e.g. Lobby screens"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
                 autoFocus
               />
             )}
@@ -353,7 +514,7 @@ export function SettingsScreen({
               type="button"
               className="btn btn-secondary"
               style={{ fontSize: 12 }}
-              disabled={selectedIds.size === 0 || !moveTarget || (isNewLocationTarget && !newLocationName.trim())}
+              disabled={selectedIds.size === 0 || !moveTarget || (isNewGroupTarget && !newGroupName.trim())}
               onClick={() => void moveSelected()}
             >
               Move
@@ -361,61 +522,27 @@ export function SettingsScreen({
           </div>
         )}
 
-        {groups.map((group) => {
-          const screens = devices.filter((d) => d.groupId === group.id);
-          const isEditing = editing?.kind === 'group' && editing.id === group.id;
-          const cannotDelete = screens.length > 0;
+        {locations.map((location) => {
+          const locationGroups = groups.filter((g) => g.locationId === location.id);
+          const locationDevices = devices.filter((d) => !d.groupId && d.locationId === location.id);
+          if (locationGroups.length === 0 && locationDevices.length === 0) return null;
           return (
-            <div key={group.id}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                {isEditing ? (
-                  <input
-                    className="input"
-                    style={{ flex: 1 }}
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && save()}
-                    autoFocus
-                  />
-                ) : (
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13 }}>{group.name}</div>
-                    <div className="text-muted" style={{ fontSize: 11 }}>Location</div>
-                  </div>
-                )}
-                {!isEditing && <span className="tag tag-neutral">{screens.length} screen{screens.length === 1 ? '' : 's'}</span>}
-                {isEditing ? (
-                  <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
-                    <Icon name="check" size={13} />
-                  </button>
-                ) : (
-                  <>
-                    <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(group.id, group.name, 'group')}>
-                      <Icon name="pencil" size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-icon"
-                      aria-label="Delete"
-                      disabled={cannotDelete}
-                      title={cannotDelete ? 'Remove its screens first' : 'Delete location'}
-                      onClick={() => deleteGroup(group.id)}
-                    >
-                      <Icon name="trash" size={13} />
-                    </button>
-                  </>
-                )}
+            <div key={location.id} style={{ padding: '6px 0 6px 8px', borderLeft: '2px solid var(--color-divider)' }}>
+              <div className="text-muted" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="mapPin" size={11} /> {location.name}
               </div>
-              {screens.map((device, idx) => renderScreenRow(device, screens, idx))}
+              {locationGroups.map((group) => renderGroupRow(group))}
+              {locationDevices.map((device, idx) => renderScreenRow(device, locationDevices, idx, true))}
             </div>
           );
         })}
-        {miscDevices.length > 0 && (
+        {topLevelGroups.map((group) => renderGroupRow(group))}
+        {fullyUnassignedDevices.length > 0 && (
           <div>
             <div style={{ padding: '4px 0' }}>
-              <div className="text-muted" style={{ fontSize: 11 }}>No location</div>
+              <div className="text-muted" style={{ fontSize: 11 }}>No group</div>
             </div>
-            {miscDevices.map((device, idx) => renderScreenRow(device, miscDevices, idx))}
+            {fullyUnassignedDevices.map((device, idx) => renderScreenRow(device, fullyUnassignedDevices, idx, true))}
           </div>
         )}
       </div>

@@ -9,6 +9,7 @@ import { Toast } from './components/Toast';
 import { PairDeviceDialog } from './components/dialogs/PairDeviceDialog';
 import { AddChooserDialog } from './components/dialogs/AddChooserDialog';
 import { AddLocationDialog } from './components/dialogs/AddLocationDialog';
+import { AddGroupDialog } from './components/dialogs/AddGroupDialog';
 import { AddContentDialog } from './components/dialogs/AddContentDialog';
 import { AddEventDialog } from './components/dialogs/AddEventDialog';
 import { AddAnnouncementDialog } from './components/dialogs/AddAnnouncementDialog';
@@ -34,6 +35,8 @@ type DialogState =
   | { type: 'pair' }
   | { type: 'addChooser' }
   | { type: 'addLocation' }
+  /** `locationId` pre-files the new group under that Location — set when "Add group" is clicked from within a Location's section on Home; null from the top-level "+" chooser or Home's own header button. */
+  | { type: 'addGroup'; locationId: string | null }
   | { type: 'uploadContent' }
   | { type: 'addContent'; groupId: string }
   | { type: 'addEvent'; groupId: string }
@@ -98,6 +101,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             app={app}
             onAddScreen={() => setDialog({ type: 'pair' })}
             onAddLocation={() => setDialog({ type: 'addLocation' })}
+            onAddGroup={(locationId) => setDialog({ type: 'addGroup', locationId })}
             onForceContent={(groupId) => setDialog({ type: 'forceContent', groupId })}
             onForceContentAllScreens={() => setDialog({ type: 'forceContent', groupId: null })}
             onForceAnnouncement={(groupId) => setDialog({ type: 'forceAnnouncement', groupId })}
@@ -122,6 +126,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onOpenTflDialog={() => setDialog({ type: 'addTflStatus' })}
             onOpenTflArrivalsDialog={() => setDialog({ type: 'addTflArrivals' })}
             onConfigureTflItem={(item) => setDialog({ type: 'configureTfl', item })}
+            onPreviewContent={(item) => setDialog({ type: 'preview', item })}
           />
         )}
         {tab === 'schedule' && (
@@ -160,11 +165,13 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
         <AddChooserDialog
           onChooseScreen={() => setDialog({ type: 'pair' })}
           onChooseLocation={() => setDialog({ type: 'addLocation' })}
+          onChooseGroup={() => setDialog({ type: 'addGroup', locationId: null })}
           onChooseContent={() => setDialog({ type: 'uploadContent' })}
           onClose={closeDialog}
         />
       )}
       {dialog?.type === 'addLocation' && <AddLocationDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'addGroup' && <AddGroupDialog app={app} locationId={dialog.locationId} onClose={closeDialog} />}
       {dialog?.type === 'uploadContent' && <UploadContentDialog app={app} onClose={closeDialog} />}
       {dialog?.type === 'addContent' && (
         <AddContentDialog
@@ -206,7 +213,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       {dialog?.type === 'forceContent' && (
         <ForceContentDialog
           app={app}
-          scopeLabel={dialog.groupId ? 'this location' : 'every screen'}
+          scopeLabel={dialog.groupId ? 'this group' : 'every screen'}
           isGlobal={dialog.groupId === null}
           currentId={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.forcedContentId ?? null) : null}
           onConfirm={(libId) => (dialog.groupId ? app.setForcedContent(dialog.groupId, libId) : app.forceContentAllScreens(libId))}
@@ -216,7 +223,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       {dialog?.type === 'forceAnnouncement' && (
         <ForceAnnouncementDialog
           app={app}
-          scopeLabel={dialog.groupId ? 'this location' : 'every screen'}
+          scopeLabel={dialog.groupId ? 'this group' : 'every screen'}
           isGlobal={dialog.groupId === null}
           currentId={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.forcedAnnouncementId ?? null) : null}
           onConfirm={(announcementId) =>
@@ -227,7 +234,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       )}
       {dialog?.type === 'blackout' && (
         <BlackoutDialog
-          scopeLabel={dialog.groupId ? 'this location' : 'every screen'}
+          scopeLabel={dialog.groupId ? 'this group' : 'every screen'}
           current={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.blackout ?? false) : false}
           onConfirm={(blackout) => (dialog.groupId ? app.setGroupBlackout(dialog.groupId, blackout) : app.blackoutAllScreens(blackout))}
           onClose={closeDialog}

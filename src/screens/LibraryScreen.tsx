@@ -17,6 +17,7 @@ interface LibraryScreenProps {
   onOpenTflDialog: () => void;
   onOpenTflArrivalsDialog: () => void;
   onConfigureTflItem: (item: LibraryItem) => void;
+  onPreviewContent: (item: LibraryItem) => void;
 }
 
 interface InFlightUpload {
@@ -25,7 +26,7 @@ interface InFlightUpload {
   pct: number;
 }
 
-export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOpenTflDialog, onOpenTflArrivalsDialog, onConfigureTflItem }: LibraryScreenProps) {
+export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOpenTflDialog, onOpenTflArrivalsDialog, onConfigureTflItem, onPreviewContent }: LibraryScreenProps) {
   const {
     library, folders, addImage, addVideo, addPdf, addClock, removeLibraryItem, removeLibraryItems, renameLibraryItem, setLibraryItemTags,
     setLibraryItemFolder, addFolder, renameFolder, moveFolder, removeFolder, reorderLibrary, showToast,
@@ -448,6 +449,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
           onRenameItem={renameLibraryItem}
           onMoveItem={setMoveItemTarget}
           onConfigureItem={onConfigureTflItem}
+          onPreviewItem={onPreviewContent}
           onRenameFolder={renameFolder}
           onDeleteFolder={(id) => void removeFolder(id)}
           onMoveFolder={setMoveFolderTarget}
@@ -479,6 +481,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
               onSetTags={setLibraryItemTags}
               onConfigure={onConfigureTflItem}
               onMove={folders.length > 0 ? setMoveItemTarget : undefined}
+              onPreview={onPreviewContent}
               isDragging={draggedIdRef.current === item.id}
               selectMode={selectMode}
               selected={selectedIds.has(item.id)}

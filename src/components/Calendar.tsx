@@ -12,7 +12,7 @@ function toISODate(d: Date): string {
 }
 
 interface CalendarProps {
-  /** A location's or a device's own events — whichever this calendar is scoped to. */
+  /** A group's or a device's own events — whichever this calendar is scoped to. */
   events: ScheduleEvent[];
   monthOffset: number;
   selectedDate: string;

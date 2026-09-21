@@ -6,20 +6,20 @@ import type { AppState } from '../../hooks/useAppState';
 
 type PairMode = 'scan' | 'qr' | 'manual';
 
-const NO_LOCATION = '__none__';
-const LAST_LOCATION_KEY = 'signagemadeeasy.lastPairLocation';
+const NO_GROUP = '__none__';
+const LAST_GROUP_KEY = 'signagemadeeasy.lastPairLocation';
 
-function lastPairedLocation(): string {
+function lastPairedGroup(): string {
   try {
-    return localStorage.getItem(LAST_LOCATION_KEY) ?? NO_LOCATION;
+    return localStorage.getItem(LAST_GROUP_KEY) ?? NO_GROUP;
   } catch {
-    return NO_LOCATION;
+    return NO_GROUP;
   }
 }
 
-function rememberPairedLocation(groupId: string): void {
+function rememberPairedGroup(groupId: string): void {
   try {
-    localStorage.setItem(LAST_LOCATION_KEY, groupId);
+    localStorage.setItem(LAST_GROUP_KEY, groupId);
   } catch {
     // Best-effort — next pairing just won't default to this choice.
   }
@@ -31,16 +31,20 @@ interface PairDeviceDialogProps {
 }
 
 export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
-  const { groups, addGroup, pairDevice, scanNetwork, showToast } = app;
-  // Remembers whatever was picked last time (including "no location") rather than
-  // always defaulting to the first location — a location shouldn't be forced on a
-  // screen just because it's the first one in the list; "no location, assign later"
-  // is the actual default until someone chooses something else.
+  const { groups, locations, addGroup, pairDevice, scanNetwork, showToast } = app;
+  // Remembers whatever was picked last time (including "no group") rather than
+  // always defaulting to the first group — a group shouldn't be forced on a screen
+  // just because it's the first one in the list; "no group, assign later" is the
+  // actual default until someone chooses something else.
   const [groupId, setGroupId] = useState(() => {
-    const last = lastPairedLocation();
-    return last === NO_LOCATION || groups.some((g) => g.id === last) ? last : NO_LOCATION;
+    const last = lastPairedGroup();
+    return last === NO_GROUP || groups.some((g) => g.id === last) ? last : NO_GROUP;
   });
   const [newGroupName, setNewGroupName] = useState('');
+  // Only meaningful for a standalone screen (no group chosen above) — see
+  // Device.locationId's comment; purely organizational, same as the group picker's
+  // "+ New group" option but for filing this screen under a Location instead.
+  const [locationId, setLocationId] = useState<string>('');
   const [mode, setMode] = useState<PairMode>('scan');
   const [scanning, setScanning] = useState(false);
   const [discovered, setDiscovered] = useState<{ id: string; name: string; ip: string }[]>([]);
@@ -62,11 +66,11 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   const resolveGroupId = async (): Promise<string | null> => {
     if (isNewGroup) {
       const group = await addGroup(newGroupName);
-      rememberPairedLocation(group.id);
+      rememberPairedGroup(group.id);
       return group.id;
     }
-    rememberPairedLocation(groupId);
-    return groupId === NO_LOCATION ? null : groupId;
+    rememberPairedGroup(groupId);
+    return groupId === NO_GROUP ? null : groupId;
   };
 
   const changeMode = (m: PairMode) => {
@@ -88,7 +92,7 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     setPairingIp(found.ip);
     try {
       const gid = await resolveGroupId();
-      await pairDevice({ name: found.name, ip: found.ip, groupId: gid });
+      await pairDevice({ name: found.name, ip: found.ip, groupId: gid, locationId: locationId || null });
       showToast(`Paired ${found.name}`);
       onClose();
     } catch (err) {
@@ -111,7 +115,7 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     setPairingIp(manualIp);
     try {
       const gid = await resolveGroupId();
-      await pairDevice({ name: 'Display', ip: manualIp, groupId: gid });
+      await pairDevice({ name: 'Display', ip: manualIp, groupId: gid, locationId: locationId || null });
       showToast(`Connected to ${manualIp}`);
       onClose();
     } catch (err) {
@@ -124,19 +128,30 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   return (
     <DialogShell title="Add a screen" onClose={onClose}>
       <div className="field">
-        <label htmlFor="pair-location">Location</label>
-        <select className="input" id="pair-location" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-          <option value={NO_LOCATION}>No location (can be assigned later)</option>
+        <label htmlFor="pair-group">Group</label>
+        <select className="input" id="pair-group" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+          <option value={NO_GROUP}>No group (can be assigned later)</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>{g.name}</option>
           ))}
-          <option value="__new__">+ New location</option>
+          <option value="__new__">+ New group</option>
         </select>
       </div>
       {isNewGroup && (
         <div className="field">
-          <label htmlFor="new-loc-name">New location name</label>
-          <input className="input" id="new-loc-name" placeholder="e.g. Reception" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+          <label htmlFor="new-loc-name">New group name</label>
+          <input className="input" id="new-loc-name" placeholder="e.g. Lobby screens" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+        </div>
+      )}
+      {groupId === NO_GROUP && locations.length > 0 && (
+        <div className="field">
+          <label htmlFor="pair-location">Location</label>
+          <select className="input" id="pair-location" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+            <option value="">No location</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
         </div>
       )}
 

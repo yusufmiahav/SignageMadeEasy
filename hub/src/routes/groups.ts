@@ -8,9 +8,12 @@ groupsRouter.get('/', (_req, res) => {
 });
 
 groupsRouter.post('/', (req, res) => {
-  const { name } = req.body ?? {};
+  const { name, locationId } = req.body ?? {};
   if (typeof name !== 'string') return res.status(400).json({ error: 'name is required' });
-  res.status(201).json(store.addGroup(name));
+  if (locationId !== undefined && locationId !== null && typeof locationId !== 'string') {
+    return res.status(400).json({ error: 'locationId must be a string or null' });
+  }
+  res.status(201).json(store.addGroup(name, locationId ?? null));
 });
 
 // Registered before /:id routes below — a literal "reorder" segment here would
@@ -26,9 +29,14 @@ groupsRouter.put('/reorder', (req, res) => {
 });
 
 groupsRouter.patch('/:id', (req, res) => {
-  const { name } = req.body ?? {};
-  if (typeof name !== 'string') return res.status(400).json({ error: 'name is required' });
-  store.renameGroup(req.params.id, name);
+  const { name, locationId } = req.body ?? {};
+  if (typeof name === 'string') store.renameGroup(req.params.id, name);
+  // locationId: null files it back out of any Location; omitting the key leaves it
+  // untouched — same distinction as devices.ts's own groupId handling.
+  if (locationId !== undefined) {
+    if (locationId !== null && typeof locationId !== 'string') return res.status(400).json({ error: 'locationId must be a string or null' });
+    store.setGroupLocation(req.params.id, locationId);
+  }
   res.status(204).end();
 });
 

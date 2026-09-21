@@ -26,12 +26,12 @@ interface DeviceScheduleCardProps {
 }
 
 /**
- * One misc/no-location screen's own schedule editor — a compact copy of the
- * location-scoped UI above it in ScheduleScreen, since a misc screen has its own
- * independent default playlist + events instead of sharing a location's. Rendered
+ * One standalone (no-group) screen's own schedule editor — a compact copy of the
+ * group-scoped UI above it in ScheduleScreen, since a standalone screen has its own
+ * independent default playlist + events instead of sharing a group's. Rendered
  * as a stacked list (one card per screen, one after another down the page) rather
- * than behind a single selector like locations use — there's no shared "current
- * location" concept to switch between for screens that don't belong to any.
+ * than behind a single selector like groups use — there's no shared "current
+ * group" concept to switch between for screens that don't belong to any.
  */
 export function DeviceScheduleCard({ app, device, library, onOpenAddContent, onOpenAddEvent, onPreviewContent }: DeviceScheduleCardProps) {
   const { reorderDeviceDefaultPlaylist, removeFromDeviceDefaultPlaylist, removeDeviceEvent, duplicateDeviceEvent, setItemDuration } = app;
@@ -66,7 +66,7 @@ export function DeviceScheduleCard({ app, device, library, onOpenAddContent, onO
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 600 }}>{device.name}</div>
-          <div className="text-muted" style={{ fontSize: 11 }}>No location</div>
+          <div className="text-muted" style={{ fontSize: 11 }}>No group</div>
         </div>
         <span className={`tag ${todayTagClass}`} style={{ fontSize: 9 }}>{todayLabel}</span>
       </div>

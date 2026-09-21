@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -59,13 +59,24 @@ export interface SignageApiClient {
   /** Deleting a folder never deletes its contents — every subfolder and library item filed directly under it moves up to the deleted folder's own parent (or the root, if it had none). */
   removeFolder(id: string): Promise<void>;
 
-  // Locations (groups)
+  // Locations — purely organizational, no content of their own. Hold Groups and/or
+  // standalone screens (see Group.locationId/Device.locationId).
+  listLocations(): Promise<Location[]>;
+  addLocation(name: string): Promise<Location>;
+  renameLocation(id: string, name: string): Promise<void>;
+  /** Never deletes anything filed under it — any Group/screen that referenced it just becomes un-filed (locationId back to null). */
+  deleteLocation(id: string): Promise<void>;
+
+  // Groups — every screen in a Group shows identical content (shared playlist/schedule).
   listGroups(): Promise<Group[]>;
-  addGroup(name: string): Promise<Group>;
+  /** `locationId` files it under a Location for organization; omit/null to leave it un-filed. */
+  addGroup(name: string, locationId?: string | null): Promise<Group>;
   renameGroup(id: string, name: string): Promise<void>;
-  /** No-op if the location still has devices assigned. Returns whether it deleted. */
+  /** Files an existing group under a Location, or `null` to un-file it — purely organizational, has no effect on its content. */
+  setGroupLocation(id: string, locationId: string | null): Promise<void>;
+  /** No-op if the group still has devices assigned. Returns whether it deleted. */
   deleteGroup(id: string): Promise<boolean>;
-  /** Persists a reorder of locations on the Home screen — the complete new display order. */
+  /** Persists a reorder of groups on the Home screen — the complete new display order. */
   reorderGroups(ids: string[]): Promise<void>;
   setDefaultPlaylist(groupId: string, libIds: string[]): Promise<void>;
   addToDefaultPlaylist(groupId: string, libIds: string[]): Promise<void>;
@@ -74,22 +85,24 @@ export interface SignageApiClient {
   addEvent(groupId: string, event: Omit<ScheduleEvent, 'id'>): Promise<ScheduleEvent>;
   removeEvent(groupId: string, eventId: string): Promise<void>;
   setForcedContent(groupId: string, libId: string | null): Promise<void>;
-  /** Forces an announcement on for every screen at this location, overriding schedules and each screen's own manual toggle, until cleared with `null`. */
+  /** Forces an announcement on for every screen in this group, overriding schedules and each screen's own manual toggle, until cleared with `null`. */
   setForcedAnnouncement(groupId: string, announcementId: string | null): Promise<void>;
   addAnnouncementSchedule(groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>): Promise<AnnouncementSchedule>;
   removeAnnouncementSchedule(groupId: string, scheduleId: string): Promise<void>;
-  /** Emergency override: every screen at this location goes to a plain black screen, above even forced content, until cleared with `false`. */
+  /** Emergency override: every screen in this group goes to a plain black screen, above even forced content, until cleared with `false`. */
   setGroupBlackout(groupId: string, blackout: boolean): Promise<void>;
 
   // Devices
   listDevices(): Promise<Device[]>;
-  /** `groupId: null` pairs it with no location yet ("misc" screen, assignable later). */
-  pairDevice(input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }): Promise<Device>;
+  /** `groupId: null` pairs it standalone (no shared content yet, assignable later); `locationId` optionally files a standalone screen under a Location right away. */
+  pairDevice(input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus }): Promise<Device>;
   renameDevice(id: string, name: string): Promise<void>;
-  /** Persists a reorder of screens shown under one location (or the misc/no-location list) on Settings/Home/Schedule — the complete new display order for that one scope, not a global list. */
+  /** Persists a reorder of screens shown under one group (or the standalone/no-group list) on Settings/Home/Schedule — the complete new display order for that one scope, not a global list. */
   reorderDevices(ids: string[]): Promise<void>;
   /** `groupId: null` unassigns it — a legitimate end state, not just an intermediate one. */
   moveDevice(id: string, groupId: string | null): Promise<void>;
+  /** Files a standalone screen under a Location, or `null` to un-file it — meaningless while the screen belongs to a group (its Location comes from the group instead). */
+  setDeviceLocation(id: string, locationId: string | null): Promise<void>;
   removeDevice(id: string): Promise<void>;
   restartDevice(id: string): Promise<void>;
   /** Makes this screen's physical display blink white/black twice — helps identify which real screen an entry in Settings corresponds to. No-op in standalone/localStorage mode (no real Pi to ask). */

@@ -267,10 +267,32 @@ Folders round-trip through Settings → Backup/restore alongside everything
 else; a backup exported before this feature existed has no `folders` array
 and restores as if there were none, rather than being rejected.
 
+## Locations vs. groups
+
+Two separate, both-optional ways to organize screens:
+
+- **Group** — a set of screens sharing one playlist/schedule. This is the
+  original "location" concept from earlier versions of this project, renamed:
+  every screen in a group shows the exact same content, and force-content/
+  force-announcement/blackout act on the whole group at once. A screen not in
+  any group is "standalone" — it gets its own independent playlist/schedule
+  instead of sharing one.
+- **Location** — purely organizational, for browsing/managing a whole site at
+  once (e.g. "Warehouse Building", "Reception"). A location owns no content of
+  its own — no playlist, no schedule, no forced-content/blackout controls. It
+  can hold groups and/or standalone screens side by side.
+
+Both are optional at every level, same as the original "no location" screen
+always was: a group need not belong to a location, and a screen need not
+belong to a group or a location. Deleting a location (or a group) never
+deletes anything filed under it — its groups/screens are simply un-filed
+(`locationId`/`groupId` reset to `null`), the same "never destroy, always
+un-file" behavior as deleting a library folder above.
+
 ## API surface
 
 Mirrors `../src/api/client.ts`'s `SignageApiClient` method-for-method under `/api/library`,
-`/api/groups`, `/api/devices`, plus two endpoints that only exist for the Pi player:
+`/api/locations`, `/api/groups`, `/api/devices`, plus two endpoints that only exist for the Pi player:
 
 - `GET /api/player/:deviceId/state` — resolved playlist (forced → event → default),
   each item as a full URL + duration, plus the announcement ticker state.

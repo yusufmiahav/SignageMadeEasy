@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
+import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -21,7 +21,7 @@ function formatDuration(seconds: number): string {
 }
 
 function emptyData(): AppData {
-  return { library: [], groups: [], devices: [], folders: [] };
+  return { library: [], groups: [], devices: [], folders: [], locations: [] };
 }
 
 function load(): AppData {
@@ -29,9 +29,13 @@ function load(): AppData {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return emptyData();
     const parsed = JSON.parse(raw) as Partial<AppData>;
-    // folders is optional here since data saved before this feature existed has no
-    // such key — defaults to none, same as every other field-added-later in this file.
-    return { library: parsed.library ?? [], groups: parsed.groups ?? [], devices: parsed.devices ?? [], folders: parsed.folders ?? [] };
+    // folders/locations are optional here since data saved before those features
+    // existed has no such key — defaults to none, same as every other
+    // field-added-later in this file.
+    return {
+      library: parsed.library ?? [], groups: parsed.groups ?? [], devices: parsed.devices ?? [],
+      folders: parsed.folders ?? [], locations: parsed.locations ?? [],
+    };
   } catch {
     return emptyData();
   }
@@ -310,14 +314,41 @@ class LocalStoreClient implements SignageApiClient {
     this.persist();
   }
 
-  // ---- Groups / locations ----
+  // ---- Locations ----
+  async listLocations(): Promise<Location[]> {
+    return [...this.data.locations];
+  }
+
+  async addLocation(name: string): Promise<Location> {
+    const location: Location = { id: uid('loc'), name: name.trim() || 'New location' };
+    this.data.locations.push(location);
+    this.persist();
+    return location;
+  }
+
+  async renameLocation(id: string, name: string): Promise<void> {
+    const location = this.data.locations.find((l) => l.id === id);
+    if (location && name.trim()) location.name = name.trim();
+    this.persist();
+  }
+
+  // Never deletes anything filed under it — mirrors hub/src/store.ts's
+  // removeLocation exactly: groups/devices that referenced it just become un-filed.
+  async deleteLocation(id: string): Promise<void> {
+    for (const g of this.data.groups) if (g.locationId === id) g.locationId = null;
+    for (const d of this.data.devices) if (d.locationId === id) d.locationId = null;
+    this.data.locations = this.data.locations.filter((l) => l.id !== id);
+    this.persist();
+  }
+
+  // ---- Groups ----
   async listGroups(): Promise<Group[]> {
     return [...this.data.groups];
   }
 
-  async addGroup(name: string): Promise<Group> {
+  async addGroup(name: string, locationId: string | null = null): Promise<Group> {
     const group: Group = {
-      id: uid('g'), name: name.trim() || 'New location', defaultPlaylist: [], events: [],
+      id: uid('g'), name: name.trim() || 'New group', locationId, defaultPlaylist: [], events: [],
       forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [], blackout: false,
     };
     this.data.groups.push(group);
@@ -328,6 +359,12 @@ class LocalStoreClient implements SignageApiClient {
   async renameGroup(id: string, name: string): Promise<void> {
     const group = this.data.groups.find((g) => g.id === id);
     if (group && name.trim()) group.name = name.trim();
+    this.persist();
+  }
+
+  async setGroupLocation(id: string, locationId: string | null): Promise<void> {
+    const group = this.data.groups.find((g) => g.id === id);
+    if (group) group.locationId = locationId;
     this.persist();
   }
 
@@ -427,7 +464,7 @@ class LocalStoreClient implements SignageApiClient {
     return [...this.data.devices];
   }
 
-  async pairDevice(input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }): Promise<Device> {
+  async pairDevice(input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus }): Promise<Device> {
     if (this.data.devices.some((d) => d.ip === input.ip)) {
       throw new Error(`A screen is already paired at ${input.ip}`);
     }
@@ -438,6 +475,7 @@ class LocalStoreClient implements SignageApiClient {
       mac: null,
       status: input.status ?? 'online',
       groupId: input.groupId,
+      locationId: input.locationId ?? null,
       announcementId: null,
       announcementOn: false,
       videoQuality: 'auto',
@@ -460,6 +498,12 @@ class LocalStoreClient implements SignageApiClient {
   async moveDevice(id: string, groupId: string | null): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device) device.groupId = groupId;
+    this.persist();
+  }
+
+  async setDeviceLocation(id: string, locationId: string | null): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === id);
+    if (device) device.locationId = locationId;
     this.persist();
   }
 
@@ -570,14 +614,18 @@ class LocalStoreClient implements SignageApiClient {
   async exportBackup(): Promise<Backup> {
     return {
       version: 1, exportedAt: new Date().toISOString(),
-      library: [...this.data.library], groups: [...this.data.groups], devices: [...this.data.devices], folders: [...this.data.folders],
+      library: [...this.data.library], groups: [...this.data.groups], devices: [...this.data.devices],
+      folders: [...this.data.folders], locations: [...this.data.locations],
     };
   }
 
   async importBackup(backup: Backup): Promise<void> {
-    // folders is optional on Backup — a backup exported before this feature existed
-    // has no such array, treated as no folders rather than rejected.
-    this.data = { library: backup.library, groups: backup.groups, devices: backup.devices, folders: backup.folders ?? [] };
+    // folders/locations are optional on Backup — a backup exported before those
+    // features existed has no such array, treated as none rather than rejected.
+    this.data = {
+      library: backup.library, groups: backup.groups, devices: backup.devices,
+      folders: backup.folders ?? [], locations: backup.locations ?? [],
+    };
     this.persist();
   }
 

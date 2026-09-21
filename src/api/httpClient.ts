@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, ScheduleEvent, TflStationResult } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, ScheduleEvent, TflStationResult } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -91,10 +91,17 @@ export const httpClient: SignageApiClient = {
   moveFolder: (id, parentId) => request<void>(`/api/folders/${id}`, { method: 'PATCH', ...json({ parentId }) }),
   removeFolder: (id) => request<void>(`/api/folders/${id}`, { method: 'DELETE' }),
 
+  // Locations
+  listLocations: () => request<Location[]>('/api/locations'),
+  addLocation: (name) => request<Location>('/api/locations', { method: 'POST', ...json({ name }) }),
+  renameLocation: (id, name) => request<void>(`/api/locations/${id}`, { method: 'PATCH', ...json({ name }) }),
+  deleteLocation: (id) => request<void>(`/api/locations/${id}`, { method: 'DELETE' }),
+
   // Groups
   listGroups: () => request<Group[]>('/api/groups'),
-  addGroup: (name) => request<Group>('/api/groups', { method: 'POST', ...json({ name }) }),
+  addGroup: (name, locationId) => request<Group>('/api/groups', { method: 'POST', ...json({ name, locationId }) }),
   renameGroup: (id, name) => request<void>(`/api/groups/${id}`, { method: 'PATCH', ...json({ name }) }),
+  setGroupLocation: (id, locationId) => request<void>(`/api/groups/${id}`, { method: 'PATCH', ...json({ locationId }) }),
   deleteGroup: async (id) => {
     const res = await fetch(`${BASE_URL}/api/groups/${id}`, { method: 'DELETE', credentials: 'include' });
     if (res.status === 409) return false;
@@ -118,11 +125,12 @@ export const httpClient: SignageApiClient = {
 
   // Devices
   listDevices: () => request<Device[]>('/api/devices'),
-  pairDevice: (input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }) =>
+  pairDevice: (input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus }) =>
     request<Device>('/api/devices/pair', { method: 'POST', ...json(input) }),
   renameDevice: (id, name) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ name }) }),
   reorderDevices: (ids) => request<void>('/api/devices/reorder', { method: 'PUT', ...json({ ids }) }),
   moveDevice: (id, groupId) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ groupId }) }),
+  setDeviceLocation: (id, locationId) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ locationId }) }),
   removeDevice: (id) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
   flashDevice: (id) => request<void>(`/api/devices/${id}/identify-flash`, { method: 'POST' }),

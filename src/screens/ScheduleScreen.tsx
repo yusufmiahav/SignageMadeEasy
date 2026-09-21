@@ -36,9 +36,9 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onOpenAd
   const libraryById = new Map(library.map((item) => [item.id, item]));
   const effectiveGroupId = groups.some((g) => g.id === selectedGroupId) ? selectedGroupId : (groups[0]?.id ?? '');
   const selectedGroup = groups.find((g) => g.id === effectiveGroupId);
-  // Misc/no-location screens get their own stacked list of schedule editors below —
-  // there's no shared "current location" to select between for these, and there can
-  // be several, independently configured (see DeviceScheduleCard's own comment).
+  // Standalone (no-group) screens get their own stacked list of schedule editors
+  // below — there's no shared "current group" to select between for these, and there
+  // can be several, independently configured (see DeviceScheduleCard's own comment).
   const miscDevices = devices.filter((d) => !d.groupId);
 
   if (devices.length === 0) {

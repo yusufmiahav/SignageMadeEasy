@@ -38,7 +38,7 @@ interface DeviceCardProps {
   advancedInfo: boolean;
   hideAnnouncementRow: boolean;
   /**
-   * A screen with no location has no location header to host force-content/
+   * A screen with no group has no group header to host force-content/
    * announcement/blackout buttons, so this card shows its own — only rendered
    * while device.groupId is null. forcedContentName resolves device.forcedContentId
    * to a name (the card itself has no library to look it up in).
@@ -166,7 +166,7 @@ export function DeviceCard({
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={startEdit}>
             <Icon name="pencil" size={14} />
           </button>
-          <button type="button" className="btn btn-ghost btn-icon" aria-label="Move to another location" onClick={() => onMove(device)}>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Move to another group" onClick={() => onMove(device)}>
             <Icon name="mapPin" size={14} />
           </button>
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => onRemove(device.id)}>

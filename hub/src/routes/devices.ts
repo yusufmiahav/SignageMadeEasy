@@ -48,9 +48,12 @@ devicesRouter.put('/reorder', (req, res) => {
 });
 
 devicesRouter.post('/pair', async (req, res) => {
-  const { name, ip, groupId, skipHandshake } = req.body ?? {};
+  const { name, ip, groupId, locationId, skipHandshake } = req.body ?? {};
   if (typeof ip !== 'string' || (typeof groupId !== 'string' && groupId !== null)) {
-    return res.status(400).json({ error: 'ip is required; groupId must be a string or null (no location)' });
+    return res.status(400).json({ error: 'ip is required; groupId must be a string or null (no group)' });
+  }
+  if (locationId !== undefined && locationId !== null && typeof locationId !== 'string') {
+    return res.status(400).json({ error: 'locationId must be a string or null' });
   }
   if (store.listDevices().some((d) => d.ip === ip)) {
     return res.status(409).json({ error: `A screen is already paired at ${ip}` });
@@ -74,7 +77,7 @@ devicesRouter.post('/pair', async (req, res) => {
     }
   }
 
-  const device = store.pairDevice({ name: resolvedName, ip, mac, groupId, status });
+  const device = store.pairDevice({ name: resolvedName, ip, mac, groupId, locationId: locationId ?? null, status });
 
   if (!skipHandshake && status === 'online') {
     try {
@@ -88,11 +91,18 @@ devicesRouter.post('/pair', async (req, res) => {
 });
 
 devicesRouter.patch('/:id', (req, res) => {
-  const { name, groupId, videoQuality } = req.body ?? {};
+  const { name, groupId, locationId, videoQuality } = req.body ?? {};
   if (typeof name === 'string') store.renameDevice(req.params.id, name);
-  // groupId: null moves the device to "no location" — distinct from omitting the
-  // key entirely, which leaves its current location untouched.
+  // groupId: null moves the device to "standalone, no group" — distinct from
+  // omitting the key entirely, which leaves its current group untouched.
   if (typeof groupId === 'string' || groupId === null) store.moveDevice(req.params.id, groupId);
+  // locationId: null un-files a standalone screen from any Location — only
+  // meaningful while the screen has no group (a grouped screen's Location comes
+  // from its group instead). Same omit-vs-null distinction as groupId above.
+  if (locationId !== undefined) {
+    if (locationId !== null && typeof locationId !== 'string') return res.status(400).json({ error: 'locationId must be a string or null' });
+    store.setDeviceLocation(req.params.id, locationId);
+  }
   if (videoQuality === 'auto' || videoQuality === 'full') store.setDeviceVideoQuality(req.params.id, videoQuality);
   res.status(204).end();
 });

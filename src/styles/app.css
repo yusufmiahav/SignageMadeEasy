@@ -401,6 +401,16 @@ body {
   background: color-mix(in srgb, var(--color-bg) 65%, transparent);
 }
 
+/* — preview badge on thumbnails — sits just left of .thumb-remove */
+.thumb-preview {
+  position: absolute;
+  top: 2px;
+  right: 28px;
+  width: 24px;
+  height: 24px;
+  background: color-mix(in srgb, var(--color-bg) 65%, transparent);
+}
+
 /* — download badge on thumbnails — */
 .thumb-download {
   position: absolute;

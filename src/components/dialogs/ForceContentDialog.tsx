@@ -7,7 +7,7 @@ import type { LibraryItem } from '../../api/types';
 
 interface ForceContentDialogProps {
   app: AppState;
-  /** e.g. "this location" or "every screen" — used in the dialog copy only. */
+  /** e.g. "this group" or "every screen" — used in the dialog copy only. */
   scopeLabel: string;
   /** True for the Home tab's "every screen" action — shows an extra warning, since it's easy to click without meaning to affect the whole fleet. */
   isGlobal: boolean;
@@ -42,7 +42,7 @@ export function ForceContentDialog({ app, scopeLabel, isGlobal, currentId, onCon
       {isGlobal && choiceId != null && (
         <div className="dialog-warning">
           <Icon name="alertTriangle" size={16} />
-          <span>This forces content onto every screen at every location — not just the one you're looking at.</span>
+          <span>This forces content onto every screen in every group — not just the one you're looking at.</span>
         </div>
       )}
       <label className="radio">

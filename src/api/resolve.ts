@@ -15,14 +15,14 @@ function toISODate(d: Date): string {
 
 /**
  * Resolution order (highest priority first):
- * 1. blackout, if set — every screen at this location goes plain black, above
+ * 1. blackout, if set — every screen in this group goes plain black, above
  *    even forced content (an emergency override).
  * 2. forcedContentId, if set — that single item, shown until cleared.
  * 3. An event whose date range includes today — that event's item set,
  *    replacing the default playlist entirely for the range. If the event also has
  *    a startTime/endTime, it only applies during that daily window; outside it,
  *    the default playlist plays as usual (doesn't support crossing midnight).
- * 4. Otherwise the location's defaultPlaylist, looping.
+ * 4. Otherwise the group's defaultPlaylist, looping.
  */
 export function activeContentIds(group: Group, now: Date = new Date()): ActiveContent {
   if (group.blackout) {
@@ -53,15 +53,15 @@ export function nowPlayingName(group: Group, libraryById: Map<string, LibraryIte
   return firstResolvedItem(group, libraryById)?.name ?? '—';
 }
 
-/** The actual item currently resolved for this location (for a thumbnail/preview) — undefined if nothing's scheduled. */
+/** The actual item currently resolved for this group (for a thumbnail/preview) — undefined if nothing's scheduled. */
 export function nowPlayingItem(group: Group, libraryById: Map<string, LibraryItem>): LibraryItem | undefined {
   return firstResolvedItem(group, libraryById);
 }
 
 /**
- * A screen with no location has no location-level schedule to fall back on, but
- * does have its own — forcedContentId/blackout (the misc-screen equivalents of a
- * location's controls), then its own events/defaultPlaylist, same priority order
+ * A screen with no group has no group-level schedule to fall back on, but does have
+ * its own — forcedContentId/blackout (the standalone-screen equivalents of a
+ * group's controls), then its own events/defaultPlaylist, same priority order
  * and time-window matching as activeContentIds above (mirrors
  * hub/src/store.ts's activeContentIdsForDevice).
  */

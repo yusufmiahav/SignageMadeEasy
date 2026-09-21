@@ -90,17 +90,32 @@ export interface AnnouncementSchedule {
   endTime: string;
 }
 
+/**
+ * A purely organizational container for browsing/managing screens as one site/area
+ * (e.g. "Warehouse Building", "Reception") — unlike Group below, a Location owns no
+ * content of its own: no playlist, no schedule, no forced-content/blackout/
+ * announcement controls. It can hold Groups (each still sharing one playlist across
+ * its own screens) and/or standalone screens (each with their own independent
+ * schedule) side by side — see Group.locationId and Device.locationId.
+ */
+export interface Location {
+  id: string;
+  name: string;
+}
+
 export interface Group {
   id: string;
   name: string;
+  /** Which Location this Group is organized under, for browsing/management — purely organizational, has no effect on content. Null means "not filed under any Location," same standalone-at-the-top-level flexibility a Location's own screens have. */
+  locationId: string | null;
   defaultPlaylist: string[];
   events: ScheduleEvent[];
   forcedContentId: string | null;
-  /** This location's announcement forced on for every one of its screens, overriding schedules and each screen's own manual toggle, until cleared. */
+  /** This group's announcement forced on for every one of its screens, overriding schedules and each screen's own manual toggle, until cleared. */
   forcedAnnouncementId: string | null;
-  /** Date+time windows during which an announcement is shown on every screen at this location, regardless of each screen's own manual toggle. */
+  /** Date+time windows during which an announcement is shown on every screen in this group, regardless of each screen's own manual toggle. */
   announcementSchedules: AnnouncementSchedule[];
-  /** Emergency override: every screen at this location goes to a plain black screen, above even forcedContentId. */
+  /** Emergency override: every screen in this group goes to a plain black screen, above even forcedContentId. */
   blackout: boolean;
 }
 
@@ -113,17 +128,19 @@ export interface Device {
   /** Captured once at pairing time from the Pi's own agent. Null for a screen paired before this existed, one paired while offline, or any device in standalone/localStorage mode (no real Pi to ask). */
   mac: string | null;
   status: DeviceStatus;
-  /** Null for a screen not assigned to any location yet ("misc" screens) — see forcedContentId/blackout below, which fill in for the location-level controls it doesn't have. */
+  /** Null for a screen not assigned to any group yet ("standalone" screens, whether or not they're filed under a Location) — see forcedContentId/blackout below, which fill in for the group-level controls it doesn't have. */
   groupId: string | null;
+  /** Which Location this screen is filed under when it's standalone (groupId is null) — purely organizational, same as Group.locationId. Meaningless while groupId is set: a grouped screen's Location comes from its Group instead, not set directly here. */
+  locationId: string | null;
   announcementId: string | null;
   announcementOn: boolean;
-  /** Only meaningful/settable while groupId is null — an assigned screen's content comes from its location instead. */
+  /** Only meaningful/settable while groupId is null — a grouped screen's content comes from its group instead. */
   forcedContentId: string | null;
   /** Same scope as forcedContentId — only meaningful while groupId is null. */
   blackout: boolean;
-  /** Same scope as forcedContentId — mirrors Group.defaultPlaylist for a screen with no location. */
+  /** Same scope as forcedContentId — mirrors Group.defaultPlaylist for a standalone screen. */
   defaultPlaylist: string[];
-  /** Same scope as forcedContentId — mirrors Group.events for a screen with no location. */
+  /** Same scope as forcedContentId — mirrors Group.events for a standalone screen. */
   events: ScheduleEvent[];
   /**
    * Which copy of a video this screen is served. 'auto' (default): the resolution-capped
@@ -160,9 +177,10 @@ export interface AppData {
   groups: Group[];
   devices: Device[];
   folders: Folder[];
+  locations: Location[];
 }
 
-/** A full config snapshot — everything except the uploaded media files themselves (not JSON-portable). See Settings → Device inventory / backup. `folders` is optional so a backup exported before this feature existed still imports cleanly (treated as no folders). */
+/** A full config snapshot — everything except the uploaded media files themselves (not JSON-portable). See Settings → Device inventory / backup. `folders`/`locations` are optional so a backup exported before those features existed still imports cleanly (treated as none). */
 export interface Backup {
   version: 1;
   exportedAt: string;
@@ -170,4 +188,5 @@ export interface Backup {
   groups: Group[];
   devices: Device[];
   folders?: Folder[];
+  locations?: Location[];
 }

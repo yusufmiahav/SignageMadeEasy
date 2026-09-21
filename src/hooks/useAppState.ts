@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DiscoveredDevice } from '../api/client';
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, ScheduleEvent, TflStationConfig } from '../api/types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, ScheduleEvent, TflStationConfig } from '../api/types';
 
 export function useAppState() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   // Defaults true (see hub/src/store.ts's getSafetyHold) — matches this project's
   // original always-on behavior until the initial load below overwrites it with the
   // hub's real value.
@@ -24,6 +25,7 @@ export function useAppState() {
   const refreshLibrary = useCallback(async () => setLibrary(await api.listLibrary()), []);
   const refreshGroups = useCallback(async () => setGroups(await api.listGroups()), []);
   const refreshFolders = useCallback(async () => setFolders(await api.listFolders()), []);
+  const refreshLocations = useCallback(async () => setLocations(await api.listLocations()), []);
 
   // Tracks each device's last-known status across polls (not React state — this
   // must never itself trigger a render) purely to detect an online->offline
@@ -57,10 +59,10 @@ export function useAppState() {
 
   useEffect(() => {
     (async () => {
-      await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices(), refreshSettings(), refreshFolders()]);
+      await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices(), refreshSettings(), refreshFolders(), refreshLocations()]);
       setLoaded(true);
     })();
-  }, [refreshLibrary, refreshGroups, refreshDevices, refreshSettings, refreshFolders]);
+  }, [refreshLibrary, refreshGroups, refreshDevices, refreshSettings, refreshFolders, refreshLocations]);
 
   // Device online/offline status (and group-level forced/scheduled announcement
   // state) can change on their own with nobody touching the control app - a screen
@@ -80,9 +82,10 @@ export function useAppState() {
       void refreshGroups();
       void refreshLibrary();
       void refreshFolders();
+      void refreshLocations();
     }, 4_000);
     return () => clearInterval(id);
-  }, [refreshDevices, refreshGroups, refreshLibrary, refreshFolders]);
+  }, [refreshDevices, refreshGroups, refreshLibrary, refreshFolders, refreshLocations]);
 
   // ---- Library ----
   const addImage = useCallback(async (file: File, onProgress?: (pct: number) => void) => {
@@ -228,15 +231,37 @@ export function useAppState() {
     showToast('Folder deleted — contents moved up a level');
   }, [refreshFolders, refreshLibrary, showToast]);
 
-  // ---- Groups / locations ----
-  const addGroup = useCallback(async (name: string) => {
-    const group = await api.addGroup(name);
+  // ---- Locations ----
+  const addLocation = useCallback(async (name: string) => {
+    const location = await api.addLocation(name);
+    await refreshLocations();
+    return location;
+  }, [refreshLocations]);
+
+  const renameLocation = useCallback(async (id: string, name: string) => {
+    await api.renameLocation(id, name);
+    await refreshLocations();
+  }, [refreshLocations]);
+
+  const deleteLocation = useCallback(async (id: string) => {
+    await api.deleteLocation(id);
+    await Promise.all([refreshLocations(), refreshGroups(), refreshDevices()]);
+  }, [refreshLocations, refreshGroups, refreshDevices]);
+
+  // ---- Groups ----
+  const addGroup = useCallback(async (name: string, locationId?: string | null) => {
+    const group = await api.addGroup(name, locationId);
     await refreshGroups();
     return group;
   }, [refreshGroups]);
 
   const renameGroup = useCallback(async (id: string, name: string) => {
     await api.renameGroup(id, name);
+    await refreshGroups();
+  }, [refreshGroups]);
+
+  const setGroupLocation = useCallback(async (id: string, locationId: string | null) => {
+    await api.setGroupLocation(id, locationId);
     await refreshGroups();
   }, [refreshGroups]);
 
@@ -364,7 +389,7 @@ export function useAppState() {
   }, [refreshGroups]);
 
   // ---- Devices ----
-  const pairDevice = useCallback(async (input: { name: string; ip: string; groupId: string | null; status?: DeviceStatus }) => {
+  const pairDevice = useCallback(async (input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus }) => {
     const device = await api.pairDevice(input);
     await Promise.all([refreshDevices(), refreshGroups()]);
     return device;
@@ -377,6 +402,11 @@ export function useAppState() {
 
   const moveDevice = useCallback(async (id: string, groupId: string | null) => {
     await api.moveDevice(id, groupId);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  const setDeviceLocation = useCallback(async (id: string, locationId: string | null) => {
+    await api.setDeviceLocation(id, locationId);
     await refreshDevices();
   }, [refreshDevices]);
 
@@ -483,6 +513,7 @@ export function useAppState() {
     groups,
     devices,
     folders,
+    locations,
     safetyHold,
     setSafetyHold,
     toast,
@@ -511,8 +542,12 @@ export function useAppState() {
     renameFolder,
     moveFolder,
     removeFolder,
+    addLocation,
+    renameLocation,
+    deleteLocation,
     addGroup,
     renameGroup,
+    setGroupLocation,
     deleteGroup,
     reorderGroups,
     addToDefaultPlaylist,
@@ -532,6 +567,7 @@ export function useAppState() {
     pairDevice,
     renameDevice,
     moveDevice,
+    setDeviceLocation,
     reorderDevices,
     removeDevice,
     restartDevice,

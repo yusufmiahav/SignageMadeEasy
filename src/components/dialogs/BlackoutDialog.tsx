@@ -3,7 +3,7 @@ import { DialogShell } from './DialogShell';
 import { Icon } from '../icons/Icon';
 
 interface BlackoutDialogProps {
-  /** e.g. "this location" or "every screen" — used in the dialog copy only. */
+  /** e.g. "this group" or "every screen" — used in the dialog copy only. */
   scopeLabel: string;
   current: boolean;
   onConfirm: (blackout: boolean) => Promise<void>;

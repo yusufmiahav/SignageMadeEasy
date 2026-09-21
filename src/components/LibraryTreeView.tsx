@@ -13,6 +13,7 @@ interface RowHandlers {
   onRenameItem: (id: string, name: string) => void;
   onMoveItem: (item: LibraryItem) => void;
   onConfigureItem: (item: LibraryItem) => void;
+  onPreviewItem: (item: LibraryItem) => void;
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
   onMoveFolder: (folder: Folder) => void;
@@ -85,6 +86,9 @@ function ItemRow({ item, depth, h }: { item: LibraryItem; depth: number; h: RowH
           )}
           <button type="button" className="btn btn-ghost btn-icon" style={{ width: 20, height: 20 }} aria-label="Move to folder" onClick={() => h.onMoveItem(item)}>
             <Icon name="move" size={11} />
+          </button>
+          <button type="button" className="btn btn-ghost btn-icon" style={{ width: 20, height: 20 }} aria-label="Preview" title="Preview" onClick={() => h.onPreviewItem(item)}>
+            <Icon name="eye" size={11} />
           </button>
           <button type="button" className="btn btn-ghost btn-icon" style={{ width: 20, height: 20 }} aria-label="Remove" onClick={() => h.onRemoveItem(item.id)}>
             <Icon name="x" size={11} />
