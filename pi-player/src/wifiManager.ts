@@ -61,7 +61,28 @@ async function startHotspot(): Promise<void> {
   const iface = await wifiDeviceName();
   if (!iface) return; // no Wi-Fi radio present at all — nothing this fallback can do
   const ssid = `SignageSetup-${os.hostname()}`;
-  await nmcli(['device', 'wifi', 'hotspot', 'ifname', iface, 'con-name', HOTSPOT_CONNECTION_NAME, 'ssid', ssid, 'password', HOTSPOT_PASSWORD]);
+  // Built as an explicit connection profile rather than the `nmcli device wifi
+  // hotspot` convenience shorthand used previously — confirmed on real hardware that
+  // the shorthand's actual negotiated security isn't reliably WPA2-PSK on every
+  // NetworkManager/driver combination: a phone whose own Wi-Fi join screen caps
+  // entry at exactly 8 characters is refusing to treat this as a WPA2 network at
+  // all (WPA2's real range is 8-63; a phone's UI never caps *at* 8 for one). Spelling
+  // out key-mgmt/proto/pairwise/group/psk removes that ambiguity outright. Band is
+  // pinned to 2.4GHz (bg) since 5GHz AP mode is regulatory-domain-restricted on some
+  // hardware and would fail to come up at all rather than degrade gracefully.
+  await nmcli(['connection', 'delete', HOTSPOT_CONNECTION_NAME]).catch(() => {});
+  await nmcli([
+    'connection', 'add', 'type', 'wifi', 'ifname', iface, 'con-name', HOTSPOT_CONNECTION_NAME,
+    'autoconnect', 'no', 'ssid', ssid,
+    '802-11-wireless.mode', 'ap', '802-11-wireless.band', 'bg',
+    'ipv4.method', 'shared',
+    '802-11-wireless-security.key-mgmt', 'wpa-psk',
+    '802-11-wireless-security.proto', 'rsn',
+    '802-11-wireless-security.pairwise', 'ccmp',
+    '802-11-wireless-security.group', 'ccmp',
+    '802-11-wireless-security.psk', HOTSPOT_PASSWORD,
+  ]);
+  await nmcli(['connection', 'up', HOTSPOT_CONNECTION_NAME]);
   hotspotActive = true;
   hotspotSsid = ssid;
 }
