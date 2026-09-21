@@ -36,7 +36,7 @@ devicesRouter.get('/', (_req, res) => {
 // Registered before /:id routes below — a literal "reorder" segment here would
 // otherwise never be reachable if a param route matched it first (mirrors
 // groups.ts's own reorder route for the same reason). `ids` must be the complete
-// set of devices in one scope (one location, or the misc/no-location list) — see
+// set of devices in one scope (one group, or the standalone/no-group list) — see
 // store.reorderDevices's comment.
 devicesRouter.put('/reorder', (req, res) => {
   const { ids } = req.body ?? {};
@@ -167,7 +167,7 @@ devicesRouter.post('/:id/announcement/toggle', (req, res) => {
   res.status(204).end();
 });
 
-// Misc-screen (no location) equivalents of a location's forced-content/blackout
+// Standalone-screen (no group) equivalents of a group's forced-content/blackout
 // controls — see Device.forcedContentId's comment in types.ts.
 devicesRouter.put('/:id/forced', (req, res) => {
   const { libId } = req.body ?? {};
@@ -183,7 +183,7 @@ devicesRouter.put('/:id/blackout', (req, res) => {
   res.status(204).end();
 });
 
-// Misc-screen (no location) equivalents of a location's default-playlist/events
+// Standalone-screen (no group) equivalents of a group's default-playlist/events
 // scheduling — see Device.defaultPlaylist/events' comments in types.ts. Mirror
 // groups.ts's own playlist/event routes exactly, scoped to a device instead.
 devicesRouter.put('/:id/playlist', (req, res) => {

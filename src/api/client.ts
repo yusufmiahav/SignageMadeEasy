@@ -110,11 +110,11 @@ export interface SignageApiClient {
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
   setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;
-  /** Misc-screen (no location) equivalent of setForcedContent — only meaningful while the device has no groupId. */
+  /** Standalone-screen (no group) equivalent of setForcedContent — only meaningful while the device has no groupId. */
   setDeviceForcedContent(id: string, libId: string | null): Promise<void>;
-  /** Misc-screen (no location) equivalent of setGroupBlackout — only meaningful while the device has no groupId. */
+  /** Standalone-screen (no group) equivalent of setGroupBlackout — only meaningful while the device has no groupId. */
   setDeviceBlackout(id: string, blackout: boolean): Promise<void>;
-  /** Misc-screen (no location) equivalents of the location-level default-playlist/event methods above — only meaningful while the device has no groupId. */
+  /** Standalone-screen (no group) equivalents of the group-level default-playlist/event methods above — only meaningful while the device has no groupId. */
   setDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void>;
   addToDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void>;
   removeFromDeviceDefaultPlaylist(deviceId: string, libId: string): Promise<void>;

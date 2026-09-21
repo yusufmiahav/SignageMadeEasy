@@ -522,7 +522,7 @@ export function setDeviceVideoQuality(id: string, videoQuality: Device['videoQua
 }
 
 /**
- * Persists a reorder of screens shown under one location (or the misc/no-location
+ * Persists a reorder of screens shown under one group (or the standalone/no-group
  * list) on Settings/Home — unlike reorderLibrary/reorderGroups, `ids` is expected to
  * already be the complete set of devices in that one scope, not a global list, so
  * there's no "remaining" bucket to append: sortOrder only ever gets compared within
@@ -614,7 +614,7 @@ function toISODate(d: Date): string {
 
 export function activeContentIds(group: Group, now: Date = new Date()): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
   // Highest priority, above even forced content — an emergency override meant to
-  // win regardless of anything else configured for this location.
+  // win regardless of anything else configured for this group.
   if (group.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
   if (group.forcedContentId) return { ids: [group.forcedContentId], kind: 'forced', label: 'Forced' };
   const today = toISODate(now);
@@ -633,13 +633,13 @@ export function activeContentIds(group: Group, now: Date = new Date()): { ids: s
 }
 
 // Resolution order, highest priority first: (1) forcedAnnouncementId — manually forced
-// on for every screen at this location, same "until cleared" model as forced content;
+// on for every screen in this group, same "until cleared" model as forced content;
 // (2) an announcement schedule whose date range AND time-of-day window both cover
 // `now` (string-compared "HH:MM" sorts the same as numeric comparison since it's
 // always zero-padded 24h — doesn't handle a window that spans midnight, e.g.
 // 22:00-02:00, by design: not a case this project's signage use targets); (3) null,
 // meaning each device's own manual announcementId/announcementOn toggle applies
-// instead (see getPlayerState below) — this location-level resolution only ever
+// instead (see getPlayerState below) — this group-level resolution only ever
 // overrides that per-device toggle, never replaces it as the base behavior.
 export function activeAnnouncementId(group: Group, now: Date = new Date()): string | null {
   if (group.forcedAnnouncementId) return group.forcedAnnouncementId;
@@ -651,11 +651,11 @@ export function activeAnnouncementId(group: Group, now: Date = new Date()): stri
   return active?.announcementId ?? null;
 }
 
-// A screen not assigned to any location has no location-level schedule to fall back
-// on, but does have its own — forcedContentId/blackout (the misc-screen equivalents
-// of a location's controls, see Device.forcedContentId's comment in types.ts), then
-// its own events/defaultPlaylist, same priority order and time-window matching as
-// activeContentIds above.
+// A screen not assigned to any group has no group-level schedule to fall back on,
+// but does have its own — forcedContentId/blackout (the standalone-screen
+// equivalents of a group's controls, see Device.forcedContentId's comment in
+// types.ts), then its own events/defaultPlaylist, same priority order and
+// time-window matching as activeContentIds above.
 function activeContentIdsForDevice(device: Device, now: Date = new Date()): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
   if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
   if (device.forcedContentId) return { ids: [device.forcedContentId], kind: 'forced', label: 'Forced' };
@@ -718,13 +718,13 @@ export function getPlayerState(deviceId: string): PlayerState | null {
     return { kind: 'blackout', label: active.label, items: [], announcement: { on: false, text: null }, safetyHold };
   }
 
-  // Location-level forced/scheduled announcement overrides this device's own manual
+  // Group-level forced/scheduled announcement overrides this device's own manual
   // toggle when active; otherwise the device's own announcementId/announcementOn
-  // applies exactly as before. No location at all (group is null) means there's
-  // nothing to override with — the device's own toggle is the only source.
-  const locationAnnouncementId = group ? activeAnnouncementId(group) : null;
-  const announcementId = locationAnnouncementId ?? device.announcementId;
-  const announcementOn = locationAnnouncementId != null || device.announcementOn;
+  // applies exactly as before. No group at all means there's nothing to override
+  // with — the device's own toggle is the only source.
+  const groupAnnouncementId = group ? activeAnnouncementId(group) : null;
+  const announcementId = groupAnnouncementId ?? device.announcementId;
+  const announcementOn = groupAnnouncementId != null || device.announcementOn;
   const announcement = announcementId ? libraryById.get(announcementId) : undefined;
   return {
     kind: active.kind,

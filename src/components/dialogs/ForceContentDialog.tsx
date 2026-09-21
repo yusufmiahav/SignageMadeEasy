@@ -42,7 +42,7 @@ export function ForceContentDialog({ app, scopeLabel, isGlobal, currentId, onCon
       {isGlobal && choiceId != null && (
         <div className="dialog-warning">
           <Icon name="alertTriangle" size={16} />
-          <span>This forces content onto every screen in every group — not just the one you're looking at.</span>
+          <span>This forces content onto every screen — grouped or standalone — not just the one you're looking at.</span>
         </div>
       )}
       <label className="radio">

@@ -137,7 +137,7 @@ if (!(db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).some
   db.exec("ALTER TABLE library ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'");
 }
 
-// Same reasoning, for hubs deployed before locations supported drag-to-reorder on
+// Same reasoning, for hubs deployed before groups supported drag-to-reorder on
 // the Home screen — every existing row keeps its current rowid-based (insertion)
 // order so nothing visibly reshuffles the first time this runs; new rows get one
 // past the current max (see store.ts's addGroup).
@@ -195,7 +195,7 @@ if (!groupCols.includes('sortOrder')) {
 
 // Same reasoning, for hubs deployed before the emergency "blackout" override
 // existed — see activeContentIds' highest-priority check in store.ts. Defaults to
-// off for every existing location.
+// off for every existing group.
 if (!groupCols.includes('blackout')) db.exec('ALTER TABLE groups_ ADD COLUMN blackout INTEGER NOT NULL DEFAULT 0');
 
 // Same reasoning, for hubs deployed before events supported a daily time window —
@@ -206,13 +206,13 @@ if (!eventCols.includes('startTime')) db.exec('ALTER TABLE events ADD COLUMN sta
 if (!eventCols.includes('endTime')) db.exec('ALTER TABLE events ADD COLUMN endTime TEXT');
 
 // Same reasoning, for hubs deployed before a screen could be paired without a
-// location ("misc" screens, assignable later) — devices.groupId was NOT NULL from
+// group ("standalone" screens, assignable later) — devices.groupId was NOT NULL from
 // launch, and CREATE TABLE IF NOT EXISTS above is a no-op on an existing database,
 // so every database (including a brand-new one, since that CREATE TABLE still
 // declares it NOT NULL) needs this rebuilt once. SQLite has no ALTER COLUMN to just
 // drop a NOT NULL constraint, so the whole table is recreated — the notnull check
 // below makes this run exactly once per database. ON DELETE SET NULL (was CASCADE)
-// as part of the same rebuild means deleting a location un-assigns its screens
+// as part of the same rebuild means deleting a group un-assigns its screens
 // instead of deleting them.
 const devicesGroupIdCol = (db.prepare("PRAGMA table_info(devices)").all() as { name: string; notnull: number }[]).find((c) => c.name === 'groupId');
 if (devicesGroupIdCol?.notnull === 1) {
@@ -242,16 +242,16 @@ if (devicesGroupIdCol?.notnull === 1) {
   })();
 }
 
-// Same reasoning, for the misc-screen force-content/blackout controls that fill in
-// for the location-level ones an ungrouped screen doesn't have (its own manual
+// Same reasoning, for the standalone-screen force-content/blackout controls that
+// fill in for the group-level ones an ungrouped screen doesn't have (its own manual
 // announcementId/announcementOn already covers "force announcement" — see
 // activeContentIdsForDevice in store.ts).
 const deviceCols2 = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
 if (!deviceCols2.includes('forcedContentId')) db.exec('ALTER TABLE devices ADD COLUMN forcedContentId TEXT');
 if (!deviceCols2.includes('blackout')) db.exec('ALTER TABLE devices ADD COLUMN blackout INTEGER NOT NULL DEFAULT 0');
 
-// Same reasoning, for hubs deployed before screens (within a location, or among
-// the misc/no-location list) supported reordering with up/down arrows on
+// Same reasoning, for hubs deployed before screens (within a group, or among
+// the standalone/no-group list) supported reordering with up/down arrows on
 // Settings/Home — every existing row keeps its current rowid-based (insertion)
 // order so nothing visibly reshuffles the first time this runs. Never exposed on
 // the Device type itself (same as groups_.sortOrder isn't on Group) — purely an
@@ -263,9 +263,9 @@ if (!deviceCols2.includes('sortOrder')) {
   rows.forEach((r, i) => setOrder.run(i, r.id));
 }
 
-// Same reasoning, for hubs deployed before a screen with no location could have its
-// own default playlist (misc-screen scheduling) — every existing screen starts with
-// an empty one, same as a brand-new location's defaultPlaylist.
+// Same reasoning, for hubs deployed before a screen with no group could have its
+// own default playlist (standalone-screen scheduling) — every existing screen
+// starts with an empty one, same as a brand-new group's defaultPlaylist.
 if (!deviceCols2.includes('defaultPlaylist')) db.exec("ALTER TABLE devices ADD COLUMN defaultPlaylist TEXT NOT NULL DEFAULT '[]'");
 
 // Same reasoning, for hubs deployed before Locations existed — a purely
@@ -278,11 +278,11 @@ if (!groupCols.includes('locationId')) db.exec('ALTER TABLE groups_ ADD COLUMN l
 if (!deviceCols2.includes('locationId')) db.exec('ALTER TABLE devices ADD COLUMN locationId TEXT');
 
 // Same reasoning, for hubs deployed before events could belong to a device instead
-// of a location — events.groupId was NOT NULL from launch (same situation as
+// of a group — events.groupId was NOT NULL from launch (same situation as
 // devices.groupId's own rebuild above), and a device-scoped event has no groupId at
 // all, so this needs the same "rebuild the table, guarded by the notnull flag so it
 // runs exactly once" treatment. The CHECK enforces exactly one of groupId/deviceId is
-// set — every event belongs to exactly one location or one device, never both, never
+// set — every event belongs to exactly one group or one device, never both, never
 // neither.
 const eventsGroupIdCol = (db.prepare("PRAGMA table_info(events)").all() as { name: string; notnull: number }[]).find((c) => c.name === 'groupId');
 if (eventsGroupIdCol?.notnull === 1) {
@@ -320,5 +320,6 @@ db.exec(`
   );
 `);
 
-// No demo/seed data — a fresh hub starts with an empty library, no locations, and
-// no paired devices. Everything shown in the control app comes from real use.
+// No demo/seed data — a fresh hub starts with an empty library, no groups or
+// locations, and no paired devices. Everything shown in the control app comes from
+// real use.

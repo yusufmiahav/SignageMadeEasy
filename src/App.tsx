@@ -40,7 +40,7 @@ type DialogState =
   | { type: 'uploadContent' }
   | { type: 'addContent'; groupId: string }
   | { type: 'addEvent'; groupId: string }
-  /** Same two dialogs, scoped to a single misc screen (no location) instead of a location. */
+  /** Same two dialogs, scoped to a single standalone screen (no group) instead of a group. */
   | { type: 'addContentDevice'; deviceId: string }
   | { type: 'addEventDevice'; deviceId: string }
   | { type: 'addAnnouncement' }
@@ -55,7 +55,7 @@ type DialogState =
   | { type: 'forceContent'; groupId: string | null }
   | { type: 'forceAnnouncement'; groupId: string | null }
   | { type: 'blackout'; groupId: string | null }
-  /** Same three actions, scoped to a single misc screen (no location) instead of a location. */
+  /** Same three actions, scoped to a single standalone screen (no group) instead of a group. */
   | { type: 'forceContentDevice'; deviceId: string }
   | { type: 'forceAnnouncementDevice'; deviceId: string }
   | { type: 'blackoutDevice'; deviceId: string }

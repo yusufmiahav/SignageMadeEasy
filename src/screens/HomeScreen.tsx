@@ -52,12 +52,18 @@ export function HomeScreen({
     setForcedContent, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedContent, setDeviceBlackout,
   } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
+  // A locationId pointing at a Location that no longer exists (e.g. a hand-edited or
+  // partial backup import) is treated the same as no locationId at all — otherwise a
+  // group/device like that would render in neither its (nonexistent) Location's
+  // section nor this top-level bucket, silently disappearing from view entirely.
+  const locationIds = new Set(locations.map((l) => l.id));
+  const isUnfiled = (locationId: string | null) => !locationId || !locationIds.has(locationId);
   // Groups filed under a Location render inside that Location's own section below;
   // these are the ones left over — either genuinely standalone or waiting to be filed.
-  const topLevelGroups = groups.filter((g) => !g.locationId);
+  const topLevelGroups = groups.filter((g) => isUnfiled(g.locationId));
   // Same split for standalone screens: one filed under a Location shows in that
   // Location's section instead of this fully-unassigned bucket.
-  const fullyUnassignedDevices = devices.filter((d) => !d.groupId && !d.locationId);
+  const fullyUnassignedDevices = devices.filter((d) => !d.groupId && isUnfiled(d.locationId));
   const isEmpty = locations.length === 0 && groups.length === 0 && devices.length === 0;
 
   // `reorderGroups`/the backend's sortOrder is one global sequence, not scoped per

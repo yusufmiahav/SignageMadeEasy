@@ -8,7 +8,7 @@ const TYPE_LABEL: Record<string, string> = { image: 'Image', video: 'Video', pdf
 
 interface AddContentDialogProps {
   app: AppState;
-  /** The default playlist's current contents (a location's or a device's own) — used to hide items already on it. */
+  /** The default playlist's current contents (a group's or a device's own) — used to hide items already on it. */
   alreadyIncludedIds: string[];
   onConfirm: (ids: string[]) => Promise<void>;
   onClose: () => void;

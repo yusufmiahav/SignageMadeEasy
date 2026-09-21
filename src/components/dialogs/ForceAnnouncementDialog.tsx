@@ -33,7 +33,7 @@ export function ForceAnnouncementDialog({ app, scopeLabel, isGlobal, currentId, 
       {isGlobal && choiceId != null && (
         <div className="dialog-warning">
           <Icon name="alertTriangle" size={16} />
-          <span>This forces an announcement onto every screen in every group — not just the one you're looking at.</span>
+          <span>This forces an announcement onto every screen — grouped or standalone — not just the one you're looking at.</span>
         </div>
       )}
       {announcements.length === 0 ? (

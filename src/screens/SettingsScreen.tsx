@@ -41,9 +41,13 @@ export function SettingsScreen({
   const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' | 'location' } | null>(null);
   const [editingName, setEditingName] = useState('');
   // Groups/screens filed under a Location render inside that Location's own section
-  // below instead of at the top level — same split as HomeScreen.tsx.
-  const topLevelGroups = groups.filter((g) => !g.locationId);
-  const fullyUnassignedDevices = devices.filter((d) => !d.groupId && !d.locationId);
+  // below instead of at the top level — same split as HomeScreen.tsx. A locationId
+  // pointing at a since-deleted Location (e.g. a hand-edited backup import) is
+  // treated as unfiled too, so it doesn't silently disappear from both buckets.
+  const locationIds = new Set(locations.map((l) => l.id));
+  const isUnfiled = (locationId: string | null) => !locationId || !locationIds.has(locationId);
+  const topLevelGroups = groups.filter((g) => isUnfiled(g.locationId));
+  const fullyUnassignedDevices = devices.filter((d) => !d.groupId && isUnfiled(d.locationId));
   const [restoring, setRestoring] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [newLocationName, setNewLocationName] = useState('');
@@ -62,6 +66,10 @@ export function SettingsScreen({
   const [moveTarget, setMoveTarget] = useState('');
   const [newGroupName, setNewGroupName] = useState('');
   const isNewGroupTarget = moveTarget === '__new__';
+  // Separate batch action from the group move above — filing several screens under
+  // one Location at once is the main "import multiple screens onto a location" use
+  // case, and is independent of which group (if any) each one is in.
+  const [locationTarget, setLocationTarget] = useState('');
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -75,6 +83,7 @@ export function SettingsScreen({
     setSelectedIds(new Set());
     setMoveTarget('');
     setNewGroupName('');
+    setLocationTarget('');
   };
   const moveSelected = async () => {
     if (!moveTarget) return;
@@ -87,6 +96,14 @@ export function SettingsScreen({
     const ids = [...selectedIds];
     await Promise.all(ids.map((id) => moveDevice(id, targetId)));
     showToast(`Moved ${ids.length} screen${ids.length === 1 ? '' : 's'}`);
+    exitSelectMode();
+  };
+  const fileSelectedInLocation = async () => {
+    if (!locationTarget) return;
+    const targetId = locationTarget === '__none__' ? null : locationTarget;
+    const ids = [...selectedIds];
+    await Promise.all(ids.map((id) => setDeviceLocation(id, targetId)));
+    showToast(`Filed ${ids.length} screen${ids.length === 1 ? '' : 's'}`);
     exitSelectMode();
   };
 
@@ -519,6 +536,32 @@ export function SettingsScreen({
             >
               Move
             </button>
+            {locations.length > 0 && (
+              <>
+                <select
+                  className="input"
+                  style={{ width: 'auto', fontSize: 12 }}
+                  value={locationTarget}
+                  onChange={(e) => setLocationTarget(e.target.value)}
+                  aria-label="File selected screens in location"
+                >
+                  <option value="" disabled>File in location…</option>
+                  <option value="__none__">No location</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ fontSize: 12 }}
+                  disabled={selectedIds.size === 0 || !locationTarget}
+                  onClick={() => void fileSelectedInLocation()}
+                >
+                  File
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -532,7 +575,16 @@ export function SettingsScreen({
                 <Icon name="mapPin" size={11} /> {location.name}
               </div>
               {locationGroups.map((group) => renderGroupRow(group))}
-              {locationDevices.map((device, idx) => renderScreenRow(device, locationDevices, idx, true))}
+              {locationDevices.length > 0 && (
+                <>
+                  {/* renderScreenRow always indents as if nested under the group row
+                      above it — without this label, a standalone screen filed directly
+                      under this Location (sitting right after a group's own rows) reads
+                      as though it belongs to that group instead of being its sibling. */}
+                  <div className="text-muted" style={{ fontSize: 11, padding: '4px 0 0 20px' }}>Standalone screens</div>
+                  {locationDevices.map((device, idx) => renderScreenRow(device, locationDevices, idx, true))}
+                </>
+              )}
             </div>
           );
         })}

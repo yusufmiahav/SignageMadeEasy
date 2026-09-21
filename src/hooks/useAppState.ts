@@ -302,7 +302,7 @@ export function useAppState() {
     await refreshGroups();
   }, [refreshGroups]);
 
-  // Duplicates an existing event within the same location — no dedicated backend
+  // Duplicates an existing event within the same group — no dedicated backend
   // endpoint, since it's just a normal addEvent with the source event's own fields
   // copied in (mirrors forceContentAllScreens's "no new API surface needed" reasoning).
   const duplicateEvent = useCallback(async (groupId: string, eventId: string) => {
@@ -322,10 +322,10 @@ export function useAppState() {
     await refreshGroups();
   }, [refreshGroups]);
 
-  // Mirrors forceAnnouncementAllScreens below: same per-location forcedContentId,
-  // just applied to every location at once via a client-side loop, no new endpoint.
-  // Also covers misc screens (no location) via their own forcedContentId, so "every
-  // screen" is actually every screen, not just ones assigned somewhere.
+  // Mirrors forceAnnouncementAllScreens below: same per-group forcedContentId,
+  // just applied to every group at once via a client-side loop, no new endpoint.
+  // Also covers standalone screens (no group) via their own forcedContentId, so
+  // "every screen" is actually every screen, not just ones assigned somewhere.
   const forceContentAllScreens = useCallback(async (libId: string | null) => {
     const misc = devices.filter((d) => !d.groupId);
     await Promise.all([
@@ -342,10 +342,10 @@ export function useAppState() {
   }, [refreshGroups]);
 
   // "Force on all screens" on the Home page: no dedicated backend endpoint for this —
-  // it's the exact same per-location forcedAnnouncementId, just applied to every
-  // location at once, so a client-side loop over the existing per-group call is all
-  // this needs rather than a new bulk-specific API surface. Misc screens (no
-  // location) have no forcedAnnouncementId of their own — their manual
+  // it's the exact same per-group forcedAnnouncementId, just applied to every
+  // group at once, so a client-side loop over the existing per-group call is all
+  // this needs rather than a new bulk-specific API surface. Standalone screens (no
+  // group) have no forcedAnnouncementId of their own — their manual
   // announcementId/announcementOn toggle already IS the forcing mechanism (see
   // Device.forcedContentId's comment in api/types.ts), so this sets that directly.
   const forceAnnouncementAllScreens = useCallback(async (announcementId: string | null) => {
@@ -363,10 +363,10 @@ export function useAppState() {
     await refreshGroups();
   }, [refreshGroups]);
 
-  // "Blackout all screens": same client-side-loop-over-the-per-location-call pattern
+  // "Blackout all screens": same client-side-loop-over-the-per-group-call pattern
   // as forceContentAllScreens/forceAnnouncementAllScreens above — no dedicated bulk
-  // endpoint needed for an emergency action this rare. Also covers misc screens (no
-  // location) via their own blackout field.
+  // endpoint needed for an emergency action this rare. Also covers standalone screens
+  // (no group) via their own blackout field.
   const blackoutAllScreens = useCallback(async (blackout: boolean) => {
     const misc = devices.filter((d) => !d.groupId);
     await Promise.all([
