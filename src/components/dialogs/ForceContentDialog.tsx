@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { DialogShell } from './DialogShell';
 import { Icon } from '../icons/Icon';
+import { FolderTreeList } from '../FolderTreeList';
 import type { AppState } from '../../hooks/useAppState';
+import type { LibraryItem } from '../../api/types';
 
 interface ForceContentDialogProps {
   app: AppState;
@@ -15,13 +17,22 @@ interface ForceContentDialogProps {
 }
 
 export function ForceContentDialog({ app, scopeLabel, isGlobal, currentId, onConfirm, onClose }: ForceContentDialogProps) {
-  const { library } = app;
+  const { library, folders } = app;
   const [choiceId, setChoiceId] = useState<string | null>(currentId);
+  const pickable = library.filter((item) => item.type !== 'announcement');
 
   const confirm = async () => {
     await onConfirm(choiceId);
     onClose();
   };
+
+  const renderItem = (item: LibraryItem) => (
+    <label className="radio">
+      <input type="radio" name="forceContentPick" checked={choiceId === item.id} onChange={() => setChoiceId(item.id)} />
+      <span className="dot" />
+      {item.name}
+    </label>
+  );
 
   return (
     <DialogShell title="Force content" onClose={onClose}>
@@ -34,20 +45,12 @@ export function ForceContentDialog({ app, scopeLabel, isGlobal, currentId, onCon
           <span>This forces content onto every screen at every location — not just the one you're looking at.</span>
         </div>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 260, overflowY: 'auto' }}>
-        <label className="radio">
-          <input type="radio" name="forceContentPick" checked={choiceId == null} onChange={() => setChoiceId(null)} />
-          <span className="dot" />
-          Back to rolling schedule
-        </label>
-        {library.filter((item) => item.type !== 'announcement').map((item) => (
-          <label key={item.id} className="radio">
-            <input type="radio" name="forceContentPick" checked={choiceId === item.id} onChange={() => setChoiceId(item.id)} />
-            <span className="dot" />
-            {item.name}
-          </label>
-        ))}
-      </div>
+      <label className="radio">
+        <input type="radio" name="forceContentPick" checked={choiceId == null} onChange={() => setChoiceId(null)} />
+        <span className="dot" />
+        Back to rolling schedule
+      </label>
+      <FolderTreeList folders={folders} items={pickable} renderItem={renderItem} />
       <div className="dialog-actions">
         <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
         <button type="button" className={isGlobal && choiceId != null ? 'btn btn-warning' : 'btn btn-primary'} onClick={() => void confirm()}>Apply</button>

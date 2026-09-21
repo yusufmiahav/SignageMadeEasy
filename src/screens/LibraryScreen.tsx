@@ -2,6 +2,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Icon } from '../components/icons/Icon';
 import { LibraryCard } from '../components/LibraryCard';
 import { FolderCard } from '../components/FolderCard';
+import { LibraryTreeView } from '../components/LibraryTreeView';
 import { LibraryAddChooserDialog } from '../components/dialogs/LibraryAddChooserDialog';
 import { LibraryMoreOptionsDialog } from '../components/dialogs/LibraryMoreOptionsDialog';
 import { NewFolderDialog } from '../components/dialogs/NewFolderDialog';
@@ -43,9 +44,15 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   const allTags = [...new Set(library.flatMap((item) => item.tags))].sort();
 
   // ---- Folders ----
+  // 'grid' (default): navigate one folder at a time via breadcrumb, same as a normal
+  // file browser. 'tree': the whole hierarchy as one expandable outline for quickly
+  // seeing what's where and reorganizing without repeated in/out navigation — see
+  // LibraryTreeView.tsx.
+  const [view, setView] = useState<'grid' | 'tree'>('grid');
   // null = library root. Browsing a folder scopes both the type/tag/search filters
   // above and the drag-to-reorder list below to just that folder's own contents —
   // a subfolder shows up as its own tile rather than flattening its items into view.
+  // Only meaningful in grid view — tree view shows every folder at every depth at once.
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [moveItemTarget, setMoveItemTarget] = useState<LibraryItem | null>(null);
@@ -82,6 +89,14 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
     await removeLibraryItems([...selectedIds]);
     setSelectedIds(new Set());
     setSelectMode(false);
+  };
+  const [showMoveSelected, setShowMoveSelected] = useState(false);
+  const moveSelected = async (folderId: string | null) => {
+    const count = selectedIds.size;
+    await Promise.all([...selectedIds].map((id) => setLibraryItemFolder(id, folderId)));
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    showToast(`${count} item${count === 1 ? '' : 's'} moved`);
   };
 
   // Tracks the raw upload transfer for each in-flight file (not the hub's own
@@ -141,13 +156,17 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   const displayItems = orderedIds
     .map((id) => library.find((item) => item.id === id))
     .filter((item): item is LibraryItem => !!item);
-  const filteredItems = displayItems.filter((item) => {
-    if ((item.folderId ?? null) !== currentFolderId) return false;
+  const matchesFilters = (item: LibraryItem) => {
     if (typeFilter !== 'all' && item.type !== typeFilter) return false;
     if (tagFilter && !item.tags.includes(tagFilter)) return false;
     if (search.trim() && !item.name.toLowerCase().includes(search.trim().toLowerCase())) return false;
     return true;
-  });
+  };
+  const filteredItems = displayItems.filter((item) => (item.folderId ?? null) === currentFolderId && matchesFilters(item));
+  // Tree view shows the whole hierarchy at once rather than one folder at a time, so
+  // this deliberately skips the folderId scoping above — every matching item appears
+  // wherever it's actually filed.
+  const treeItems = library.filter(matchesFilters);
 
   const handleDragStart = (id: string) => {
     draggedIdRef.current = id;
@@ -270,7 +289,27 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
           <button type="button" className="btn btn-secondary desktop-only" onClick={() => setShowMoreOptions(true)}>
             <Icon name="moreHorizontal" size={14} /> More options
           </button>
-          {selectMode ? (
+          <div className="seg" style={{ padding: 0 }}>
+            <button
+              type="button"
+              className={`btn btn-icon${view === 'grid' ? ' btn-secondary' : ' btn-ghost'}`}
+              aria-label="Grid view"
+              title="Grid view — browse one folder at a time"
+              onClick={() => setView('grid')}
+            >
+              <Icon name="grid" size={14} />
+            </button>
+            <button
+              type="button"
+              className={`btn btn-icon${view === 'tree' ? ' btn-secondary' : ' btn-ghost'}`}
+              aria-label="Tree view"
+              title="Tree view — see the whole folder hierarchy at once"
+              onClick={() => { setView('tree'); exitSelectMode(); }}
+            >
+              <Icon name="list" size={14} />
+            </button>
+          </div>
+          {view === 'grid' && (selectMode ? (
             <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Cancel select" onClick={exitSelectMode}>
               <Icon name="x" size={15} />
             </button>
@@ -278,37 +317,41 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
             <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Select items" onClick={() => setSelectMode(true)}>
               <Icon name="check" size={15} />
             </button>
+          ))}
+          {view === 'grid' && (
+            <button type="button" className="btn btn-secondary desktop-only" onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}>
+              {selectMode ? 'Cancel select' : 'Select'}
+            </button>
           )}
-          <button type="button" className="btn btn-secondary desktop-only" onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}>
-            {selectMode ? 'Cancel select' : 'Select'}
-          </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, fontSize: 13 }}>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          style={{ padding: '2px 6px', fontWeight: currentFolderId === null ? 700 : 400 }}
-          onClick={() => setCurrentFolderId(null)}
-        >
-          <Icon name="home" size={13} style={{ marginRight: 4 }} />
-          Library
-        </button>
-        {breadcrumb.map((folder, i) => (
-          <span key={folder.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Icon name="chevronRight" size={12} style={{ opacity: 0.4 }} />
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{ padding: '2px 6px', fontWeight: i === breadcrumb.length - 1 ? 700 : 400 }}
-              onClick={() => setCurrentFolderId(folder.id)}
-            >
-              {folder.name}
-            </button>
-          </span>
-        ))}
-      </div>
+      {view === 'grid' && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, fontSize: 13 }}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ padding: '2px 6px', fontWeight: currentFolderId === null ? 700 : 400 }}
+            onClick={() => setCurrentFolderId(null)}
+          >
+            <Icon name="home" size={13} style={{ marginRight: 4 }} />
+            Library
+          </button>
+          {breadcrumb.map((folder, i) => (
+            <span key={folder.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="chevronRight" size={12} style={{ opacity: 0.4 }} />
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ padding: '2px 6px', fontWeight: i === breadcrumb.length - 1 ? 700 : 400 }}
+                onClick={() => setCurrentFolderId(folder.id)}
+              >
+                {folder.name}
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 160 }}>
@@ -350,6 +393,11 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
           >
             Select all
           </button>
+          {folders.length > 0 && (
+            <button type="button" className="btn btn-secondary" style={{ fontSize: 12 }} disabled={selectedIds.size === 0} onClick={() => setShowMoveSelected(true)}>
+              <Icon name="move" size={13} /> Move to folder
+            </button>
+          )}
           <button type="button" className="btn btn-secondary" style={{ fontSize: 12 }} disabled={selectedIds.size === 0} onClick={() => void deleteSelected()}>
             <Icon name="trash" size={13} /> Delete selected
           </button>
@@ -387,6 +435,23 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
 
       {library.length === 0 && folders.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>No content yet.</p>
+      ) : view === 'tree' ? (
+        <LibraryTreeView
+          folders={folders}
+          items={treeItems}
+          draggedId={draggedIdRef.current}
+          dropFolderId={dropFolderId}
+          onDragStart={handleDragStart}
+          onPointerMove={handlePointerMove}
+          onDragEnd={handleDragEnd}
+          onRemoveItem={removeLibraryItem}
+          onRenameItem={renameLibraryItem}
+          onMoveItem={setMoveItemTarget}
+          onConfigureItem={onConfigureTflItem}
+          onRenameFolder={renameFolder}
+          onDeleteFolder={(id) => void removeFolder(id)}
+          onMoveFolder={setMoveFolderTarget}
+        />
       ) : childFolders.length === 0 && filteredItems.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>
           {typeFilter !== 'all' || tagFilter || search.trim() ? 'No content matches your search/filters.' : 'This folder is empty.'}
@@ -445,6 +510,15 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
           currentFolderId={moveItemTarget.folderId ?? null}
           onConfirm={(folderId) => void setLibraryItemFolder(moveItemTarget.id, folderId)}
           onClose={() => setMoveItemTarget(null)}
+        />
+      )}
+      {showMoveSelected && (
+        <MoveToFolderDialog
+          folders={folders}
+          title={`Move ${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'}`}
+          currentFolderId={currentFolderId}
+          onConfirm={(folderId) => void moveSelected(folderId)}
+          onClose={() => setShowMoveSelected(false)}
         />
       )}
       {moveFolderTarget && (

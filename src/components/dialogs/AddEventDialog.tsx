@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { DialogShell } from './DialogShell';
+import { FolderTreeList } from '../FolderTreeList';
 import type { AppState } from '../../hooks/useAppState';
-import type { ScheduleEvent } from '../../api/types';
+import type { LibraryItem, ScheduleEvent } from '../../api/types';
 
 const TYPE_LABEL: Record<string, string> = { image: 'Image', video: 'Video', pdf: 'PDF', announcement: 'Announcement' };
 
@@ -17,7 +18,7 @@ interface AddEventDialogProps {
 }
 
 export function AddEventDialog({ app, onConfirm, onClose }: AddEventDialogProps) {
-  const { library } = app;
+  const { library, folders } = app;
   const [name, setName] = useState('');
   const [start, setStart] = useState(todayISO());
   const [end, setEnd] = useState(todayISO());
@@ -90,15 +91,17 @@ export function AddEventDialog({ app, onConfirm, onClose }: AddEventDialogProps)
       )}
       <div className="field">
         <label>Replaces the default playlist with</label>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
-          {library.filter((item) => item.type !== 'announcement').map((item) => (
-            <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
+        <FolderTreeList
+          folders={folders}
+          items={library.filter((item) => item.type !== 'announcement')}
+          renderItem={(item: LibraryItem) => (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
               <input type="checkbox" checked={checked.has(item.id)} onChange={() => toggle(item.id)} />
               <span style={{ flex: 1, fontSize: 13 }}>{item.name}</span>
               <span className="tag tag-neutral">{TYPE_LABEL[item.type]}</span>
             </label>
-          ))}
-        </div>
+          )}
+        />
       </div>
       <div className="dialog-actions">
         <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>

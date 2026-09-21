@@ -1,28 +1,7 @@
 import { useState, type HTMLAttributes } from 'react';
-import { Icon, type IconName } from './icons/Icon';
+import { Icon } from './icons/Icon';
+import { TYPE_ICON, TYPE_LABEL } from './libraryItemMeta';
 import type { LibraryItem } from '../api/types';
-
-const TYPE_ICON: Record<LibraryItem['type'], IconName> = {
-  image: 'image',
-  video: 'video',
-  pdf: 'fileText',
-  announcement: 'messageCircle',
-  clock: 'clock',
-  ndi: 'radio',
-  'tfl-status': 'activity',
-  'tfl-arrivals': 'train',
-};
-
-const TYPE_LABEL: Record<LibraryItem['type'], string> = {
-  image: 'Image',
-  video: 'Video',
-  pdf: 'PDF',
-  announcement: 'Announcement',
-  clock: 'Clock',
-  ndi: 'NDI source',
-  'tfl-status': 'TfL status',
-  'tfl-arrivals': 'TfL arrivals',
-};
 
 // Announcements and clocks have no underlying file — nothing to download for
 // those. Video downloads the original upload (fullUrl), not whichever capped/full
