@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationResult } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, ScheduleEvent, TflStationResult } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -82,6 +82,14 @@ export const httpClient: SignageApiClient = {
   setItemDuration: (id, durationSec) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ durationSec }) }),
   renameLibraryItem: (id, name) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ name }) }),
   setLibraryItemTags: (id, tags) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ tags }) }),
+  setLibraryItemFolder: (id, folderId) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ folderId }) }),
+
+  // Folders
+  listFolders: () => request<Folder[]>('/api/folders'),
+  addFolder: (name, parentId) => request<Folder>('/api/folders', { method: 'POST', ...json({ name, parentId }) }),
+  renameFolder: (id, name) => request<void>(`/api/folders/${id}`, { method: 'PATCH', ...json({ name }) }),
+  moveFolder: (id, parentId) => request<void>(`/api/folders/${id}`, { method: 'PATCH', ...json({ parentId }) }),
+  removeFolder: (id) => request<void>(`/api/folders/${id}`, { method: 'DELETE' }),
 
   // Groups
   listGroups: () => request<Group[]>('/api/groups'),

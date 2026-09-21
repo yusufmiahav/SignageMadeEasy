@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -46,6 +46,18 @@ export interface SignageApiClient {
   /** Images, clocks, and NDI sources only — anything else is a server-side no-op. */
   setItemDuration(id: string, durationSec: number): Promise<void>;
   setLibraryItemTags(id: string, tags: string[]): Promise<void>;
+  /** Files a library item under a folder, or `null` to move it back to the library root — via drag-and-drop or the "Move to folder" action. Purely organizational; has no effect on playback. */
+  setLibraryItemFolder(id: string, folderId: string | null): Promise<void>;
+
+  // Folders (Library screen media organization — see api/types.ts's Folder)
+  listFolders(): Promise<Folder[]>;
+  /** `parentId: null` creates it at the top level. */
+  addFolder(name: string, parentId: string | null): Promise<Folder>;
+  renameFolder(id: string, name: string): Promise<void>;
+  /** Reparents a folder (`null` = top level). Rejects if this would nest the folder inside its own subtree. */
+  moveFolder(id: string, parentId: string | null): Promise<void>;
+  /** Deleting a folder never deletes its contents — every subfolder and library item filed directly under it moves up to the deleted folder's own parent (or the root, if it had none). */
+  removeFolder(id: string): Promise<void>;
 
   // Locations (groups)
   listGroups(): Promise<Group[]>;

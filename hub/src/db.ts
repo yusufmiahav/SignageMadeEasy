@@ -64,6 +64,12 @@ db.exec(`
     announcementOn INTEGER NOT NULL DEFAULT 0,
     lastSeenAt INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS folders (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    parentId TEXT
+  );
 `);
 
 // Migration for hubs deployed before durationSec existed: CREATE TABLE IF NOT EXISTS
@@ -163,6 +169,15 @@ if (!libraryColsTflArrivals.includes('tflArrivalLines')) db.exec('ALTER TABLE li
 // them on read for any row saved before this column existed, so an existing
 // single-station item keeps working with no manual migration.
 if (!libraryColsTflArrivals.includes('tflStations')) db.exec('ALTER TABLE library ADD COLUMN tflStations TEXT');
+
+// Same reasoning, for hubs deployed before the Library screen supported organizing
+// items into folders — null for every existing item, meaning "library root," exactly
+// matching where it already visually was. No FK on folders.parentId (self-referencing)
+// or library.folderId, matching this file's existing "application code manages the
+// relationship" pattern for cross-table references elsewhere (e.g. groups_.forcedContentId) —
+// deleting a folder needs to reassign its contents before removing the row (see
+// store.ts's removeFolder), which a plain ON DELETE CASCADE/SET NULL couldn't express.
+if (!libraryColsTflArrivals.includes('folderId')) db.exec('ALTER TABLE library ADD COLUMN folderId TEXT');
 
 const groupCols = (db.prepare("PRAGMA table_info(groups_)").all() as { name: string }[]).map((c) => c.name);
 if (!groupCols.includes('sortOrder')) {

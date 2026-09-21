@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DiscoveredDevice } from '../api/client';
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationConfig } from '../api/types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, ScheduleEvent, TflStationConfig } from '../api/types';
 
 export function useAppState() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   // Defaults true (see hub/src/store.ts's getSafetyHold) — matches this project's
   // original always-on behavior until the initial load below overwrites it with the
   // hub's real value.
@@ -22,6 +23,7 @@ export function useAppState() {
 
   const refreshLibrary = useCallback(async () => setLibrary(await api.listLibrary()), []);
   const refreshGroups = useCallback(async () => setGroups(await api.listGroups()), []);
+  const refreshFolders = useCallback(async () => setFolders(await api.listFolders()), []);
 
   // Tracks each device's last-known status across polls (not React state — this
   // must never itself trigger a render) purely to detect an online->offline
@@ -55,10 +57,10 @@ export function useAppState() {
 
   useEffect(() => {
     (async () => {
-      await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices(), refreshSettings()]);
+      await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices(), refreshSettings(), refreshFolders()]);
       setLoaded(true);
     })();
-  }, [refreshLibrary, refreshGroups, refreshDevices, refreshSettings]);
+  }, [refreshLibrary, refreshGroups, refreshDevices, refreshSettings, refreshFolders]);
 
   // Device online/offline status (and group-level forced/scheduled announcement
   // state) can change on their own with nobody touching the control app - a screen
@@ -77,9 +79,10 @@ export function useAppState() {
       void refreshDevices();
       void refreshGroups();
       void refreshLibrary();
+      void refreshFolders();
     }, 4_000);
     return () => clearInterval(id);
-  }, [refreshDevices, refreshGroups, refreshLibrary]);
+  }, [refreshDevices, refreshGroups, refreshLibrary, refreshFolders]);
 
   // ---- Library ----
   const addImage = useCallback(async (file: File, onProgress?: (pct: number) => void) => {
@@ -184,6 +187,11 @@ export function useAppState() {
     await refreshLibrary();
   }, [refreshLibrary]);
 
+  const setLibraryItemFolder = useCallback(async (id: string, folderId: string | null) => {
+    await api.setLibraryItemFolder(id, folderId);
+    await refreshLibrary();
+  }, [refreshLibrary]);
+
   const removeLibraryItem = useCallback(async (id: string) => {
     await api.removeLibraryItem(id);
     await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices()]);
@@ -196,6 +204,29 @@ export function useAppState() {
     await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices()]);
     showToast(`${ids.length} item${ids.length === 1 ? '' : 's'} deleted`);
   }, [refreshLibrary, refreshGroups, refreshDevices, showToast]);
+
+  // ---- Folders (Library screen media organization) ----
+  const addFolder = useCallback(async (name: string, parentId: string | null) => {
+    const folder = await api.addFolder(name, parentId);
+    await refreshFolders();
+    return folder;
+  }, [refreshFolders]);
+
+  const renameFolder = useCallback(async (id: string, name: string) => {
+    await api.renameFolder(id, name);
+    await refreshFolders();
+  }, [refreshFolders]);
+
+  const moveFolder = useCallback(async (id: string, parentId: string | null) => {
+    await api.moveFolder(id, parentId);
+    await refreshFolders();
+  }, [refreshFolders]);
+
+  const removeFolder = useCallback(async (id: string) => {
+    await api.removeFolder(id);
+    await Promise.all([refreshFolders(), refreshLibrary()]);
+    showToast('Folder deleted — contents moved up a level');
+  }, [refreshFolders, refreshLibrary, showToast]);
 
   // ---- Groups / locations ----
   const addGroup = useCallback(async (name: string) => {
@@ -451,6 +482,7 @@ export function useAppState() {
     library,
     groups,
     devices,
+    folders,
     safetyHold,
     setSafetyHold,
     toast,
@@ -472,8 +504,13 @@ export function useAppState() {
     renameLibraryItem,
     reorderLibrary,
     setLibraryItemTags,
+    setLibraryItemFolder,
     removeLibraryItem,
     removeLibraryItems,
+    addFolder,
+    renameFolder,
+    moveFolder,
+    removeFolder,
     addGroup,
     renameGroup,
     deleteGroup,

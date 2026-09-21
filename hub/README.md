@@ -240,6 +240,33 @@ board (see above) for visual consistency between the two TfL content types — o
 row per platform+direction, soonest three arrivals shown per row, rows sorted
 soonest-first.
 
+## Library folders (media organization)
+
+The Library screen supports organizing content into folders, nested arbitrarily
+deep, purely for browsing/tidiness — a folder has no effect on playback, and
+every group/device/schedule reference still addresses a library item by its own
+id regardless of which folder (if any) it's currently filed under.
+
+Create a folder with the folder-plus button next to "Add"; it's created inside
+whichever folder you're currently browsing (the library root by default).
+Click a folder tile to open it, or a breadcrumb segment to jump back up. Move
+an item (or a folder) into another folder either by dragging its card onto the
+destination folder's tile, or via the move icon's "Move to folder" picker —
+both end up calling the same API. A folder can't be moved into its own
+subtree (the hub rejects that with a 409).
+
+**Deleting a folder never deletes its contents.** Every subfolder and library
+item filed directly under it moves up to the deleted folder's own parent (or
+the library root, if it had none) — the same "flatten up one level" behavior
+as removing a folder in a normal file browser while keeping the files. This
+was deliberate: a library item can still be referenced by a playlist or
+schedule elsewhere, so losing one as a side effect of tidying up folders would
+be a much worse failure mode than a folder move nobody asked for.
+
+Folders round-trip through Settings → Backup/restore alongside everything
+else; a backup exported before this feature existed has no `folders` array
+and restores as if there were none, rather than being rejected.
+
 ## API surface
 
 Mirrors `../src/api/client.ts`'s `SignageApiClient` method-for-method under `/api/library`,

@@ -1,9 +1,12 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Icon } from '../components/icons/Icon';
 import { LibraryCard } from '../components/LibraryCard';
+import { FolderCard } from '../components/FolderCard';
 import { LibraryAddChooserDialog } from '../components/dialogs/LibraryAddChooserDialog';
+import { NewFolderDialog } from '../components/dialogs/NewFolderDialog';
+import { MoveToFolderDialog } from '../components/dialogs/MoveToFolderDialog';
 import type { AppState } from '../hooks/useAppState';
-import type { LibraryItem } from '../api/types';
+import type { Folder, LibraryItem } from '../api/types';
 
 interface LibraryScreenProps {
   app: AppState;
@@ -21,7 +24,10 @@ interface InFlightUpload {
 }
 
 export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOpenTflDialog, onOpenTflArrivalsDialog, onConfigureTflItem }: LibraryScreenProps) {
-  const { library, addImage, addVideo, addPdf, addClock, removeLibraryItem, removeLibraryItems, renameLibraryItem, setLibraryItemTags, reorderLibrary, showToast } = app;
+  const {
+    library, folders, addImage, addVideo, addPdf, addClock, removeLibraryItem, removeLibraryItems, renameLibraryItem, setLibraryItemTags,
+    setLibraryItemFolder, addFolder, renameFolder, moveFolder, removeFolder, reorderLibrary, showToast,
+  } = app;
   const dropzoneInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -33,6 +39,28 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   const [typeFilter, setTypeFilter] = useState<'all' | LibraryItem['type']>('all');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const allTags = [...new Set(library.flatMap((item) => item.tags))].sort();
+
+  // ---- Folders ----
+  // null = library root. Browsing a folder scopes both the type/tag/search filters
+  // above and the drag-to-reorder list below to just that folder's own contents —
+  // a subfolder shows up as its own tile rather than flattening its items into view.
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [moveItemTarget, setMoveItemTarget] = useState<LibraryItem | null>(null);
+  const [moveFolderTarget, setMoveFolderTarget] = useState<Folder | null>(null);
+  // Currently-hovered folder tile while dragging a library item over it — see
+  // handlePointerMove below. Drives both the drop-target highlight and, on release,
+  // whether the drag ends in a move-into-folder instead of the usual reorder.
+  const [dropFolderId, setDropFolderId] = useState<string | null>(null);
+
+  const breadcrumb: Folder[] = [];
+  for (let cursor = folders.find((f) => f.id === currentFolderId); cursor; cursor = folders.find((f) => f.id === cursor?.parentId)) {
+    breadcrumb.unshift(cursor);
+  }
+  const childFolders = folders
+    .filter((f) => (f.parentId ?? null) === currentFolderId)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const itemCountInFolder = (folderId: string) => library.filter((item) => (item.folderId ?? null) === folderId).length;
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -112,6 +140,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
     .map((id) => library.find((item) => item.id === id))
     .filter((item): item is LibraryItem => !!item);
   const filteredItems = displayItems.filter((item) => {
+    if ((item.folderId ?? null) !== currentFolderId) return false;
     if (typeFilter !== 'all' && item.type !== typeFilter) return false;
     if (tagFilter && !item.tags.includes(tagFilter)) return false;
     if (search.trim() && !item.name.toLowerCase().includes(search.trim().toLowerCase())) return false;
@@ -140,7 +169,18 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   };
 
   const handleDragEnd = () => {
+    const draggedId = draggedIdRef.current;
     draggedIdRef.current = null;
+    // Dropped on a folder tile — files the item there instead of reordering; the
+    // in-progress reorder state (which only ever reflected a preview, not a
+    // persisted change) is simply discarded.
+    if (dropFolderId && draggedId) {
+      void setLibraryItemFolder(draggedId, dropFolderId);
+      setDropFolderId(null);
+      dragOrderRef.current = null;
+      setDragOrder(null);
+      return;
+    }
     if (dragOrderRef.current) void reorderLibrary(dragOrderRef.current);
     dragOrderRef.current = null;
     setDragOrder(null);
@@ -150,6 +190,12 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
     if (!draggedIdRef.current) return;
     e.preventDefault();
     const el = document.elementFromPoint(e.clientX, e.clientY);
+    const folderId = (el?.closest('[data-folder-id]') as HTMLElement | null)?.dataset.folderId;
+    if (folderId) {
+      setDropFolderId(folderId);
+      return;
+    }
+    if (dropFolderId) setDropFolderId(null);
     const overId = (el?.closest('[data-library-id]') as HTMLElement | null)?.dataset.libraryId;
     if (overId) handleDragEnter(overId);
   };
@@ -204,6 +250,9 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ margin: 0 }}>Library</h1>
         <div style={{ display: 'flex', gap: 6 }}>
+          <button type="button" className="btn btn-secondary btn-icon" aria-label="New folder" title="New folder" onClick={() => setShowNewFolder(true)}>
+            <Icon name="folderPlus" size={15} />
+          </button>
           <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add" onClick={() => setShowAddChooser(true)}>
             <Icon name="plus" size={15} />
           </button>
@@ -228,6 +277,31 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
             {selectMode ? 'Cancel select' : 'Select'}
           </button>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, fontSize: 13 }}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ padding: '2px 6px', fontWeight: currentFolderId === null ? 700 : 400 }}
+          onClick={() => setCurrentFolderId(null)}
+        >
+          <Icon name="home" size={13} style={{ marginRight: 4 }} />
+          Library
+        </button>
+        {breadcrumb.map((folder, i) => (
+          <span key={folder.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="chevronRight" size={12} style={{ opacity: 0.4 }} />
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ padding: '2px 6px', fontWeight: i === breadcrumb.length - 1 ? 700 : 400 }}
+              onClick={() => setCurrentFolderId(folder.id)}
+            >
+              {folder.name}
+            </button>
+          </span>
+        ))}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
@@ -305,12 +379,26 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
         </div>
       )}
 
-      {library.length === 0 ? (
+      {library.length === 0 && folders.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>No content yet.</p>
-      ) : filteredItems.length === 0 ? (
-        <p className="text-muted" style={{ margin: 0 }}>No content matches your search/filters.</p>
+      ) : childFolders.length === 0 && filteredItems.length === 0 ? (
+        <p className="text-muted" style={{ margin: 0 }}>
+          {typeFilter !== 'all' || tagFilter || search.trim() ? 'No content matches your search/filters.' : 'This folder is empty.'}
+        </p>
       ) : (
         <div className="library-grid">
+          {childFolders.map((folder) => (
+            <FolderCard
+              key={folder.id}
+              folder={folder}
+              itemCount={itemCountInFolder(folder.id)}
+              isDropTarget={dropFolderId === folder.id}
+              onOpen={setCurrentFolderId}
+              onRename={renameFolder}
+              onDelete={(id) => void removeFolder(id)}
+              onMove={setMoveFolderTarget}
+            />
+          ))}
           {filteredItems.map((item) => (
             <LibraryCard
               key={item.id}
@@ -319,6 +407,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
               onRename={renameLibraryItem}
               onSetTags={setLibraryItemTags}
               onConfigure={onConfigureTflItem}
+              onMove={folders.length > 0 ? setMoveItemTarget : undefined}
               isDragging={draggedIdRef.current === item.id}
               selectMode={selectMode}
               selected={selectedIds.has(item.id)}
@@ -336,6 +425,33 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
             />
           ))}
         </div>
+      )}
+      {showNewFolder && (
+        <NewFolderDialog
+          onConfirm={(name) => void addFolder(name, currentFolderId)}
+          onClose={() => setShowNewFolder(false)}
+        />
+      )}
+      {moveItemTarget && (
+        <MoveToFolderDialog
+          folders={folders}
+          title={`Move ${moveItemTarget.name}`}
+          currentFolderId={moveItemTarget.folderId ?? null}
+          onConfirm={(folderId) => void setLibraryItemFolder(moveItemTarget.id, folderId)}
+          onClose={() => setMoveItemTarget(null)}
+        />
+      )}
+      {moveFolderTarget && (
+        <MoveToFolderDialog
+          folders={folders}
+          title={`Move ${moveFolderTarget.name}`}
+          currentFolderId={moveFolderTarget.parentId}
+          excludeSubtreeOf={moveFolderTarget.id}
+          onConfirm={(folderId) => {
+            void moveFolder(moveFolderTarget.id, folderId).catch((err) => showToast(err instanceof Error ? err.message : 'Move failed'));
+          }}
+          onClose={() => setMoveFolderTarget(null)}
+        />
       )}
       {showAddChooser && (
         <LibraryAddChooserDialog

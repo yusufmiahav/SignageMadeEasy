@@ -15,10 +15,20 @@ export interface TflStationConfig {
   lines?: string[];
 }
 
+/** A folder in the Library screen's media organization tree — purely organizational, has no effect on playback or on any group/device/schedule reference (those all still address a LibraryItem by its own id, regardless of which folder it's filed under). */
+export interface Folder {
+  id: string;
+  name: string;
+  /** null = top level, directly under the library root. Nested arbitrarily deep via chained parentId links, same shape as a normal filesystem tree. */
+  parentId: string | null;
+}
+
 export interface LibraryItem {
   id: string;
   name: string;
   type: LibraryItemType;
+  /** Which folder this item is filed under — omitted means the library root. Set via drag-and-drop or the "Move to folder" action on the Library screen; new items always land at the root regardless of which folder is currently open. */
+  folderId?: string;
   size?: string;
   duration?: string;
   /** Seconds this item stays on screen before advancing. Images, clocks, and NDI sources only; defaults to 8 when unset. */

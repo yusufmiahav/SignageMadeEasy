@@ -411,11 +411,22 @@ body {
   background: color-mix(in srgb, var(--color-bg) 65%, transparent);
 }
 
-/* — configure badge (tfl-status/tfl-arrivals only) on thumbnails — */
+/* — configure badge (ndi/tfl-status/tfl-arrivals only) on thumbnails — */
 .thumb-configure {
   position: absolute;
   bottom: 2px;
   left: 2px;
+  width: 24px;
+  height: 24px;
+  background: color-mix(in srgb, var(--color-bg) 65%, transparent);
+}
+
+/* — move-to-folder badge on thumbnails — sits just right of .thumb-configure so the
+   two never overlap on the items (ndi/tfl-status/tfl-arrivals) that show both. */
+.thumb-move {
+  position: absolute;
+  bottom: 2px;
+  left: 28px;
   width: 24px;
   height: 24px;
   background: color-mix(in srgb, var(--color-bg) 65%, transparent);

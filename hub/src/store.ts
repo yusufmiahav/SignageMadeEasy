@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
 import * as tflStatus from './tflStatus.js';
 import * as tflArrivals from './tflArrivals.js';
-import type { AnnouncementSchedule, Device, DeviceStatus, Group, LibraryItem, PlayerState, ScheduleEvent, TflStationConfig } from './types.js';
+import type { AnnouncementSchedule, Device, DeviceStatus, Folder, Group, LibraryItem, PlayerState, ScheduleEvent, TflStationConfig } from './types.js';
 
 // The Pi heartbeats every 5s (pi-player/src/poller.ts's POLL_INTERVAL_MS) — this
 // window needs to be a few multiples of that so one dropped heartbeat (WiFi jitter)
@@ -25,11 +25,13 @@ interface LibraryRow {
   // aren't dropped.
   tflStopPointId: string | null; tflStopPointName: string | null; tflArrivalLines: string | null;
   tflStations: string | null;
+  folderId: string | null;
 }
-const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines, tflStations';
+const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines, tflStations, folderId';
 
 function rowToLibraryItem(r: LibraryRow): LibraryItem {
   const item: LibraryItem = { id: r.id, name: r.name, type: r.type, tags: r.tags ? JSON.parse(r.tags) : [] };
+  if (r.folderId != null) item.folderId = r.folderId;
   if (r.size != null) item.size = r.size;
   if (r.duration != null) item.duration = r.duration;
   if (r.durationSec != null) item.durationSec = r.durationSec;
@@ -160,6 +162,71 @@ export function setLibraryItemTflModes(id: string, tflModes: string[]): void {
 export function setLibraryItemTflStations(id: string, tflStations: TflStationConfig[]): void {
   db.prepare("UPDATE library SET tflStations = ? WHERE id = ? AND type = 'tfl-arrivals'").run(JSON.stringify(tflStations), id);
 }
+
+/** Files a library item under a folder, or `null` to move it back to the library root — see LibraryScreen.tsx's drag-and-drop and "Move to folder" action. Every item type can be foldered; this is purely organizational and has no effect on playback. */
+export function setLibraryItemFolder(id: string, folderId: string | null): void {
+  db.prepare('UPDATE library SET folderId = ? WHERE id = ?').run(folderId, id);
+}
+
+// ---- Folders ----
+
+interface FolderRow { id: string; name: string; parentId: string | null }
+const FOLDER_COLUMNS = 'id, name, parentId';
+
+function rowToFolder(r: FolderRow): Folder {
+  return { id: r.id, name: r.name, parentId: r.parentId };
+}
+
+export function listFolders(): Folder[] {
+  const rows = db.prepare(`SELECT ${FOLDER_COLUMNS} FROM folders ORDER BY name COLLATE NOCASE ASC`).all() as FolderRow[];
+  return rows.map(rowToFolder);
+}
+
+export function addFolder(name: string, parentId: string | null): Folder {
+  const id = uid('f');
+  const cleanName = name.trim() || 'New folder';
+  db.prepare('INSERT INTO folders (id, name, parentId) VALUES (?,?,?)').run(id, cleanName, parentId);
+  return { id, name: cleanName, parentId };
+}
+
+export function renameFolder(id: string, name: string): void {
+  if (!name.trim()) return;
+  db.prepare('UPDATE folders SET name = ? WHERE id = ?').run(name.trim(), id);
+}
+
+/** True if moving `id` under `newParentId` would nest it inside its own subtree (itself included) — walks newParentId's own ancestor chain looking for `id`. Called before every move so a folder can never become its own descendant. */
+function wouldCreateCycle(folders: Folder[], id: string, newParentId: string | null): boolean {
+  let current = newParentId;
+  while (current != null) {
+    if (current === id) return true;
+    current = folders.find((f) => f.id === current)?.parentId ?? null;
+  }
+  return false;
+}
+
+/** Moves a folder under a new parent (`null` = top level). Returns false (no-op) rather than throwing if this would create a cycle, since that's an expected, recoverable user action (e.g. a stray drag) — the route layer turns a false into a 409. */
+export function moveFolder(id: string, parentId: string | null): boolean {
+  if (wouldCreateCycle(listFolders(), id, parentId)) return false;
+  db.prepare('UPDATE folders SET parentId = ? WHERE id = ?').run(parentId, id);
+  return true;
+}
+
+/**
+ * Deletes a folder WITHOUT deleting its contents — every subfolder and library item
+ * filed directly under it moves up to the deleted folder's own parent (or the root,
+ * if it had none), same "flatten up one level" behavior as removing a folder in a
+ * normal file browser while keeping the files. A destructive "delete everything
+ * inside" was deliberately not built — losing library items (which may still be
+ * referenced by a playlist/schedule elsewhere) as a side effect of tidying up folders
+ * would be a much worse failure mode than a folder move.
+ */
+export const removeFolder = db.transaction((id: string): void => {
+  const row = db.prepare('SELECT parentId FROM folders WHERE id = ?').get(id) as { parentId: string | null } | undefined;
+  if (!row) return;
+  db.prepare('UPDATE folders SET parentId = ? WHERE parentId = ?').run(row.parentId, id);
+  db.prepare('UPDATE library SET folderId = ? WHERE folderId = ?').run(row.parentId, id);
+  db.prepare('DELETE FROM folders WHERE id = ?').run(id);
+});
 
 // ---- Groups ----
 
@@ -622,9 +689,10 @@ export interface Backup {
   library: LibraryItem[];
   groups: Group[];
   devices: Device[];
+  folders: Folder[];
 }
 
-/** Full snapshot of everything the control app manages — content metadata, locations/playlists/schedules, and paired screens (name, IP, MAC, settings). Uploaded media files themselves aren't included (they're not JSON-portable); back up hub/data/uploads separately if you need those too. */
+/** Full snapshot of everything the control app manages — content metadata, locations/playlists/schedules, paired screens (name, IP, MAC, settings), and the Library screen's folder tree. Uploaded media files themselves aren't included (they're not JSON-portable); back up hub/data/uploads separately if you need those too. */
 export function exportBackup(): Backup {
   return {
     version: 1,
@@ -632,6 +700,7 @@ export function exportBackup(): Backup {
     library: listLibrary(),
     groups: listGroups(),
     devices: listDevices(),
+    folders: listFolders(),
   };
 }
 
@@ -645,16 +714,25 @@ export function exportBackup(): Backup {
  * (lastSeenAt cleared) until each Pi's own poller heartbeats again, rather than
  * presenting stale liveness state as current.
  */
-export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'groups' | 'devices'>): void => {
+export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'groups' | 'devices'> & { folders?: Folder[] }): void => {
   db.prepare('DELETE FROM events').run();
   db.prepare('DELETE FROM announcement_schedules').run();
   db.prepare('DELETE FROM devices').run();
   db.prepare('DELETE FROM groups_').run();
   db.prepare('DELETE FROM library').run();
+  db.prepare('DELETE FROM folders').run();
+
+  // folders has no FK to enforce insert order (see db.ts's folderId migration
+  // comment), so parents and children can be inserted in whatever order the
+  // backup happens to list them in.
+  const insertFolder = db.prepare('INSERT INTO folders (id, name, parentId) VALUES (@id,@name,@parentId)');
+  (backup.folders ?? []).forEach((folder) => {
+    insertFolder.run({ id: folder.id, name: folder.name, parentId: folder.parentId });
+  });
 
   const insertLibrary = db.prepare(
-    'INSERT INTO library (id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStations, sortOrder, createdAt) ' +
-    'VALUES (@id,@name,@type,@size,@duration,@durationSec,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@tags,@ndiSourceName,@tflModes,@tflStations,@sortOrder,@createdAt)',
+    'INSERT INTO library (id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStations, folderId, sortOrder, createdAt) ' +
+    'VALUES (@id,@name,@type,@size,@duration,@durationSec,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@tags,@ndiSourceName,@tflModes,@tflStations,@folderId,@sortOrder,@createdAt)',
   );
   backup.library.forEach((item, i) => {
     insertLibrary.run({
@@ -665,6 +743,7 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       ndiSourceName: item.ndiSourceName ?? null,
       tflModes: item.tflModes ? JSON.stringify(item.tflModes) : null,
       tflStations: item.tflStations ? JSON.stringify(item.tflStations) : null,
+      folderId: item.folderId ?? null,
       sortOrder: i, createdAt: Date.now() + i, // +i keeps insertion order stable if createdAt is ever read as a tiebreaker
     });
   });

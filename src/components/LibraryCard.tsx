@@ -73,9 +73,11 @@ interface LibraryCardProps {
   onToggleSelect?: (id: string) => void;
   /** 'ndi'/'tfl-status'/'tfl-arrivals' only — reopens the add dialog in edit mode to change the source name/modes/lines without deleting and re-adding the item. Omitted (button hidden) for every other type. */
   onConfigure?: (item: LibraryItem) => void;
+  /** Every item type — opens the folder picker to file this item elsewhere (or back to the library root). Omitted (button hidden) when there are no folders yet, same as onConfigure's own pattern. */
+  onMove?: (item: LibraryItem) => void;
 }
 
-export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandleProps, isDragging, selectMode, selected, onToggleSelect, onConfigure }: LibraryCardProps) {
+export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandleProps, isDragging, selectMode, selected, onToggleSelect, onConfigure, onMove }: LibraryCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [editingTags, setEditingTags] = useState(false);
@@ -182,6 +184,11 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
         {(item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals') && onConfigure && (
           <button type="button" className="btn btn-ghost btn-icon thumb-configure" aria-label="Edit options" title="Change the source/lines/modes this shows" onClick={() => onConfigure(item)}>
             <Icon name="sliders" size={12} />
+          </button>
+        )}
+        {onMove && (
+          <button type="button" className="btn btn-ghost btn-icon thumb-move" aria-label="Move to folder" title="Move to another folder" onClick={() => onMove(item)}>
+            <Icon name="move" size={12} />
           </button>
         )}
         {downloadUrl && (

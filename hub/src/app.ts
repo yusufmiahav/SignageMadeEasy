@@ -12,6 +12,7 @@ import { backupRouter } from './routes/backup.js';
 import { settingsRouter } from './routes/settings.js';
 import { authRouter } from './routes/auth.js';
 import { tflRouter } from './routes/tfl.js';
+import { foldersRouter } from './routes/folders.js';
 import { requireAuth } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,6 +44,7 @@ export function createApp() {
   app.use('/api/backup', requireAuth, backupRouter);
   app.use('/api/settings', requireAuth, settingsRouter);
   app.use('/api/tfl', requireAuth, tflRouter);
+  app.use('/api/folders', requireAuth, foldersRouter);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

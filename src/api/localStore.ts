@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
+import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -21,14 +21,17 @@ function formatDuration(seconds: number): string {
 }
 
 function emptyData(): AppData {
-  return { library: [], groups: [], devices: [] };
+  return { library: [], groups: [], devices: [], folders: [] };
 }
 
 function load(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return emptyData();
-    return JSON.parse(raw) as AppData;
+    const parsed = JSON.parse(raw) as Partial<AppData>;
+    // folders is optional here since data saved before this feature existed has no
+    // such key — defaults to none, same as every other field-added-later in this file.
+    return { library: parsed.library ?? [], groups: parsed.groups ?? [], devices: parsed.devices ?? [], folders: parsed.folders ?? [] };
   } catch {
     return emptyData();
   }
@@ -199,6 +202,73 @@ class LocalStoreClient implements SignageApiClient {
   async setLibraryItemTags(id: string, tags: string[]): Promise<void> {
     const item = this.data.library.find((i) => i.id === id);
     if (item) item.tags = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
+    this.persist();
+  }
+
+  async setLibraryItemFolder(id: string, folderId: string | null): Promise<void> {
+    const item = this.data.library.find((i) => i.id === id);
+    if (item) {
+      if (folderId) item.folderId = folderId;
+      else delete item.folderId;
+    }
+    this.persist();
+  }
+
+  // ---- Folders ----
+  async listFolders(): Promise<Folder[]> {
+    return [...this.data.folders];
+  }
+
+  async addFolder(name: string, parentId: string | null): Promise<Folder> {
+    const folder: Folder = { id: uid('f'), name: name.trim() || 'New folder', parentId };
+    this.data.folders.push(folder);
+    this.persist();
+    return folder;
+  }
+
+  async renameFolder(id: string, name: string): Promise<void> {
+    const folder = this.data.folders.find((f) => f.id === id);
+    if (folder && name.trim()) folder.name = name.trim();
+    this.persist();
+  }
+
+  // Mirrors hub/src/store.ts's wouldCreateCycle — walks newParentId's own ancestor
+  // chain looking for `id`, so a folder can never become its own descendant.
+  private wouldCreateCycle(id: string, newParentId: string | null): boolean {
+    let current = newParentId;
+    while (current != null) {
+      if (current === id) return true;
+      current = this.data.folders.find((f) => f.id === current)?.parentId ?? null;
+    }
+    return false;
+  }
+
+  async moveFolder(id: string, parentId: string | null): Promise<void> {
+    if (this.wouldCreateCycle(id, parentId)) {
+      throw new Error("Can't move a folder into its own subfolder");
+    }
+    const folder = this.data.folders.find((f) => f.id === id);
+    if (folder) folder.parentId = parentId;
+    this.persist();
+  }
+
+  // Never deletes contents — mirrors hub/src/store.ts's removeFolder exactly:
+  // subfolders and library items filed directly under it move up to this folder's
+  // own parent (or the root, if it had none).
+  async removeFolder(id: string): Promise<void> {
+    const folder = this.data.folders.find((f) => f.id === id);
+    if (!folder) return;
+    const parentId = folder.parentId;
+    for (const f of this.data.folders) {
+      if (f.parentId === id) f.parentId = parentId;
+    }
+    for (const item of this.data.library) {
+      if (item.folderId === id) {
+        if (parentId) item.folderId = parentId;
+        else delete item.folderId;
+      }
+    }
+    this.data.folders = this.data.folders.filter((f) => f.id !== id);
     this.persist();
   }
 
@@ -498,11 +568,16 @@ class LocalStoreClient implements SignageApiClient {
 
   // ---- Backup / restore ----
   async exportBackup(): Promise<Backup> {
-    return { version: 1, exportedAt: new Date().toISOString(), library: [...this.data.library], groups: [...this.data.groups], devices: [...this.data.devices] };
+    return {
+      version: 1, exportedAt: new Date().toISOString(),
+      library: [...this.data.library], groups: [...this.data.groups], devices: [...this.data.devices], folders: [...this.data.folders],
+    };
   }
 
   async importBackup(backup: Backup): Promise<void> {
-    this.data = { library: backup.library, groups: backup.groups, devices: backup.devices };
+    // folders is optional on Backup — a backup exported before this feature existed
+    // has no such array, treated as no folders rather than rejected.
+    this.data = { library: backup.library, groups: backup.groups, devices: backup.devices, folders: backup.folders ?? [] };
     this.persist();
   }
 

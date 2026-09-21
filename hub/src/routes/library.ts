@@ -176,7 +176,7 @@ libraryRouter.post('/tfl-arrivals', (req, res) => {
 });
 
 libraryRouter.patch('/:id', (req, res) => {
-  const { durationSec, name, tags, ndiSourceName, tflModes, tflStations } = req.body ?? {};
+  const { durationSec, name, tags, folderId, ndiSourceName, tflModes, tflStations } = req.body ?? {};
   if (durationSec !== undefined) {
     if (typeof durationSec !== 'number' || !Number.isFinite(durationSec) || durationSec < 1) {
       return res.status(400).json({ error: 'durationSec must be a positive number' });
@@ -192,6 +192,12 @@ libraryRouter.patch('/:id', (req, res) => {
       return res.status(400).json({ error: 'tags must be an array of strings' });
     }
     store.setLibraryItemTags(req.params.id, tags);
+  }
+  // Files this item under a folder (or back to the root, for folderId: null) — see
+  // LibraryScreen.tsx's drag-and-drop and "Move to folder" action.
+  if (folderId !== undefined) {
+    if (folderId !== null && typeof folderId !== 'string') return res.status(400).json({ error: 'folderId must be a string or null' });
+    store.setLibraryItemFolder(req.params.id, folderId);
   }
   // Reconfigures an existing 'ndi' item's source name — see AddNdiSourceDialog.tsx's
   // edit mode. Same no-op-if-wrong-type guard as the two TfL branches below.
