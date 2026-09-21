@@ -189,7 +189,7 @@ export function SettingsScreen({
     return (
       <div
         key={device.id}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px', borderTop: '1px solid var(--color-divider)' }}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px', borderTop: '1px solid var(--color-divider)', flexWrap: 'wrap' }}
       >
         {selectMode && (
           <input
@@ -202,14 +202,17 @@ export function SettingsScreen({
         {isEditing ? (
           <input
             className="input"
-            style={{ flex: 1 }}
+            style={{ flex: '1 1 140px' }}
             value={editingName}
             onChange={(e) => setEditingName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && save()}
             autoFocus
           />
         ) : (
-          <div style={{ flex: 1 }}>
+          // A fixed flex-basis (rather than plain flex: 1) so a narrow row wraps this
+          // whole name block onto its own line instead of squeezing it thin enough
+          // that the device's own name wraps mid-word around the trailing controls.
+          <div style={{ flex: '1 1 140px' }}>
             <div style={{ fontSize: 13 }}>{device.name}</div>
             <div className="text-muted" style={{ fontSize: 11 }}>Screen</div>
           </div>
@@ -275,18 +278,21 @@ export function SettingsScreen({
     const cannotDelete = screens.length > 0;
     return (
       <div key={group.id}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', flexWrap: 'wrap' }}>
           {isEditing ? (
             <input
               className="input"
-              style={{ flex: 1 }}
+              style={{ flex: '1 1 140px' }}
               value={editingName}
               onChange={(e) => setEditingName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && save()}
               autoFocus
             />
           ) : (
-            <div style={{ flex: 1 }}>
+            // A fixed flex-basis (rather than plain flex: 1) so a narrow row wraps this
+            // whole name block onto its own line instead of squeezing it thin enough
+            // that the group's own name wraps mid-word around the trailing controls.
+            <div style={{ flex: '1 1 140px' }}>
               <div style={{ fontSize: 13 }}>{group.name}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>Group</div>
             </div>
@@ -425,18 +431,18 @@ export function SettingsScreen({
           const isEditing = editing?.kind === 'location' && editing.id === location.id;
           const count = groups.filter((g) => g.locationId === location.id).length + devices.filter((d) => !d.groupId && d.locationId === location.id).length;
           return (
-            <div key={location.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)' }}>
+            <div key={location.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)', flexWrap: 'wrap' }}>
               {isEditing ? (
                 <input
                   className="input"
-                  style={{ flex: 1 }}
+                  style={{ flex: '1 1 140px' }}
                   value={editingName}
                   onChange={(e) => setEditingName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && save()}
                   autoFocus
                 />
               ) : (
-                <div style={{ flex: 1, fontSize: 13 }}>{location.name}</div>
+                <div style={{ flex: '1 1 140px', fontSize: 13 }}>{location.name}</div>
               )}
               {!isEditing && <span className="tag tag-neutral">{count} item{count === 1 ? '' : 's'}</span>}
               {isEditing ? (
