@@ -17,6 +17,12 @@ interface RowHandlers {
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
   onMoveFolder: (folder: Folder) => void;
+  /** Clicking a folder/item's own NAME text (not its rename pencil) opens the inline
+      split-panel inspector above this tree — see LibraryScreen.tsx's `opened` state. */
+  onOpenFolder: (id: string) => void;
+  onOpenItem: (item: LibraryItem) => void;
+  /** Currently-open inspector target, if any — highlights that row so it's clear which one the panel above belongs to. */
+  openedId?: string | null;
   /** Same bulk-select mechanism as the grid view's cards — a folder's own id and an
       item's own id share one selection set, since they're independently prefixed
       ('f'/'l' — see hub/src/store.ts's uid()) and never collide. */
@@ -60,6 +66,7 @@ function ItemRow({ item, depth, h }: { item: LibraryItem; depth: number; h: RowH
       style={{
         display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 4 + depth * 18, padding: '6px 4px',
         borderBottom: '1px solid var(--color-divider)', opacity: h.draggedId === item.id ? 0.4 : 1,
+        background: h.openedId === item.id ? 'var(--color-surface)' : undefined,
       }}
     >
       <SelectCheckbox id={item.id} name={item.name} h={h} />
@@ -94,7 +101,16 @@ function ItemRow({ item, depth, h }: { item: LibraryItem; depth: number; h: RowH
         </>
       ) : (
         <>
-          <span style={{ flex: 1, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+          <span
+            role="button"
+            tabIndex={0}
+            title="Open preview and options"
+            style={{ flex: 1, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
+            onClick={() => h.onOpenItem(item)}
+            onKeyDown={(e) => e.key === 'Enter' && h.onOpenItem(item)}
+          >
+            {item.name}
+          </span>
           <span className="tag tag-neutral" style={{ fontSize: 10 }}>{TYPE_LABEL[item.type]}</span>
           <button type="button" className="btn btn-ghost btn-icon" style={{ width: 20, height: 20 }} aria-label="Rename" onClick={() => setEditing(true)}>
             <Icon name="pencil" size={11} />
@@ -144,7 +160,7 @@ function FolderRow({ folder, depth, folders, items, h }: { folder: Folder; depth
         data-folder-id={folder.id}
         style={{
           display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 + depth * 18, padding: '6px 4px',
-          borderRadius: 6, background: isDropTarget ? 'var(--color-accent)' : undefined,
+          borderRadius: 6, background: isDropTarget ? 'var(--color-accent)' : h.openedId === folder.id ? 'var(--color-surface)' : undefined,
           color: isDropTarget ? 'var(--color-bg)' : undefined, opacity: h.draggedId === folder.id ? 0.4 : 1,
         }}
       >
@@ -190,7 +206,16 @@ function FolderRow({ folder, depth, folders, items, h }: { folder: Folder; depth
           </>
         ) : (
           <>
-            <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{folder.name}</span>
+            <span
+              role="button"
+              tabIndex={0}
+              title="Open contents, metadata, and structure"
+              style={{ flex: 1, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+              onClick={() => h.onOpenFolder(folder.id)}
+              onKeyDown={(e) => e.key === 'Enter' && h.onOpenFolder(folder.id)}
+            >
+              {folder.name}
+            </span>
             <span style={{ fontSize: 11, opacity: 0.7 }}>{childItems.length} item{childItems.length === 1 ? '' : 's'}</span>
             <button type="button" className="btn btn-ghost btn-icon" style={{ width: 20, height: 20 }} aria-label="Rename folder" onClick={() => setEditing(true)}>
               <Icon name="pencil" size={11} />

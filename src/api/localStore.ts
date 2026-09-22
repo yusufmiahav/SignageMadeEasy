@@ -113,7 +113,7 @@ class LocalStoreClient implements SignageApiClient {
 
   async addImage(file: File): Promise<LibraryItem> {
     const thumb = await readImageThumb(file);
-    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'image', size: formatBytes(file.size), thumb, tags: [] };
+    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'image', size: formatBytes(file.size), thumb, tags: [], createdAt: Date.now() };
     this.data.library.push(item);
     this.persist();
     return item;
@@ -121,35 +121,35 @@ class LocalStoreClient implements SignageApiClient {
 
   async addVideo(file: File): Promise<LibraryItem> {
     const duration = await readVideoDuration(file);
-    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'video', size: formatBytes(file.size), duration, tags: [] };
+    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'video', size: formatBytes(file.size), duration, tags: [], createdAt: Date.now() };
     this.data.library.push(item);
     this.persist();
     return item;
   }
 
   async addPdf(file: File): Promise<LibraryItem> {
-    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'pdf', size: formatBytes(file.size), tags: [] };
+    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'pdf', size: formatBytes(file.size), tags: [], createdAt: Date.now() };
     this.data.library.push(item);
     this.persist();
     return item;
   }
 
   async addAnnouncement(name: string, text: string): Promise<LibraryItem> {
-    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'Announcement', type: 'announcement', text, tags: [] };
+    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'Announcement', type: 'announcement', text, tags: [], createdAt: Date.now() };
     this.data.library.push(item);
     this.persist();
     return item;
   }
 
   async addClock(name: string): Promise<LibraryItem> {
-    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'Clock', type: 'clock', tags: [] };
+    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'Clock', type: 'clock', tags: [], createdAt: Date.now() };
     this.data.library.push(item);
     this.persist();
     return item;
   }
 
   async addNdiSource(name: string, ndiSourceName: string): Promise<LibraryItem> {
-    const item: LibraryItem = { id: uid('l'), name: name.trim() || ndiSourceName.trim(), type: 'ndi', ndiSourceName: ndiSourceName.trim(), tags: [] };
+    const item: LibraryItem = { id: uid('l'), name: name.trim() || ndiSourceName.trim(), type: 'ndi', ndiSourceName: ndiSourceName.trim(), tags: [], createdAt: Date.now() };
     this.data.library.push(item);
     this.persist();
     return item;
@@ -168,7 +168,7 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   async addTflStatus(name: string, tflModes: string[]): Promise<LibraryItem> {
-    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'TfL status', type: 'tfl-status', tflModes, tags: [] };
+    const item: LibraryItem = { id: uid('l'), name: name.trim() || 'TfL status', type: 'tfl-status', tflModes, tags: [], createdAt: Date.now() };
     this.data.library.push(item);
     this.persist();
     return item;
@@ -184,7 +184,7 @@ class LocalStoreClient implements SignageApiClient {
     const item: LibraryItem = {
       id: uid('l'), name: name.trim() || tflStations.map((s) => s.stopPointName).join(', ') || 'TfL arrivals', type: 'tfl-arrivals',
       tflStations,
-      tags: [],
+      tags: [], createdAt: Date.now(),
     };
     this.data.library.push(item);
     this.persist();
@@ -224,7 +224,7 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   async addFolder(name: string, parentId: string | null): Promise<Folder> {
-    const folder: Folder = { id: uid('f'), name: name.trim() || 'New folder', parentId };
+    const folder: Folder = { id: uid('f'), name: name.trim() || 'New folder', parentId, createdAt: Date.now() };
     this.data.folders.push(folder);
     this.persist();
     return folder;

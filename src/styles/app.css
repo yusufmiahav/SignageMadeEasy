@@ -168,6 +168,23 @@ body {
   }
 }
 
+/* Library tree view's inline inspector panels default to one stacked column on
+   a narrow screen — the two-pane grid (set inline in FolderInspectorPanel/
+   ItemInspectorPanel) only makes sense once there's room for both side by side. */
+.folder-inspector-grid,
+.item-inspector-grid {
+  grid-template-columns: 1fr !important;
+}
+
+@media (min-width: 900px) {
+  .folder-inspector-grid {
+    grid-template-columns: minmax(0, 1.4fr) minmax(220px, 1fr) !important;
+  }
+  .item-inspector-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(240px, 1fr) !important;
+  }
+}
+
 /* — device / library preview boxes — */
 .preview-box {
   position: relative;

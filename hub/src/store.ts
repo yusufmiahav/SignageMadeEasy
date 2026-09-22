@@ -26,12 +26,14 @@ interface LibraryRow {
   tflStopPointId: string | null; tflStopPointName: string | null; tflArrivalLines: string | null;
   tflStations: string | null;
   folderId: string | null;
+  createdAt: number | null;
 }
-const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines, tflStations, folderId';
+const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines, tflStations, folderId, createdAt';
 
 function rowToLibraryItem(r: LibraryRow): LibraryItem {
   const item: LibraryItem = { id: r.id, name: r.name, type: r.type, tags: r.tags ? JSON.parse(r.tags) : [] };
   if (r.folderId != null) item.folderId = r.folderId;
+  if (r.createdAt != null) item.createdAt = r.createdAt;
   if (r.size != null) item.size = r.size;
   if (r.duration != null) item.duration = r.duration;
   if (r.durationSec != null) item.durationSec = r.durationSec;
@@ -69,6 +71,7 @@ export function addLibraryItem(input: {
 }): LibraryItem {
   const id = uid('l');
   const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM library').get() as { n: number }).n;
+  const createdAt = Date.now();
   db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, ndiSourceName, tflModes, tflStations, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@ndiSourceName,@tflModes,@tflStations,@sortOrder,@createdAt)').run({
     id, name: input.name, type: input.type,
     size: input.size ?? null, duration: input.duration ?? null, thumb: input.thumb ?? null, text: input.text ?? null, pageCount: input.pageCount ?? null,
@@ -76,10 +79,10 @@ export function addLibraryItem(input: {
     tflModes: input.tflModes ? JSON.stringify(input.tflModes) : null,
     tflStations: input.tflStations ? JSON.stringify(input.tflStations) : null,
     sortOrder: nextOrder,
-    createdAt: Date.now(),
+    createdAt,
   });
   return {
-    id, name: input.name, type: input.type, tags: [],
+    id, name: input.name, type: input.type, tags: [], createdAt,
     ...(input.size && { size: input.size }), ...(input.duration && { duration: input.duration }),
     ...(input.thumb && { thumb: input.thumb }), ...(input.text && { text: input.text }), ...(input.pageCount != null && { pageCount: input.pageCount }),
     ...(input.fullUrl && { fullUrl: input.fullUrl }), ...(input.transcodeStatus && { transcodeStatus: input.transcodeStatus }),
@@ -170,11 +173,11 @@ export function setLibraryItemFolder(id: string, folderId: string | null): void 
 
 // ---- Folders ----
 
-interface FolderRow { id: string; name: string; parentId: string | null }
-const FOLDER_COLUMNS = 'id, name, parentId';
+interface FolderRow { id: string; name: string; parentId: string | null; createdAt: number | null }
+const FOLDER_COLUMNS = 'id, name, parentId, createdAt';
 
 function rowToFolder(r: FolderRow): Folder {
-  return { id: r.id, name: r.name, parentId: r.parentId };
+  return { id: r.id, name: r.name, parentId: r.parentId, ...(r.createdAt != null && { createdAt: r.createdAt }) };
 }
 
 export function listFolders(): Folder[] {
@@ -185,8 +188,9 @@ export function listFolders(): Folder[] {
 export function addFolder(name: string, parentId: string | null): Folder {
   const id = uid('f');
   const cleanName = name.trim() || 'New folder';
-  db.prepare('INSERT INTO folders (id, name, parentId) VALUES (?,?,?)').run(id, cleanName, parentId);
-  return { id, name: cleanName, parentId };
+  const createdAt = Date.now();
+  db.prepare('INSERT INTO folders (id, name, parentId, createdAt) VALUES (?,?,?,?)').run(id, cleanName, parentId, createdAt);
+  return { id, name: cleanName, parentId, createdAt };
 }
 
 export function renameFolder(id: string, name: string): void {
@@ -795,9 +799,11 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   // folders has no FK to enforce insert order (see db.ts's folderId migration
   // comment), so parents and children can be inserted in whatever order the
   // backup happens to list them in.
-  const insertFolder = db.prepare('INSERT INTO folders (id, name, parentId) VALUES (@id,@name,@parentId)');
+  const insertFolder = db.prepare('INSERT INTO folders (id, name, parentId, createdAt) VALUES (@id,@name,@parentId,@createdAt)');
   (backup.folders ?? []).forEach((folder) => {
-    insertFolder.run({ id: folder.id, name: folder.name, parentId: folder.parentId });
+    // Preserves the original creation date when the backup has one; a backup taken
+    // before this field existed has no truthful answer, so "now" is the best guess.
+    insertFolder.run({ id: folder.id, name: folder.name, parentId: folder.parentId, createdAt: folder.createdAt ?? Date.now() });
   });
 
   const insertLibrary = db.prepare(
@@ -814,7 +820,11 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       tflModes: item.tflModes ? JSON.stringify(item.tflModes) : null,
       tflStations: item.tflStations ? JSON.stringify(item.tflStations) : null,
       folderId: item.folderId ?? null,
-      sortOrder: i, createdAt: Date.now() + i, // +i keeps insertion order stable if createdAt is ever read as a tiebreaker
+      sortOrder: i,
+      // Preserves the original "added on" date when the backup has one; a backup
+      // taken before this field existed has no truthful answer, so this falls back
+      // to a synthetic one that at least keeps insertion order stable as a tiebreaker.
+      createdAt: item.createdAt ?? Date.now() + i,
     });
   });
 

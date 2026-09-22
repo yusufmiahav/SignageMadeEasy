@@ -1,43 +1,7 @@
 import { useState, type HTMLAttributes } from 'react';
 import { Icon } from './icons/Icon';
-import { TYPE_ICON, TYPE_LABEL } from './libraryItemMeta';
+import { TYPE_ICON, TYPE_LABEL, metaText, downloadUrlFor } from './libraryItemMeta';
 import type { LibraryItem } from '../api/types';
-
-// Announcements and clocks have no underlying file — nothing to download for
-// those. Video downloads the original upload (fullUrl), not whichever capped/full
-// copy a given screen happens to be playing, since "download the uploaded content"
-// means the source file, not a resolution-specific derivative of it.
-function downloadUrlFor(item: LibraryItem): string | undefined {
-  if (item.type === 'video') return item.fullUrl ?? item.thumb;
-  if (item.type === 'image' || item.type === 'pdf') return item.thumb;
-  return undefined;
-}
-
-// Kept in sync by hand with AddTflStatusDialog.tsx's MODES.
-const TFL_MODE_LABEL: Record<string, string> = {
-  tube: 'Underground', overground: 'Overground', dlr: 'DLR', 'elizabeth-line': 'Elizabeth line',
-};
-
-function metaText(item: LibraryItem): string {
-  switch (item.type) {
-    case 'image':
-      return item.size ?? '';
-    case 'video':
-      return [item.duration, item.size].filter(Boolean).join(' · ');
-    case 'pdf':
-      return item.size ?? '';
-    case 'announcement':
-      return item.text ?? '';
-    case 'clock':
-      return 'Live time of day';
-    case 'ndi':
-      return item.ndiSourceName ?? '';
-    case 'tfl-status':
-      return (item.tflModes ?? []).map((m) => TFL_MODE_LABEL[m] ?? m).join(', ');
-    case 'tfl-arrivals':
-      return (item.tflStations ?? []).map((s) => s.stopPointName).join(', ');
-  }
-}
 
 interface LibraryCardProps {
   item: LibraryItem;

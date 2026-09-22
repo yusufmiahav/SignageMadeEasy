@@ -16,6 +16,8 @@ export interface Folder {
   name: string;
   /** null = top level, directly under the library root. Nested arbitrarily deep via chained parentId links, same shape as a normal filesystem tree. */
   parentId: string | null;
+  /** ms since epoch. Optional — a folder created before this field existed was backfilled with the migration's own run time, and a restored backup from before this field existed has no better answer than "now" either. */
+  createdAt?: number;
 }
 
 export interface LibraryItem {
@@ -55,6 +57,8 @@ export interface LibraryItem {
   transcodeStatus?: 'processing' | 'done' | 'skipped' | 'failed';
   /** Free-form labels for search/filtering in the Library screen. Empty array, never undefined. */
   tags: string[];
+  /** ms since epoch — when this item was added. Optional since a restored backup from before this field existed has nothing truthful to report here. */
+  createdAt?: number;
 }
 
 export interface ScheduleEvent {

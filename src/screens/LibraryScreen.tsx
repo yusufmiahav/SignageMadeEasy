@@ -3,6 +3,8 @@ import { Icon } from '../components/icons/Icon';
 import { LibraryCard } from '../components/LibraryCard';
 import { FolderCard } from '../components/FolderCard';
 import { LibraryTreeView } from '../components/LibraryTreeView';
+import { FolderInspectorPanel } from '../components/FolderInspectorPanel';
+import { ItemInspectorPanel } from '../components/ItemInspectorPanel';
 import { LibraryAddChooserDialog } from '../components/dialogs/LibraryAddChooserDialog';
 import { LibraryMoreOptionsDialog } from '../components/dialogs/LibraryMoreOptionsDialog';
 import { NewFolderDialog } from '../components/dialogs/NewFolderDialog';
@@ -58,6 +60,12 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [moveItemTarget, setMoveItemTarget] = useState<LibraryItem | null>(null);
   const [moveFolderTarget, setMoveFolderTarget] = useState<Folder | null>(null);
+  // Which folder/item's inline split-panel inspector is open above the tree view —
+  // see FolderInspectorPanel/ItemInspectorPanel. Tree-view only; switching to grid
+  // view closes it, since the grid has its own per-folder navigation instead.
+  const [opened, setOpened] = useState<{ type: 'folder'; id: string } | { type: 'item'; id: string } | null>(null);
+  const openedFolder = opened?.type === 'folder' ? folders.find((f) => f.id === opened.id) : undefined;
+  const openedItem = opened?.type === 'item' ? library.find((i) => i.id === opened.id) : undefined;
   // Currently-hovered folder tile while dragging a library item over it — see
   // handlePointerMove below. Drives both the drop-target highlight and, on release,
   // whether the drag ends in a move-into-folder instead of the usual reorder.
@@ -338,7 +346,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
               className={`btn btn-icon${view === 'grid' ? ' btn-ghost' : ' btn-secondary'}`}
               aria-label="Grid view"
               title="Grid view — browse one folder at a time"
-              onClick={() => setView('grid')}
+              onClick={() => { setView('grid'); setOpened(null); }}
             >
               <Icon name="grid" size={14} />
             </button>
@@ -485,26 +493,62 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
       {library.length === 0 && folders.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>No content yet.</p>
       ) : view === 'tree' ? (
-        <LibraryTreeView
-          folders={folders}
-          items={treeItems}
-          draggedId={draggedIdRef.current}
-          dropFolderId={dropFolderId}
-          onDragStart={handleDragStart}
-          onPointerMove={handlePointerMove}
-          onDragEnd={handleDragEnd}
-          onRemoveItem={removeLibraryItem}
-          onRenameItem={renameLibraryItem}
-          onMoveItem={setMoveItemTarget}
-          onConfigureItem={onConfigureTflItem}
-          onPreviewItem={onPreviewContent}
-          onRenameFolder={renameFolder}
-          onDeleteFolder={(id) => void removeFolder(id)}
-          onMoveFolder={setMoveFolderTarget}
-          selectMode={selectMode}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleSelect}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {openedFolder && (
+            <FolderInspectorPanel
+              folder={openedFolder}
+              folders={folders}
+              items={library}
+              onClose={() => setOpened(null)}
+              onOpenFolder={(id) => setOpened({ type: 'folder', id })}
+              onOpenItem={(item) => setOpened({ type: 'item', id: item.id })}
+              onRenameFolder={renameFolder}
+              onDeleteFolder={(id) => void removeFolder(id)}
+              onMoveFolder={setMoveFolderTarget}
+              onRemoveItem={removeLibraryItem}
+              onRenameItem={renameLibraryItem}
+              onSetItemTags={setLibraryItemTags}
+              onConfigureItem={onConfigureTflItem}
+              onMoveItem={setMoveItemTarget}
+            />
+          )}
+          {openedItem && (
+            <ItemInspectorPanel
+              item={openedItem}
+              folders={folders}
+              onClose={() => setOpened(null)}
+              onOpenFolder={(id) => setOpened({ type: 'folder', id })}
+              onRemove={removeLibraryItem}
+              onRename={renameLibraryItem}
+              onSetTags={setLibraryItemTags}
+              onConfigure={onConfigureTflItem}
+              onMove={setMoveItemTarget}
+            />
+          )}
+          <LibraryTreeView
+            folders={folders}
+            items={treeItems}
+            draggedId={draggedIdRef.current}
+            dropFolderId={dropFolderId}
+            onDragStart={handleDragStart}
+            onPointerMove={handlePointerMove}
+            onDragEnd={handleDragEnd}
+            onRemoveItem={removeLibraryItem}
+            onRenameItem={renameLibraryItem}
+            onMoveItem={setMoveItemTarget}
+            onConfigureItem={onConfigureTflItem}
+            onPreviewItem={onPreviewContent}
+            onRenameFolder={renameFolder}
+            onDeleteFolder={(id) => void removeFolder(id)}
+            onMoveFolder={setMoveFolderTarget}
+            onOpenFolder={(id) => setOpened({ type: 'folder', id })}
+            onOpenItem={(item) => setOpened({ type: 'item', id: item.id })}
+            openedId={opened?.id}
+            selectMode={selectMode}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+          />
+        </div>
       ) : childFolders.length === 0 && filteredItems.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>
           {typeFilter !== 'all' || tagFilter || search.trim() ? 'No content matches your search/filters.' : 'This folder is empty.'}

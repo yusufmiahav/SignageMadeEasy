@@ -68,7 +68,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS folders (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    parentId TEXT
+    parentId TEXT,
+    createdAt INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS locations (
@@ -306,6 +307,17 @@ if (eventsGroupIdCol?.notnull === 1) {
       ALTER TABLE events_new RENAME TO events;
     `);
   })();
+}
+
+// Same reasoning, for hubs deployed before folders tracked when they were created —
+// there's no truthful answer for a pre-existing folder's actual creation time, so
+// every existing row is backfilled with this migration's own run time (a reasonable
+// "at least this old" answer) rather than left null; a brand-new folder gets a real
+// timestamp from store.ts's addFolder from here on.
+const folderCols = (db.prepare("PRAGMA table_info(folders)").all() as { name: string }[]).map((c) => c.name);
+if (!folderCols.includes('createdAt')) {
+  db.exec('ALTER TABLE folders ADD COLUMN createdAt INTEGER');
+  db.prepare('UPDATE folders SET createdAt = ? WHERE createdAt IS NULL').run(Date.now());
 }
 
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
