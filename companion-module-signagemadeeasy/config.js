@@ -23,7 +23,7 @@ function getConfigFields() {
 			id: 'port',
 			label: 'Hub port',
 			width: 3,
-			default: 3000,
+			default: 4000,
 			min: 1,
 			max: 65535,
 		},

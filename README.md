@@ -11,6 +11,7 @@ Three parts, each in its own top-level folder:
 | `src/` (repo root) | The control app — a React/Vite web UI, one responsive codebase from phone to desktop. |
 | `hub/` | The central server: a Node/Express/SQLite backend every Pi polls and the control app talks to. Docker-deployable, meant to run on an always-on box (e.g. a NAS) on the same LAN. |
 | `pi-player/` | What runs on each Raspberry Pi: a local agent/poller service plus the kiosk player page, provisioning script, and systemd units. |
+| `companion-module-signagemadeeasy/` | Optional: a [Bitfocus Companion](https://bitfocus.io/companion) module for triggering force-content/flash/blackout/announcements from a Stream Deck or button box — talks to the hub's REST API directly. See its own README. |
 
 ## Deploying the whole system
 
@@ -248,7 +249,7 @@ SIGNAGE_CONFIG_PATH=./dev-config.json PORT=8088 npm run dev
 - **Control app**: React + TypeScript + Vite. Plain CSS — the
   [Modernist](src/styles/modernist.css) design system (tokens + component classes)
   plus [app-level layout CSS](src/styles/app.css), no CSS framework. No router —
-  navigation is a single `tab` state (`home | library | schedule | settings`).
+  navigation is a single `tab` state (`home | library | schedule | announcements | settings`).
 - **Hub**: Node + Express + `better-sqlite3` + `multer`, single Docker image also
   serving the control app's static build.
 - **Pi player**: Node + Express agent/poller, plain HTML/CSS/JS kiosk page (no
@@ -281,4 +282,5 @@ src/          the control app (see table above)
   styles/     modernist.css (design system, unmodified) + app.css (layout)
 hub/          central server — see hub/README.md
 pi-player/    Raspberry Pi kiosk player — see pi-player/README.md
+companion-module-signagemadeeasy/   optional Bitfocus Companion module — see its own README.md
 ```

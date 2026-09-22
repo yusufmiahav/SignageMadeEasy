@@ -13,7 +13,7 @@ app uses — so it needs nothing extra installed or configured on the hub itself
 1. **Connection** — in Companion, add a new connection using this module, then set:
    - **Hub host / IP** — the machine running the hub. If Companion runs on the same
      machine as the hub (as this was built for), `127.0.0.1` works.
-   - **Hub port** — whatever the hub is listening on (`3000` by default; check your
+   - **Hub port** — whatever the hub is listening on (`4000` by default; check your
      hub's `docker-compose.yml`/start command if it's been changed).
    - **Hub PIN** — the same PIN the web control app's login screen uses (`Abc123`
      unless changed via the hub's `SIGNAGE_PIN` environment variable).

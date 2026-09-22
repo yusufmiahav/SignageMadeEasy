@@ -296,7 +296,7 @@ Mirrors `../src/api/client.ts`'s `SignageApiClient` method-for-method under `/ap
 
 - `GET /api/player/:deviceId/state` — resolved playlist (forced → event → default),
   each item as a full URL + duration, plus the announcement ticker state.
-- `POST /api/devices/:id/heartbeat` — liveness ping; a device goes `offline` after 45s
+- `POST /api/devices/:id/heartbeat` — liveness ping; a device goes `offline` after 12s
   without one.
 
 ## Local development
