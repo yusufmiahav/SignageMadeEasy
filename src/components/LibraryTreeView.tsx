@@ -17,6 +17,25 @@ interface RowHandlers {
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
   onMoveFolder: (folder: Folder) => void;
+  /** Same bulk-select mechanism as the grid view's cards — a folder's own id and an
+      item's own id share one selection set, since they're independently prefixed
+      ('f'/'l' — see hub/src/store.ts's uid()) and never collide. */
+  selectMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+}
+
+function SelectCheckbox({ id, name, h }: { id: string; name: string; h: RowHandlers }) {
+  if (!h.selectMode) return null;
+  return (
+    <input
+      type="checkbox"
+      aria-label={`Select ${name}`}
+      checked={!!h.selectedIds?.has(id)}
+      onChange={() => h.onToggleSelect?.(id)}
+      style={{ flexShrink: 0 }}
+    />
+  );
 }
 
 function childFoldersOf(folders: Folder[], parentId: string | null): Folder[] {
@@ -43,6 +62,7 @@ function ItemRow({ item, depth, h }: { item: LibraryItem; depth: number; h: RowH
         borderBottom: '1px solid var(--color-divider)', opacity: h.draggedId === item.id ? 0.4 : 1,
       }}
     >
+      <SelectCheckbox id={item.id} name={item.name} h={h} />
       <span
         aria-label="Drag to move"
         title="Drag onto a folder to move it there"
@@ -127,6 +147,7 @@ function FolderRow({ folder, depth, folders, items, h }: { folder: Folder; depth
           color: isDropTarget ? 'var(--color-bg)' : undefined,
         }}
       >
+        <SelectCheckbox id={folder.id} name={folder.name} h={h} />
         <button
           type="button"
           className="btn btn-ghost btn-icon"
@@ -200,7 +221,7 @@ interface LibraryTreeViewProps extends RowHandlers {
  * expandable outline (like a file-tree browser) instead of navigating in and out of
  * folders one at a time. Built for fast reorganizing: every folder is a live drop
  * target for dragging an item onto, and every row carries the same move/rename/
- * delete actions the grid view's cards have, just inline instead of on a tile.
+ * delete/select actions the grid view's cards have, just inline instead of on a tile.
  */
 export function LibraryTreeView({ folders, items, ...handlers }: LibraryTreeViewProps) {
   const rootFolders = childFoldersOf(folders, null);

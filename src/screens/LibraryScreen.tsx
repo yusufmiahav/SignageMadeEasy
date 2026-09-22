@@ -72,6 +72,10 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
     .sort((a, b) => a.name.localeCompare(b.name));
   const itemCountInFolder = (folderId: string) => library.filter((item) => (item.folderId ?? null) === folderId).length;
 
+  // A folder's own id and a library item's own id can share this one selection set —
+  // they're independently prefixed ('f'/'l', see hub/src/store.ts's uid()) and never
+  // collide, so bulk delete/move below just checks which array an id actually
+  // belongs to rather than needing two separate selection sets.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) => {
@@ -87,17 +91,37 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
     setSelectedIds(new Set());
   };
   const deleteSelected = async () => {
-    await removeLibraryItems([...selectedIds]);
+    const folderIds = folders.filter((f) => selectedIds.has(f.id)).map((f) => f.id);
+    const itemIds = library.filter((i) => selectedIds.has(i.id)).map((i) => i.id);
+    await Promise.all([
+      itemIds.length > 0 ? removeLibraryItems(itemIds) : Promise.resolve(),
+      ...folderIds.map((id) => removeFolder(id)),
+    ]);
     setSelectedIds(new Set());
     setSelectMode(false);
+    // Overrides whichever of removeLibraryItems'/removeFolder's own toasts happened
+    // to fire last above — a mixed selection needs one summary, not just one of them.
+    if (folderIds.length > 0 && itemIds.length > 0) {
+      showToast(`${itemIds.length} item${itemIds.length === 1 ? '' : 's'} deleted, ${folderIds.length} folder${folderIds.length === 1 ? '' : 's'} removed (contents moved up a level)`);
+    }
   };
   const [showMoveSelected, setShowMoveSelected] = useState(false);
   const moveSelected = async (folderId: string | null) => {
+    const folderIds = folders.filter((f) => selectedIds.has(f.id)).map((f) => f.id);
+    const itemIds = library.filter((i) => selectedIds.has(i.id)).map((i) => i.id);
     const count = selectedIds.size;
-    await Promise.all([...selectedIds].map((id) => setLibraryItemFolder(id, folderId)));
+    const results = await Promise.allSettled([
+      ...itemIds.map((id) => setLibraryItemFolder(id, folderId)),
+      ...folderIds.map((id) => moveFolder(id, folderId)),
+    ]);
+    const failed = results.filter((r) => r.status === 'rejected').length;
     setSelectedIds(new Set());
     setSelectMode(false);
-    showToast(`${count} item${count === 1 ? '' : 's'} moved`);
+    if (failed > 0) {
+      showToast(`${count - failed} moved, ${failed} couldn't be (can't move a folder into itself or its own subfolder)`);
+    } else {
+      showToast(`${count} moved`);
+    }
   };
 
   // Tracks the raw upload transfer for each in-flight file (not the hub's own
@@ -293,7 +317,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
           <div className="seg" style={{ padding: 0 }}>
             <button
               type="button"
-              className={`btn btn-icon${view === 'grid' ? ' btn-secondary' : ' btn-ghost'}`}
+              className={`btn btn-icon${view === 'grid' ? ' btn-ghost' : ' btn-secondary'}`}
               aria-label="Grid view"
               title="Grid view — browse one folder at a time"
               onClick={() => setView('grid')}
@@ -302,15 +326,15 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
             </button>
             <button
               type="button"
-              className={`btn btn-icon${view === 'tree' ? ' btn-secondary' : ' btn-ghost'}`}
+              className={`btn btn-icon${view === 'tree' ? ' btn-ghost' : ' btn-secondary'}`}
               aria-label="Tree view"
               title="Tree view — see the whole folder hierarchy at once"
-              onClick={() => { setView('tree'); exitSelectMode(); }}
+              onClick={() => setView('tree')}
             >
               <Icon name="list" size={14} />
             </button>
           </div>
-          {view === 'grid' && (selectMode ? (
+          {(selectMode ? (
             <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Cancel select" onClick={exitSelectMode}>
               <Icon name="x" size={15} />
             </button>
@@ -319,11 +343,9 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
               <Icon name="check" size={15} />
             </button>
           ))}
-          {view === 'grid' && (
-            <button type="button" className="btn btn-secondary desktop-only" onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}>
-              {selectMode ? 'Cancel select' : 'Select'}
-            </button>
-          )}
+          <button type="button" className="btn btn-secondary desktop-only" onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}>
+            {selectMode ? 'Cancel select' : 'Select'}
+          </button>
         </div>
       </div>
 
@@ -390,7 +412,15 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
             type="button"
             className="btn btn-ghost"
             style={{ fontSize: 12 }}
-            onClick={() => setSelectedIds(new Set(filteredItems.map((i) => i.id)))}
+            onClick={() =>
+              setSelectedIds(
+                new Set(
+                  view === 'tree'
+                    ? [...folders.map((f) => f.id), ...treeItems.map((i) => i.id)]
+                    : [...childFolders.map((f) => f.id), ...filteredItems.map((i) => i.id)],
+                ),
+              )
+            }
           >
             Select all
           </button>
@@ -453,6 +483,9 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
           onRenameFolder={renameFolder}
           onDeleteFolder={(id) => void removeFolder(id)}
           onMoveFolder={setMoveFolderTarget}
+          selectMode={selectMode}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
         />
       ) : childFolders.length === 0 && filteredItems.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>
@@ -470,6 +503,9 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
               onRename={renameFolder}
               onDelete={(id) => void removeFolder(id)}
               onMove={setMoveFolderTarget}
+              selectMode={selectMode}
+              selected={selectedIds.has(folder.id)}
+              onToggleSelect={toggleSelect}
             />
           ))}
           {filteredItems.map((item) => (
@@ -518,7 +554,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
       {showMoveSelected && (
         <MoveToFolderDialog
           folders={folders}
-          title={`Move ${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'}`}
+          title={`Move ${selectedIds.size} selected`}
           currentFolderId={currentFolderId}
           onConfirm={(folderId) => void moveSelected(folderId)}
           onClose={() => setShowMoveSelected(false)}
