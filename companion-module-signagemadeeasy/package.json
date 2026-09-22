@@ -1,0 +1,13 @@
+{
+  "name": "companion-module-signagemadeeasy",
+  "version": "1.0.0",
+  "main": "main.js",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "check": "node --check main.js && node --check api.js && node --check actions.js && node --check feedbacks.js && node --check variables.js && node --check config.js && node --check upgrades.js"
+  },
+  "dependencies": {
+    "@companion-module/base": "^1.11.2"
+  }
+}

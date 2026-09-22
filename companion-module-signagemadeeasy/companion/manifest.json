@@ -1,0 +1,21 @@
+{
+  "id": "signagemadeeasy",
+  "name": "SignageMadeEasy",
+  "shortname": "signagemadeeasy",
+  "description": "Control a SignageMadeEasy hub on your LAN: force content, flash a screen, blackout, and announcements for one screen, one group, or every screen at once.",
+  "version": "1.0.0",
+  "license": "MIT",
+  "repository": "",
+  "bugs": "",
+  "maintainers": [],
+  "runtime": {
+    "type": "node18",
+    "api": "nodejs-ipc",
+    "apiVersion": "1.1.0",
+    "entrypoint": "main.js"
+  },
+  "manufacturer": "SignageMadeEasy",
+  "products": ["Hub"],
+  "keywords": ["signage", "digital signage", "display", "screen"],
+  "legacyIds": []
+}
