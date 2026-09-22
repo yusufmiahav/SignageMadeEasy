@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type HTMLAttributes } from 'react';
 import { Icon } from './icons/Icon';
 import type { Folder } from '../api/types';
 
@@ -10,8 +10,12 @@ interface FolderCardProps {
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
   onMove: (folder: Folder) => void;
-  /** True while a dragged library item is currently hovering this tile — see LibraryScreen.tsx's pointer-drag handling. */
+  /** True while a dragged library item (or another folder) is currently hovering this tile — see LibraryScreen.tsx's pointer-drag handling. */
   isDropTarget?: boolean;
+  /** True while this folder itself is the one being dragged. */
+  isDragging?: boolean;
+  /** Spread onto the grip icon, same pattern as LibraryCard's — dragging this folder onto another tile files it there (moveFolder), the same cycle guard as the dialog-based move applies. Omitted (no grip shown) wherever dragging doesn't make sense, e.g. select mode. */
+  dragHandleProps?: HTMLAttributes<HTMLSpanElement>;
   selectMode?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
@@ -21,7 +25,7 @@ interface FolderCardProps {
 // together in one visually consistent grid rather than looking like a bolted-on
 // second UI. data-folder-id is the drop-target hook the Library screen's existing
 // pointer-based drag system checks for (see its handlePointerMove).
-export function FolderCard({ folder, itemCount, onOpen, onRename, onDelete, onMove, isDropTarget, selectMode, selected, onToggleSelect }: FolderCardProps) {
+export function FolderCard({ folder, itemCount, onOpen, onRename, onDelete, onMove, isDropTarget, isDragging, dragHandleProps, selectMode, selected, onToggleSelect }: FolderCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(folder.name);
 
@@ -38,7 +42,7 @@ export function FolderCard({ folder, itemCount, onOpen, onRename, onDelete, onMo
     <div
       className="card"
       data-folder-id={folder.id}
-      style={{ gap: 8, padding: 8, outline: isDropTarget || selected ? '2px solid var(--color-accent)' : 'none' }}
+      style={{ gap: 8, padding: 8, opacity: isDragging ? 0.4 : 1, outline: isDropTarget || selected ? '2px solid var(--color-accent)' : 'none' }}
     >
       <div className="thumb-box" style={{ cursor: 'pointer' }} onClick={() => onOpen(folder.id)}>
         {selectMode && (
@@ -95,6 +99,16 @@ export function FolderCard({ folder, itemCount, onOpen, onRename, onDelete, onMo
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {dragHandleProps && (
+            <span
+              {...dragHandleProps}
+              aria-label={`Drag ${folder.name}`}
+              title="Drag onto another folder to move it there"
+              style={{ display: 'flex', flexShrink: 0, opacity: 0.4, cursor: 'grab', ...dragHandleProps.style }}
+            >
+              <Icon name="gripVertical" size={12} />
+            </span>
+          )}
           <div
             style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
             onClick={() => onOpen(folder.id)}

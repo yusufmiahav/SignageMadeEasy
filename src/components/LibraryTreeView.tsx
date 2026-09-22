@@ -121,9 +121,10 @@ function ItemRow({ item, depth, h }: { item: LibraryItem; depth: number; h: RowH
 
 // Expanded by default at the top level (so opening the tree view immediately shows
 // something useful), collapsed below that — deep hierarchies don't dump every item
-// into view at once. Doubles as a drop target for dragging an item (or another
-// folder move, via the move button below) into it — data-folder-id is the same hook
-// LibraryScreen.tsx's pointer-drag handling already looks for in the grid view.
+// into view at once. Doubles as a drop target for dragging an item OR another folder
+// into it (via its own grip handle, or the move button for a dialog-based move
+// instead) — data-folder-id is the same hook LibraryScreen.tsx's pointer-drag
+// handling already looks for in the grid view.
 function FolderRow({ folder, depth, folders, items, h }: { folder: Folder; depth: number; folders: Folder[]; items: LibraryItem[]; h: RowHandlers }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const [editing, setEditing] = useState(false);
@@ -144,10 +145,24 @@ function FolderRow({ folder, depth, folders, items, h }: { folder: Folder; depth
         style={{
           display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 + depth * 18, padding: '6px 4px',
           borderRadius: 6, background: isDropTarget ? 'var(--color-accent)' : undefined,
-          color: isDropTarget ? 'var(--color-bg)' : undefined,
+          color: isDropTarget ? 'var(--color-bg)' : undefined, opacity: h.draggedId === folder.id ? 0.4 : 1,
         }}
       >
         <SelectCheckbox id={folder.id} name={folder.name} h={h} />
+        <span
+          aria-label={`Drag ${folder.name}`}
+          title="Drag onto another folder to move it there"
+          style={{ display: 'flex', flexShrink: 0, opacity: 0.4, cursor: 'grab', touchAction: 'none' }}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            h.onDragStart(folder.id);
+          }}
+          onPointerMove={h.onPointerMove}
+          onPointerUp={h.onDragEnd}
+          onPointerCancel={h.onDragEnd}
+        >
+          <Icon name="gripVertical" size={12} />
+        </span>
         <button
           type="button"
           className="btn btn-ghost btn-icon"

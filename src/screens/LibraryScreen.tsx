@@ -195,6 +195,14 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
 
   const handleDragStart = (id: string) => {
     draggedIdRef.current = id;
+    // Folders have no persisted order of their own (always shown alphabetically) —
+    // dragging one only ever means "file it under whatever folder it's dropped on,"
+    // never a reorder, so there's no item-order state to seed for one.
+    if (folders.some((f) => f.id === id)) {
+      dragOrderRef.current = null;
+      setDragOrder(null);
+      return;
+    }
     const initial = library.map((item) => item.id);
     dragOrderRef.current = initial;
     setDragOrder(initial);
@@ -217,16 +225,24 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   const handleDragEnd = () => {
     const draggedId = draggedIdRef.current;
     draggedIdRef.current = null;
-    // Dropped on a folder tile — files the item there instead of reordering; the
-    // in-progress reorder state (which only ever reflected a preview, not a
-    // persisted change) is simply discarded.
-    if (dropFolderId && draggedId) {
-      void setLibraryItemFolder(draggedId, dropFolderId);
+    // Dropped on a folder tile (and not on itself) — files the dragged thing there
+    // instead of reordering; the in-progress reorder state (which only ever
+    // reflected a preview, not a persisted change) is simply discarded. A dragged
+    // folder moves via moveFolder instead of setLibraryItemFolder — same cycle guard
+    // (can't nest a folder inside its own subtree) as the dialog-based move, just
+    // caught here instead of filtered out of a picker list ahead of time.
+    if (dropFolderId && draggedId && dropFolderId !== draggedId) {
+      if (folders.some((f) => f.id === draggedId)) {
+        void moveFolder(draggedId, dropFolderId).catch((err) => showToast(err instanceof Error ? err.message : 'Move failed'));
+      } else {
+        void setLibraryItemFolder(draggedId, dropFolderId);
+      }
       setDropFolderId(null);
       dragOrderRef.current = null;
       setDragOrder(null);
       return;
     }
+    setDropFolderId(null);
     if (dragOrderRef.current) void reorderLibrary(dragOrderRef.current);
     dragOrderRef.current = null;
     setDragOrder(null);
@@ -237,7 +253,9 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
     e.preventDefault();
     const el = document.elementFromPoint(e.clientX, e.clientY);
     const folderId = (el?.closest('[data-folder-id]') as HTMLElement | null)?.dataset.folderId;
-    if (folderId) {
+    // Excludes a dragged folder hovering over its own tile — that's not a valid
+    // drop (a folder can't be filed inside itself), so it shouldn't highlight as one.
+    if (folderId && folderId !== draggedIdRef.current) {
       setDropFolderId(folderId);
       return;
     }
@@ -503,9 +521,20 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
               onRename={renameFolder}
               onDelete={(id) => void removeFolder(id)}
               onMove={setMoveFolderTarget}
+              isDragging={draggedIdRef.current === folder.id}
               selectMode={selectMode}
               selected={selectedIds.has(folder.id)}
               onToggleSelect={toggleSelect}
+              dragHandleProps={{
+                onPointerDown: (e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  handleDragStart(folder.id);
+                },
+                onPointerMove: handlePointerMove,
+                onPointerUp: handleDragEnd,
+                onPointerCancel: handleDragEnd,
+                style: { touchAction: 'none' },
+              }}
             />
           ))}
           {filteredItems.map((item) => (
