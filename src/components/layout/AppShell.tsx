@@ -2,14 +2,13 @@ import { useState, type ReactNode } from 'react';
 import { Icon, type IconName } from '../icons/Icon';
 import { HelpDialog } from '../dialogs/HelpDialog';
 
-export type Tab = 'home' | 'library' | 'schedule' | 'announcements' | 'companion' | 'settings';
+export type Tab = 'home' | 'library' | 'schedule' | 'announcements' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'library', label: 'Library', icon: 'image' },
   { id: 'schedule', label: 'Schedule', icon: 'calendar' },
   { id: 'announcements', label: 'Announcements', icon: 'messageCircle' },
-  { id: 'companion', label: 'Companion', icon: 'zap' },
   { id: 'settings', label: 'Settings', icon: 'sliders' },
 ];
 
