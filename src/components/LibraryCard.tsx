@@ -20,9 +20,11 @@ interface LibraryCardProps {
   onMove?: (item: LibraryItem) => void;
   /** Every item type — opens ContentPreviewDialog for a quick look without needing a paired screen. */
   onPreview?: (item: LibraryItem) => void;
+  /** Clicking the item's own NAME (not the eye/preview icon) opens the inline split-panel inspector above the grid — same gesture as the tree view's row names. Omitted wherever that doesn't apply. */
+  onOpen?: (item: LibraryItem) => void;
 }
 
-export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandleProps, isDragging, selectMode, selected, onToggleSelect, onConfigure, onMove, onPreview }: LibraryCardProps) {
+export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandleProps, isDragging, selectMode, selected, onToggleSelect, onConfigure, onMove, onPreview, onOpen }: LibraryCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [editingTags, setEditingTags] = useState(false);
@@ -126,11 +128,6 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
         <button type="button" className="btn btn-ghost btn-icon thumb-remove" aria-label="Remove" onClick={() => onRemove(item.id)}>
           <Icon name="x" size={12} />
         </button>
-        {onPreview && (
-          <button type="button" className="btn btn-ghost btn-icon thumb-preview" aria-label="Preview" title="Preview" onClick={() => onPreview(item)}>
-            <Icon name="eye" size={12} />
-          </button>
-        )}
         {(item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals') && onConfigure && (
           <button type="button" className="btn btn-ghost btn-icon thumb-configure" aria-label="Edit options" title="Change the source/lines/modes this shows" onClick={() => onConfigure(item)}>
             <Icon name="sliders" size={12} />
@@ -139,6 +136,11 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
         {onMove && (
           <button type="button" className="btn btn-ghost btn-icon thumb-move" aria-label="Move to folder" title="Move to another folder" onClick={() => onMove(item)}>
             <Icon name="move" size={12} />
+          </button>
+        )}
+        {onPreview && (
+          <button type="button" className="btn btn-ghost btn-icon thumb-preview" aria-label="Preview" title="Preview" onClick={() => onPreview(item)}>
+            <Icon name="eye" size={12} />
           </button>
         )}
         {downloadUrl && (
@@ -179,7 +181,17 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
           >
             <Icon name="gripVertical" size={12} />
           </span>
-          <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div
+            role={onOpen ? 'button' : undefined}
+            tabIndex={onOpen ? 0 : undefined}
+            title={onOpen ? 'Open preview and options' : undefined}
+            style={{
+              flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden',
+              textOverflow: 'ellipsis', cursor: onOpen ? 'pointer' : undefined,
+            }}
+            onClick={onOpen ? () => onOpen(item) : undefined}
+            onKeyDown={onOpen ? (e) => e.key === 'Enter' && onOpen(item) : undefined}
+          >
             {item.name}
           </div>
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={startEdit}>

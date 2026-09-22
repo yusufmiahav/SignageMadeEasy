@@ -549,64 +549,89 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
             onToggleSelect={toggleSelect}
           />
         </div>
-      ) : childFolders.length === 0 && filteredItems.length === 0 ? (
-        <p className="text-muted" style={{ margin: 0 }}>
-          {typeFilter !== 'all' || tagFilter || search.trim() ? 'No content matches your search/filters.' : 'This folder is empty.'}
-        </p>
       ) : (
-        <div className="library-grid">
-          {childFolders.map((folder) => (
-            <FolderCard
-              key={folder.id}
-              folder={folder}
-              itemCount={itemCountInFolder(folder.id)}
-              isDropTarget={dropFolderId === folder.id}
-              onOpen={setCurrentFolderId}
-              onRename={renameFolder}
-              onDelete={(id) => void removeFolder(id)}
-              onMove={setMoveFolderTarget}
-              isDragging={draggedIdRef.current === folder.id}
-              selectMode={selectMode}
-              selected={selectedIds.has(folder.id)}
-              onToggleSelect={toggleSelect}
-              dragHandleProps={{
-                onPointerDown: (e) => {
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  handleDragStart(folder.id);
-                },
-                onPointerMove: handlePointerMove,
-                onPointerUp: handleDragEnd,
-                onPointerCancel: handleDragEnd,
-                style: { touchAction: 'none' },
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {openedItem && (
+            <ItemInspectorPanel
+              item={openedItem}
+              folders={folders}
+              onClose={() => setOpened(null)}
+              // Grid view keeps folder navigation as its own breadcrumb/currentFolderId
+              // mechanism (unlike tree view's inline FolderInspectorPanel) — the item
+              // panel's own folder link just jumps there and closes itself, same as
+              // clicking a breadcrumb link normally would.
+              onOpenFolder={(id) => {
+                setOpened(null);
+                setCurrentFolderId(id);
               }}
-            />
-          ))}
-          {filteredItems.map((item) => (
-            <LibraryCard
-              key={item.id}
-              item={item}
               onRemove={removeLibraryItem}
               onRename={renameLibraryItem}
               onSetTags={setLibraryItemTags}
               onConfigure={onConfigureTflItem}
-              onMove={folders.length > 0 ? setMoveItemTarget : undefined}
-              onPreview={onPreviewContent}
-              isDragging={draggedIdRef.current === item.id}
-              selectMode={selectMode}
-              selected={selectedIds.has(item.id)}
-              onToggleSelect={toggleSelect}
-              dragHandleProps={{
-                onPointerDown: (e) => {
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  handleDragStart(item.id);
-                },
-                onPointerMove: handlePointerMove,
-                onPointerUp: handleDragEnd,
-                onPointerCancel: handleDragEnd,
-                style: { touchAction: 'none' },
-              }}
+              onMove={setMoveItemTarget}
             />
-          ))}
+          )}
+          {childFolders.length === 0 && filteredItems.length === 0 ? (
+            <p className="text-muted" style={{ margin: 0 }}>
+              {typeFilter !== 'all' || tagFilter || search.trim() ? 'No content matches your search/filters.' : 'This folder is empty.'}
+            </p>
+          ) : (
+            <div className="library-grid">
+              {childFolders.map((folder) => (
+                <FolderCard
+                  key={folder.id}
+                  folder={folder}
+                  itemCount={itemCountInFolder(folder.id)}
+                  isDropTarget={dropFolderId === folder.id}
+                  onOpen={setCurrentFolderId}
+                  onRename={renameFolder}
+                  onDelete={(id) => void removeFolder(id)}
+                  onMove={setMoveFolderTarget}
+                  isDragging={draggedIdRef.current === folder.id}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(folder.id)}
+                  onToggleSelect={toggleSelect}
+                  dragHandleProps={{
+                    onPointerDown: (e) => {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      handleDragStart(folder.id);
+                    },
+                    onPointerMove: handlePointerMove,
+                    onPointerUp: handleDragEnd,
+                    onPointerCancel: handleDragEnd,
+                    style: { touchAction: 'none' },
+                  }}
+                />
+              ))}
+              {filteredItems.map((item) => (
+                <LibraryCard
+                  key={item.id}
+                  item={item}
+                  onRemove={removeLibraryItem}
+                  onRename={renameLibraryItem}
+                  onSetTags={setLibraryItemTags}
+                  onConfigure={onConfigureTflItem}
+                  onMove={folders.length > 0 ? setMoveItemTarget : undefined}
+                  onPreview={onPreviewContent}
+                  onOpen={(i) => setOpened({ type: 'item', id: i.id })}
+                  isDragging={draggedIdRef.current === item.id}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(item.id)}
+                  onToggleSelect={toggleSelect}
+                  dragHandleProps={{
+                    onPointerDown: (e) => {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      handleDragStart(item.id);
+                    },
+                    onPointerMove: handlePointerMove,
+                    onPointerUp: handleDragEnd,
+                    onPointerCancel: handleDragEnd,
+                    style: { touchAction: 'none' },
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
       {showNewFolder && (
