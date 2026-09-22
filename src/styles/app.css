@@ -438,24 +438,21 @@ body {
   background: color-mix(in srgb, var(--color-bg) 65%, transparent);
 }
 
-/* — move-to-folder badge on thumbnails — sits just right of .thumb-configure so the
-   two never overlap on the items (ndi/tfl-status/tfl-arrivals) that show both. */
-.thumb-move {
+/* — bottom-left action cluster on library card thumbnails (configure/preview/move) —
+   a flex row flush in the corner so whichever buttons actually render (configure only
+   shows for ndi/tfl-status/tfl-arrivals) pack together with no gap, rather than each
+   sitting at its own hardcoded offset and leaving a visible gap when an earlier slot
+   is empty. The top-right corner is left for the single destructive "remove" action
+   alone. */
+.thumb-cluster-bl {
   position: absolute;
   bottom: 2px;
-  left: 28px;
-  width: 24px;
-  height: 24px;
-  background: color-mix(in srgb, var(--color-bg) 65%, transparent);
+  left: 2px;
+  display: flex;
+  gap: 4px;
 }
 
-/* — preview badge on thumbnails — sits just right of .thumb-move, so the secondary
-   actions read as one bottom-left cluster and the top-right corner is left for the
-   single destructive "remove" action alone. */
-.thumb-preview {
-  position: absolute;
-  bottom: 2px;
-  left: 54px;
+.thumb-action {
   width: 24px;
   height: 24px;
   background: color-mix(in srgb, var(--color-bg) 65%, transparent);

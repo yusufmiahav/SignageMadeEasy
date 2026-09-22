@@ -128,21 +128,23 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
         <button type="button" className="btn btn-ghost btn-icon thumb-remove" aria-label="Remove" onClick={() => onRemove(item.id)}>
           <Icon name="x" size={12} />
         </button>
-        {(item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals') && onConfigure && (
-          <button type="button" className="btn btn-ghost btn-icon thumb-configure" aria-label="Edit options" title="Change the source/lines/modes this shows" onClick={() => onConfigure(item)}>
-            <Icon name="sliders" size={12} />
-          </button>
-        )}
-        {onMove && (
-          <button type="button" className="btn btn-ghost btn-icon thumb-move" aria-label="Move to folder" title="Move to another folder" onClick={() => onMove(item)}>
-            <Icon name="move" size={12} />
-          </button>
-        )}
-        {onPreview && (
-          <button type="button" className="btn btn-ghost btn-icon thumb-preview" aria-label="Preview" title="Preview" onClick={() => onPreview(item)}>
-            <Icon name="eye" size={12} />
-          </button>
-        )}
+        <div className="thumb-cluster-bl">
+          {(item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals') && onConfigure && (
+            <button type="button" className="btn btn-ghost btn-icon thumb-action" aria-label="Edit options" title="Change the source/lines/modes this shows" onClick={() => onConfigure(item)}>
+              <Icon name="sliders" size={12} />
+            </button>
+          )}
+          {onPreview && (
+            <button type="button" className="btn btn-ghost btn-icon thumb-action" aria-label="Preview" title="Preview" onClick={() => onPreview(item)}>
+              <Icon name="eye" size={12} />
+            </button>
+          )}
+          {onMove && (
+            <button type="button" className="btn btn-ghost btn-icon thumb-action" aria-label="Move to folder" title="Move to another folder" onClick={() => onMove(item)}>
+              <Icon name="move" size={12} />
+            </button>
+          )}
+        </div>
         {downloadUrl && (
           <a
             className="btn btn-ghost btn-icon thumb-download"
