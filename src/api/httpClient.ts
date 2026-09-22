@@ -96,6 +96,7 @@ export const httpClient: SignageApiClient = {
   addLocation: (name) => request<Location>('/api/locations', { method: 'POST', ...json({ name }) }),
   renameLocation: (id, name) => request<void>(`/api/locations/${id}`, { method: 'PATCH', ...json({ name }) }),
   deleteLocation: (id) => request<void>(`/api/locations/${id}`, { method: 'DELETE' }),
+  reorderLocations: (ids) => request<void>('/api/locations/reorder', { method: 'PUT', ...json({ ids }) }),
 
   // Groups
   listGroups: () => request<Group[]>('/api/groups'),

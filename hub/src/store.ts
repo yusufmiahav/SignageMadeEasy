@@ -257,6 +257,14 @@ export function renameLocation(id: string, name: string): void {
   db.prepare('UPDATE locations SET name = ? WHERE id = ?').run(name.trim(), id);
 }
 
+/** Persists a full drag-and-drop/up-down reorder of locations — mirrors reorderGroups. */
+export const reorderLocations = db.transaction((ids: string[]): void => {
+  const setOrder = db.prepare('UPDATE locations SET sortOrder = ? WHERE id = ?');
+  ids.forEach((id, i) => setOrder.run(i, id));
+  const rest = db.prepare('SELECT id FROM locations WHERE id NOT IN (SELECT value FROM json_each(?)) ORDER BY sortOrder ASC').all(JSON.stringify(ids)) as { id: string }[];
+  rest.forEach((r, i) => setOrder.run(ids.length + i, r.id));
+});
+
 /**
  * Deletes a Location WITHOUT touching anything filed under it — every Group and
  * standalone screen that referenced it just becomes un-filed (locationId back to

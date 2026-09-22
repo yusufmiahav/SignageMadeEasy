@@ -248,6 +248,11 @@ export function useAppState() {
     await Promise.all([refreshLocations(), refreshGroups(), refreshDevices()]);
   }, [refreshLocations, refreshGroups, refreshDevices]);
 
+  const reorderLocations = useCallback(async (ids: string[]) => {
+    await api.reorderLocations(ids);
+    await refreshLocations();
+  }, [refreshLocations]);
+
   // ---- Groups ----
   const addGroup = useCallback(async (name: string, locationId?: string | null) => {
     const group = await api.addGroup(name, locationId);
@@ -545,6 +550,7 @@ export function useAppState() {
     addLocation,
     renameLocation,
     deleteLocation,
+    reorderLocations,
     addGroup,
     renameGroup,
     setGroupLocation,

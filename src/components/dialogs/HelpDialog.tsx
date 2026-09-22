@@ -94,7 +94,7 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
         </Section>
 
         <Section icon="sliders" title="Settings">
-          <IconRow icon="mapPin" label="Locations card">Rename or delete a Location (deleting one never deletes what's filed under it, just un-files it), or add a new one.</IconRow>
+          <IconRow icon="mapPin" label="Locations card">Rename, reorder (up/down arrows), or delete a Location (deleting one never deletes what's filed under it, just un-files it), or add a new one.</IconRow>
           <IconRow icon="check" label="Select screens">Turns on bulk actions: move several screens to one group at once, or file several under one Location at once.</IconRow>
           <IconRow icon="mapPin" label="Location dropdown on a group/screen row">Files or refiles it under a Location without opening a separate dialog.</IconRow>
           <IconRow icon="trash" label="Deleting a group">Only works once it has no screens left in it — move or remove those first.</IconRow>

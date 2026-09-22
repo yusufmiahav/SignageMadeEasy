@@ -66,6 +66,8 @@ export interface SignageApiClient {
   renameLocation(id: string, name: string): Promise<void>;
   /** Never deletes anything filed under it — any Group/screen that referenced it just becomes un-filed (locationId back to null). */
   deleteLocation(id: string): Promise<void>;
+  /** Persists a full reorder — `ids` is the complete new display order; any omitted id keeps its relative order, appended after the given ones. */
+  reorderLocations(ids: string[]): Promise<void>;
 
   // Groups — every screen in a Group shows identical content (shared playlist/schedule).
   listGroups(): Promise<Group[]>;

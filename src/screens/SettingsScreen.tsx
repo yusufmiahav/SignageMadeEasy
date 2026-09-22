@@ -35,7 +35,7 @@ export function SettingsScreen({
 }: SettingsScreenProps) {
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation,
-    reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, showToast, exportBackup, importBackup,
+    reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
     safetyHold, setSafetyHold, flashDevice,
   } = app;
   const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' | 'location' } | null>(null);
@@ -56,6 +56,13 @@ export function SettingsScreen({
     const location = await addLocation(newLocationName);
     showToast(`Added ${location.name}`);
     setNewLocationName('');
+  };
+  const moveLocation = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= locations.length) return;
+    const reordered = [...locations];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    void reorderLocations(reordered.map((l) => l.id));
   };
 
   // Batch-move: select screens across any group (or the fully-unassigned list) and
@@ -427,7 +434,7 @@ export function SettingsScreen({
           Building". A location has no content of its own: file groups and/or standalone screens
           under it below.
         </p>
-        {locations.map((location) => {
+        {locations.map((location, index) => {
           const isEditing = editing?.kind === 'location' && editing.id === location.id;
           const count = groups.filter((g) => g.locationId === location.id).length + devices.filter((d) => !d.groupId && d.locationId === location.id).length;
           return (
@@ -451,6 +458,24 @@ export function SettingsScreen({
                 </button>
               ) : (
                 <>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon"
+                    aria-label="Move up"
+                    disabled={index === 0}
+                    onClick={() => moveLocation(index, -1)}
+                  >
+                    <Icon name="chevronUp" size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon"
+                    aria-label="Move down"
+                    disabled={index === locations.length - 1}
+                    onClick={() => moveLocation(index, 1)}
+                  >
+                    <Icon name="chevronDown" size={13} />
+                  </button>
                   <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(location.id, location.name, 'location')}>
                     <Icon name="pencil" size={13} />
                   </button>
