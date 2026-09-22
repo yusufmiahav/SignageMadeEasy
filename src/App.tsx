@@ -4,6 +4,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { ScheduleScreen } from './screens/ScheduleScreen';
 import { AnnouncementsScreen } from './screens/AnnouncementsScreen';
+import { CompanionScreen } from './screens/CompanionScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { Toast } from './components/Toast';
 import { PairDeviceDialog } from './components/dialogs/PairDeviceDialog';
@@ -144,6 +145,20 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             app={app}
             onOpenForceAnnouncement={(groupId) => setDialog({ type: 'forceAnnouncement', groupId })}
             onOpenAddSchedule={(groupId) => setDialog({ type: 'addAnnouncementSchedule', groupId })}
+          />
+        )}
+        {tab === 'companion' && (
+          <CompanionScreen
+            app={app}
+            onForceContent={(groupId) => setDialog({ type: 'forceContent', groupId })}
+            onForceContentAllScreens={() => setDialog({ type: 'forceContent', groupId: null })}
+            onForceAnnouncement={(groupId) => setDialog({ type: 'forceAnnouncement', groupId })}
+            onForceAnnouncementAllScreens={() => setDialog({ type: 'forceAnnouncement', groupId: null })}
+            onOpenBlackout={(groupId) => setDialog({ type: 'blackout', groupId })}
+            onOpenBlackoutAllScreens={() => setDialog({ type: 'blackout', groupId: null })}
+            onForceContentForDevice={(deviceId) => setDialog({ type: 'forceContentDevice', deviceId })}
+            onForceAnnouncementForDevice={(deviceId) => setDialog({ type: 'forceAnnouncementDevice', deviceId })}
+            onOpenBlackoutForDevice={(deviceId) => setDialog({ type: 'blackoutDevice', deviceId })}
           />
         )}
         {tab === 'settings' && (

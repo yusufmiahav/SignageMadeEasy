@@ -489,6 +489,32 @@ export function useAppState() {
     showToast(`Identifying ${device.name}…`);
   }, [showToast]);
 
+  // Flash every screen in a group / every screen overall — one best-effort
+  // identify-flash request per device (same direct hub->Pi call flashDevice makes,
+  // which can fail if a screen is briefly unreachable), fanned out client-side the
+  // same way forceContentAllScreens/blackoutAllScreens are. Promise.allSettled (not
+  // Promise.all) so one unreachable screen doesn't stop the rest from flashing.
+  const flashGroup = useCallback(async (group: Group) => {
+    const groupDevices = devices.filter((d) => d.groupId === group.id);
+    const results = await Promise.allSettled(groupDevices.map((d) => api.flashDevice(d.id)));
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    showToast(
+      failed > 0
+        ? `Flashed ${groupDevices.length - failed}/${groupDevices.length} screens in ${group.name} (${failed} unreachable)`
+        : `Flashing every screen in ${group.name}…`,
+    );
+  }, [devices, showToast]);
+
+  const flashAllScreens = useCallback(async () => {
+    const results = await Promise.allSettled(devices.map((d) => api.flashDevice(d.id)));
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    showToast(
+      failed > 0
+        ? `Flashed ${devices.length - failed}/${devices.length} screens (${failed} unreachable)`
+        : 'Flashing every screen…',
+    );
+  }, [devices, showToast]);
+
   const setDeviceAnnouncement = useCallback(async (id: string, announcementId: string | null) => {
     await api.setDeviceAnnouncement(id, announcementId);
     await refreshDevices();
@@ -578,6 +604,8 @@ export function useAppState() {
     removeDevice,
     restartDevice,
     flashDevice,
+    flashGroup,
+    flashAllScreens,
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,
