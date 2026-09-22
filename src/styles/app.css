@@ -518,6 +518,18 @@ body {
   border-color: var(--color-accent);
 }
 
+/* — HelpDialog's collapsible sections — rotates the trailing chevron to point
+   down once its <details> is open, same affordance as a folder's expand arrow. */
+.help-section > summary {
+  list-style: none;
+}
+.help-section > summary::-webkit-details-marker {
+  display: none;
+}
+.help-section[open] > summary .help-chevron {
+  transform: rotate(90deg);
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    Dark mode — toggled by SettingsScreen via [data-theme] on <html>, persisted
    in localStorage (see hooks/useTheme.ts). Only the "ground" tokens (surface
