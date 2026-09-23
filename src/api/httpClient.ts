@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Group, LibraryItem, ScheduleEvent } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, ScheduleEvent, TflStationResult } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -6,6 +6,10 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
+    // Needed for the session cookie (see hub/src/auth.ts) — the default 'same-origin'
+    // credentials mode won't send it in dev, where the control app and hub run on
+    // different ports/origins.
+    credentials: 'include',
     headers: init?.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json', ...init.headers } : init?.headers,
   });
   if (!res.ok) {
@@ -29,6 +33,7 @@ function uploadFile(path: string, file: File, onProgress?: (pct: number) => void
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${BASE_URL}${path}`);
+    xhr.withCredentials = true; // send the session cookie — see request()'s credentials: 'include'
     xhr.upload.onprogress = (e) => {
       if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     };
@@ -59,21 +64,52 @@ export const httpClient: SignageApiClient = {
   addPdf: (file, onProgress) => uploadFile('/api/library/pdf', file, onProgress),
   addAnnouncement: (name, text) => request<LibraryItem>('/api/library/announcement', { method: 'POST', ...json({ name, text }) }),
   addClock: (name) => request<LibraryItem>('/api/library/clock', { method: 'POST', ...json({ name }) }),
+  addNdiSource: (name, ndiSourceName) => request<LibraryItem>('/api/library/ndi', { method: 'POST', ...json({ name, ndiSourceName }) }),
+  // 502 (device unreachable / not NDI-capable / discovery helper missing) all collapse to
+  // an empty list here — see the SignageApiClient comment for why this never throws.
+  listNdiSources: (deviceId) => request<{ sources: string[] }>(`/api/devices/${deviceId}/ndi-sources`).then((r) => r.sources).catch(() => []),
+  setNdiSourceName: (id, ndiSourceName) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ ndiSourceName }) }),
+  addTflStatus: (name, tflModes) => request<LibraryItem>('/api/library/tfl-status', { method: 'POST', ...json({ name, tflModes }) }),
+  // Mirrors listNdiSources' never-throws reasoning — a failed/unreachable TfL lookup
+  // just leaves AddTflArrivalsDialog's results empty rather than surfacing an error.
+  searchTflStations: (query) => request<TflStationResult[]>(`/api/tfl/stations/search?q=${encodeURIComponent(query)}`).catch(() => []),
+  addTflArrivals: (name, tflStations) =>
+    request<LibraryItem>('/api/library/tfl-arrivals', { method: 'POST', ...json({ name, tflStations }) }),
+  setTflModes: (id, tflModes) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ tflModes }) }),
+  setTflStations: (id, tflStations) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ tflStations }) }),
   removeLibraryItem: (id) => request<void>(`/api/library/${id}`, { method: 'DELETE' }),
   reorderLibrary: (ids) => request<void>('/api/library/reorder', { method: 'PUT', ...json({ ids }) }),
   setItemDuration: (id, durationSec) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ durationSec }) }),
   renameLibraryItem: (id, name) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ name }) }),
+  setLibraryItemTags: (id, tags) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ tags }) }),
+  setLibraryItemFolder: (id, folderId) => request<void>(`/api/library/${id}`, { method: 'PATCH', ...json({ folderId }) }),
+
+  // Folders
+  listFolders: () => request<Folder[]>('/api/folders'),
+  addFolder: (name, parentId) => request<Folder>('/api/folders', { method: 'POST', ...json({ name, parentId }) }),
+  renameFolder: (id, name) => request<void>(`/api/folders/${id}`, { method: 'PATCH', ...json({ name }) }),
+  moveFolder: (id, parentId) => request<void>(`/api/folders/${id}`, { method: 'PATCH', ...json({ parentId }) }),
+  removeFolder: (id) => request<void>(`/api/folders/${id}`, { method: 'DELETE' }),
+
+  // Locations
+  listLocations: () => request<Location[]>('/api/locations'),
+  addLocation: (name) => request<Location>('/api/locations', { method: 'POST', ...json({ name }) }),
+  renameLocation: (id, name) => request<void>(`/api/locations/${id}`, { method: 'PATCH', ...json({ name }) }),
+  deleteLocation: (id) => request<void>(`/api/locations/${id}`, { method: 'DELETE' }),
+  reorderLocations: (ids) => request<void>('/api/locations/reorder', { method: 'PUT', ...json({ ids }) }),
 
   // Groups
   listGroups: () => request<Group[]>('/api/groups'),
-  addGroup: (name) => request<Group>('/api/groups', { method: 'POST', ...json({ name }) }),
+  addGroup: (name, locationId) => request<Group>('/api/groups', { method: 'POST', ...json({ name, locationId }) }),
   renameGroup: (id, name) => request<void>(`/api/groups/${id}`, { method: 'PATCH', ...json({ name }) }),
+  setGroupLocation: (id, locationId) => request<void>(`/api/groups/${id}`, { method: 'PATCH', ...json({ locationId }) }),
   deleteGroup: async (id) => {
-    const res = await fetch(`${BASE_URL}/api/groups/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${BASE_URL}/api/groups/${id}`, { method: 'DELETE', credentials: 'include' });
     if (res.status === 409) return false;
     if (!res.ok) throw new Error(`DELETE /api/groups/${id} failed: ${res.status}`);
     return true;
   },
+  reorderGroups: (ids) => request<void>('/api/groups/reorder', { method: 'PUT', ...json({ ids }) }),
   setDefaultPlaylist: (groupId, libIds) => request<void>(`/api/groups/${groupId}/playlist`, { method: 'PUT', ...json({ libIds }) }),
   addToDefaultPlaylist: (groupId, libIds) => request<void>(`/api/groups/${groupId}/playlist`, { method: 'POST', ...json({ libIds }) }),
   removeFromDefaultPlaylist: (groupId, libId) => request<void>(`/api/groups/${groupId}/playlist/${libId}`, { method: 'DELETE' }),
@@ -86,18 +122,31 @@ export const httpClient: SignageApiClient = {
   addAnnouncementSchedule: (groupId, schedule) =>
     request<AnnouncementSchedule>(`/api/groups/${groupId}/announcement-schedules`, { method: 'POST', ...json(schedule) }),
   removeAnnouncementSchedule: (groupId, scheduleId) => request<void>(`/api/groups/${groupId}/announcement-schedules/${scheduleId}`, { method: 'DELETE' }),
+  setGroupBlackout: (groupId, blackout) => request<void>(`/api/groups/${groupId}/blackout`, { method: 'PUT', ...json({ blackout }) }),
 
   // Devices
   listDevices: () => request<Device[]>('/api/devices'),
-  pairDevice: (input: { name: string; ip: string; groupId: string; status?: DeviceStatus }) =>
+  pairDevice: (input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus }) =>
     request<Device>('/api/devices/pair', { method: 'POST', ...json(input) }),
   renameDevice: (id, name) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ name }) }),
+  reorderDevices: (ids) => request<void>('/api/devices/reorder', { method: 'PUT', ...json({ ids }) }),
   moveDevice: (id, groupId) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ groupId }) }),
+  setDeviceLocation: (id, locationId) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ locationId }) }),
   removeDevice: (id) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
+  flashDevice: (id) => request<void>(`/api/devices/${id}/identify-flash`, { method: 'POST' }),
   setDeviceAnnouncement: (id, announcementId) => request<void>(`/api/devices/${id}/announcement`, { method: 'PUT', ...json({ announcementId }) }),
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
   setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),
+  setDeviceForcedContent: (id, libId) => request<void>(`/api/devices/${id}/forced`, { method: 'PUT', ...json({ libId }) }),
+  setDeviceBlackout: (id, blackout) => request<void>(`/api/devices/${id}/blackout`, { method: 'PUT', ...json({ blackout }) }),
+  setDeviceDefaultPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/playlist`, { method: 'PUT', ...json({ libIds }) }),
+  addToDeviceDefaultPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/playlist`, { method: 'POST', ...json({ libIds }) }),
+  removeFromDeviceDefaultPlaylist: (deviceId, libId) => request<void>(`/api/devices/${deviceId}/playlist/${libId}`, { method: 'DELETE' }),
+  reorderDeviceDefaultPlaylist: (deviceId, libId, direction) =>
+    request<void>(`/api/devices/${deviceId}/playlist/${libId}/reorder`, { method: 'POST', ...json({ direction }) }),
+  addDeviceEvent: (deviceId, event) => request<ScheduleEvent>(`/api/devices/${deviceId}/events`, { method: 'POST', ...json(event) }),
+  removeDeviceEvent: (deviceId, eventId) => request<void>(`/api/devices/${deviceId}/events/${eventId}`, { method: 'DELETE' }),
 
   // Pairing helpers
   scanNetwork: () => request<DiscoveredDevice[]>('/api/scan'),
@@ -105,4 +154,8 @@ export const httpClient: SignageApiClient = {
   // Backup / restore
   exportBackup: () => request<Backup>('/api/backup'),
   importBackup: (backup) => request<void>('/api/backup/restore', { method: 'POST', ...json(backup) }),
+
+  // Settings
+  getSettings: () => request<{ safetyHold: boolean }>('/api/settings'),
+  setSafetyHold: (safetyHold) => request<void>('/api/settings', { method: 'PATCH', ...json({ safetyHold }) }),
 };

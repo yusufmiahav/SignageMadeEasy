@@ -3,16 +3,49 @@
 // too, so both are kept in sync by hand (small, stable shapes; not worth a shared
 // package for two consumers).
 
-export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock';
+export type LibraryItemType = 'image' | 'video' | 'pdf' | 'announcement' | 'clock' | 'ndi' | 'tfl-status' | 'tfl-arrivals';
+
+/** One station within a 'tfl-arrivals' item's LibraryItem.tflStations — see its comment. */
+export interface TflStationConfig {
+  /** The real, queryable TfL StopPoint id (e.g. "940GZZLUWSM"), already resolved from any hub/interchange the user searched for — see tflArrivals.ts's searchStations(). */
+  stopPointId: string;
+  /** Display name captured at add-time (e.g. "Westminster Underground Station"), so the Library card/dialog and the player's board header can show it without a live lookup. */
+  stopPointName: string;
+  /** Which line ids (e.g. ['jubilee', 'district']) to show arrivals for at this station; empty/undefined shows every line reported there. */
+  lines?: string[];
+}
+
+/** A folder in the Library screen's media organization tree — purely organizational, has no effect on playback or on any group/device/schedule reference (those all still address a LibraryItem by its own id, regardless of which folder it's filed under). */
+export interface Folder {
+  id: string;
+  name: string;
+  /** null = top level, directly under the library root. Nested arbitrarily deep via chained parentId links, same shape as a normal filesystem tree. */
+  parentId: string | null;
+  /** ms since epoch. Optional — a folder created before this field existed was backfilled with the migration's own run time (see db.ts), and a restored backup from before this field existed has no better answer than "now" either. */
+  createdAt?: number;
+}
 
 export interface LibraryItem {
   id: string;
   name: string;
   type: LibraryItemType;
+  /** Which folder this item is filed under — omitted means the library root. Set via drag-and-drop or the "Move to folder" action on the Library screen; new items always land at the root regardless of which folder is currently open. */
+  folderId?: string;
   size?: string;
   duration?: string;
-  /** Seconds this item stays on screen before advancing. Images and clocks only; defaults to 8 when unset. */
+  /** Seconds this item stays on screen before advancing. Images, clocks, and NDI sources only; defaults to 8 when unset. */
   durationSec?: number;
+  /** NDI sources only — the NDI network name of the source to receive, e.g. "DESKTOP-ABC (Camera 1)". Not a URL or upload; resolved directly by the Pi's own NDI discovery at playback time. */
+  ndiSourceName?: string;
+  /** 'tfl-status' items only — which TfL modes to show (e.g. ['tube', 'overground']), from tflStatus.ts's ALL_MODES. The live line data itself is never stored here — it's resolved fresh from tflStatus.ts's cache at playback time (see PlayerItem.tflLines below), same reasoning as NDI never storing video frames. */
+  tflModes?: string[];
+  /**
+   * 'tfl-arrivals' items only — one or more stations shown together on the same
+   * board (e.g. 3 stations side by side), each independently configured. A
+   * single-station board is just the one-element case, not a separate shape —
+   * see AddTflArrivalsDialog.tsx's repeatable "add a station" list.
+   */
+  tflStations?: TflStationConfig[];
   /** URL path (e.g. "/uploads/<id>.jpg"), not a data URL — served statically by the hub. */
   thumb?: string;
   text?: string;
@@ -28,6 +61,10 @@ export interface LibraryItem {
    * to the original, same as 'skipped' from a playback standpoint.
    */
   transcodeStatus?: 'processing' | 'done' | 'skipped' | 'failed';
+  /** Free-form labels for search/filtering in the Library screen. Empty array, never undefined. */
+  tags: string[];
+  /** ms since epoch — already tracked in the hub's own database for sort-migration purposes, just not previously surfaced to the control app. Optional since a restored backup from before this field existed has nothing truthful to report here. */
+  createdAt?: number;
 }
 
 export interface ScheduleEvent {
@@ -36,6 +73,9 @@ export interface ScheduleEvent {
   start: string;
   end: string;
   libIds: string[];
+  /** 24h "HH:MM" — see src/api/types.ts's copy of this interface for the full comment. */
+  startTime?: string;
+  endTime?: string;
 }
 
 export interface AnnouncementSchedule {
@@ -51,16 +91,33 @@ export interface AnnouncementSchedule {
   endTime: string;
 }
 
+/**
+ * A purely organizational container for browsing/managing screens as one site/area
+ * (e.g. "Warehouse Building", "Reception") — unlike Group below, a Location owns no
+ * content of its own: no playlist, no schedule, no forced-content/blackout/
+ * announcement controls. It can hold Groups (each still sharing one playlist across
+ * its own screens) and/or standalone screens (each with their own independent
+ * schedule) side by side — see Group.locationId and Device.locationId.
+ */
+export interface Location {
+  id: string;
+  name: string;
+}
+
 export interface Group {
   id: string;
   name: string;
+  /** Which Location this Group is organized under, for browsing/management — purely organizational, has no effect on content. Null means "not filed under any Location," same standalone-at-the-top-level flexibility a Location's own screens have. */
+  locationId: string | null;
   defaultPlaylist: string[];
   events: ScheduleEvent[];
   forcedContentId: string | null;
-  /** This location's announcement forced on for every one of its screens, overriding schedules and each screen's own manual toggle, until cleared. */
+  /** This group's announcement forced on for every one of its screens, overriding schedules and each screen's own manual toggle, until cleared. */
   forcedAnnouncementId: string | null;
-  /** Date+time windows during which an announcement is shown on every screen at this location, regardless of each screen's own manual toggle. */
+  /** Date+time windows during which an announcement is shown on every screen in this group, regardless of each screen's own manual toggle. */
   announcementSchedules: AnnouncementSchedule[];
+  /** Emergency override: every screen in this group goes to a plain black screen, above even forcedContentId — see activeContentIds' priority order. */
+  blackout: boolean;
 }
 
 export type DeviceStatus = 'online' | 'offline';
@@ -72,9 +129,20 @@ export interface Device {
   /** Captured once at pairing time from the Pi's own /identify response. Null for a screen paired before this existed, or one paired manually/offline that couldn't be reached to ask. */
   mac: string | null;
   status: DeviceStatus;
-  groupId: string;
+  /** Null for a screen not assigned to any group yet ("standalone" screens, whether or not they're filed under a Location) — see forcedContentId/blackout below, which fill in for the group-level controls it doesn't have. */
+  groupId: string | null;
+  /** Which Location this screen is filed under when it's standalone (groupId is null) — purely organizational, same as Group.locationId. Meaningless while groupId is set: a grouped screen's Location comes from its Group instead, not set directly here. */
+  locationId: string | null;
   announcementId: string | null;
   announcementOn: boolean;
+  /** Only meaningful/settable while groupId is null — a grouped screen's content comes from its group instead. */
+  forcedContentId: string | null;
+  /** Same scope as forcedContentId — only meaningful while groupId is null. */
+  blackout: boolean;
+  /** Same scope as forcedContentId — mirrors Group.defaultPlaylist for a standalone screen. */
+  defaultPlaylist: string[];
+  /** Same scope as forcedContentId — mirrors Group.events for a standalone screen. */
+  events: ScheduleEvent[];
   /**
    * Which copy of a video this screen is served. 'auto' (default): the resolution-capped
    * copy, sized for a Pi 3B+'s hardware decoder — right for most screens. 'full': always
@@ -84,6 +152,13 @@ export interface Device {
   videoQuality: 'auto' | 'full';
   /** ms since epoch of the last heartbeat received. Not exposed to the control app. */
   lastSeenAt?: number;
+  /** Reported by the Pi's own poller alongside every heartbeat (pi-player/src/diagnostics.ts) — undefined for a device that's never sent one yet. */
+  tempC?: number | null;
+  /** Raw hex string from `vcgencmd get_throttled` — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot." */
+  throttled?: string | null;
+  uptimeSec?: number | null;
+  diskFreeMb?: number | null;
+  diskTotalMb?: number | null;
 }
 
 export interface DiscoveredDevice {
@@ -101,11 +176,31 @@ export interface PlayerItem {
   duration: number | null;
   /** For PDFs: total page count, each shown for `duration` seconds. */
   pageCount?: number;
+  /** NDI sources only — see LibraryItem.ndiSourceName. */
+  ndiSourceName?: string;
+  /** 'tfl-status' items only — resolved fresh from tflStatus.ts's cache every time this item is served, not stored on the library item itself; see LibraryItem.tflModes. */
+  tflLines?: { id: string; name: string; modeName: string; statusSeverityDescription: string; reason?: string }[];
+  /**
+   * 'tfl-arrivals' items only — one entry per LibraryItem.tflStations station, in
+   * the same order, each resolved fresh from tflArrivals.ts's per-station cache
+   * every time this item is served. stopPointName is carried alongside its own
+   * boards (rather than a single top-level name) since every row already shows a
+   * train's *destination*, not the station itself, so the player needs each
+   * station's own name to label its own panel in a multi-station layout.
+   */
+  tflStationBoards?: { stopPointName: string; boards: { lineId: string; lineName: string; platformName: string; towards: string; arrivalsSec: number[] }[] }[];
 }
 
 export interface PlayerState {
-  kind: 'forced' | 'event' | 'default';
+  kind: 'blackout' | 'forced' | 'event' | 'default';
   label: string;
   items: PlayerItem[];
   announcement: { on: boolean; text: string | null };
+  /**
+   * Settings → Reliability's "Safety hold" toggle, echoed on every poll so a Pi that
+   * later loses touch with the hub already knows which way to behave: true (the
+   * default) keeps showing/caching its last-known content through a disconnect;
+   * false means a disconnected screen goes blank instead. See pi-player/src/poller.ts.
+   */
+  safetyHold: boolean;
 }

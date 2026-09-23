@@ -4,10 +4,12 @@ import { Icon } from '../icons/Icon';
 interface AddChooserDialogProps {
   onChooseScreen: () => void;
   onChooseLocation: () => void;
+  onChooseGroup: () => void;
+  onChooseContent: () => void;
   onClose: () => void;
 }
 
-export function AddChooserDialog({ onChooseScreen, onChooseLocation, onClose }: AddChooserDialogProps) {
+export function AddChooserDialog({ onChooseScreen, onChooseLocation, onChooseGroup, onChooseContent, onClose }: AddChooserDialogProps) {
   return (
     <DialogShell title="Add" onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -28,6 +30,24 @@ export function AddChooserDialog({ onChooseScreen, onChooseLocation, onClose }: 
         >
           <Icon name="mapPin" size={16} />
           Add a location
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-block"
+          style={{ justifyContent: 'flex-start', gap: 10, padding: '14px 12px' }}
+          onClick={onChooseGroup}
+        >
+          <Icon name="grid" size={16} />
+          Add a group
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-block"
+          style={{ justifyContent: 'flex-start', gap: 10, padding: '14px 12px' }}
+          onClick={onChooseContent}
+        >
+          <Icon name="uploadCloud" size={16} />
+          Add content
         </button>
       </div>
     </DialogShell>

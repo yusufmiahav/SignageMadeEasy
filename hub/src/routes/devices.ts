@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import * as store from '../store.js';
 import * as piAgent from '../piAgent.js';
+import { requireAuth } from '../auth.js';
 
 export const devicesRouter = Router();
 
@@ -14,14 +15,45 @@ function publicHubUrl(req: Request): string {
   return process.env.SIGNAGE_PUBLIC_HUB_URL ?? `${req.protocol}://${req.get('host')}`;
 }
 
+// The Pi's own poller calls this autonomously every ~5s with no login flow — it must
+// stay reachable without a session, so it's registered before the requireAuth gate
+// below rather than being just another route this router happens to protect.
+devicesRouter.post('/:id/heartbeat', (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  const ip = (req.body?.ip as string | undefined) ?? req.ip ?? device.ip;
+  const { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb } = req.body ?? {};
+  store.recordHeartbeat(req.params.id, ip, { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb });
+  res.status(204).end();
+});
+
+devicesRouter.use(requireAuth);
+
 devicesRouter.get('/', (_req, res) => {
   res.json(store.listDevices());
 });
 
+// Registered before /:id routes below — a literal "reorder" segment here would
+// otherwise never be reachable if a param route matched it first (mirrors
+// groups.ts's own reorder route for the same reason). `ids` must be the complete
+// set of devices in one scope (one group, or the standalone/no-group list) — see
+// store.reorderDevices's comment.
+devicesRouter.put('/reorder', (req, res) => {
+  const { ids } = req.body ?? {};
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
+    return res.status(400).json({ error: 'ids must be an array of strings' });
+  }
+  store.reorderDevices(ids);
+  res.status(204).end();
+});
+
 devicesRouter.post('/pair', async (req, res) => {
-  const { name, ip, groupId, skipHandshake } = req.body ?? {};
-  if (typeof ip !== 'string' || typeof groupId !== 'string') {
-    return res.status(400).json({ error: 'ip and groupId are required' });
+  const { name, ip, groupId, locationId, skipHandshake } = req.body ?? {};
+  if (typeof ip !== 'string' || (typeof groupId !== 'string' && groupId !== null)) {
+    return res.status(400).json({ error: 'ip is required; groupId must be a string or null (no group)' });
+  }
+  if (locationId !== undefined && locationId !== null && typeof locationId !== 'string') {
+    return res.status(400).json({ error: 'locationId must be a string or null' });
   }
   if (store.listDevices().some((d) => d.ip === ip)) {
     return res.status(409).json({ error: `A screen is already paired at ${ip}` });
@@ -45,7 +77,7 @@ devicesRouter.post('/pair', async (req, res) => {
     }
   }
 
-  const device = store.pairDevice({ name: resolvedName, ip, mac, groupId, status });
+  const device = store.pairDevice({ name: resolvedName, ip, mac, groupId, locationId: locationId ?? null, status });
 
   if (!skipHandshake && status === 'online') {
     try {
@@ -59,9 +91,18 @@ devicesRouter.post('/pair', async (req, res) => {
 });
 
 devicesRouter.patch('/:id', (req, res) => {
-  const { name, groupId, videoQuality } = req.body ?? {};
+  const { name, groupId, locationId, videoQuality } = req.body ?? {};
   if (typeof name === 'string') store.renameDevice(req.params.id, name);
-  if (typeof groupId === 'string') store.moveDevice(req.params.id, groupId);
+  // groupId: null moves the device to "standalone, no group" — distinct from
+  // omitting the key entirely, which leaves its current group untouched.
+  if (typeof groupId === 'string' || groupId === null) store.moveDevice(req.params.id, groupId);
+  // locationId: null un-files a standalone screen from any Location — only
+  // meaningful while the screen has no group (a grouped screen's Location comes
+  // from its group instead). Same omit-vs-null distinction as groupId above.
+  if (locationId !== undefined) {
+    if (locationId !== null && typeof locationId !== 'string') return res.status(400).json({ error: 'locationId must be a string or null' });
+    store.setDeviceLocation(req.params.id, locationId);
+  }
   if (videoQuality === 'auto' || videoQuality === 'full') store.setDeviceVideoQuality(req.params.id, videoQuality);
   res.status(204).end();
 });
@@ -88,6 +129,33 @@ devicesRouter.post('/:id/restart', async (req, res) => {
   }
 });
 
+// Pi 4/5 or x86 device only — relays the paired device's own NDI discovery for
+// AddNdiSourceDialog's "Scan for sources" button (see pi-player/src/ndiPlayer.ts's
+// findSources). 502 on unreachable/not-NDI-capable/discovery-helper-missing mirrors
+// /restart above — there's no way to distinguish those cases from here, so the dialog
+// just falls back to manual entry either way.
+devicesRouter.get('/:id/ndi-sources', async (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  try {
+    res.json({ sources: await piAgent.listNdiSources(device.ip) });
+  } catch {
+    res.status(502).json({ error: 'could not reach device' });
+  }
+});
+
+// Settings screen's "Identify" button (bulb icon) — see pi-player/src/identifyFlash.ts.
+devicesRouter.post('/:id/identify-flash', async (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  try {
+    await piAgent.identifyFlash(device.ip);
+    res.status(204).end();
+  } catch {
+    res.status(502).json({ error: 'could not reach device' });
+  }
+});
+
 devicesRouter.put('/:id/announcement', (req, res) => {
   const { announcementId } = req.body ?? {};
   store.setDeviceAnnouncement(req.params.id, announcementId ?? null);
@@ -99,10 +167,63 @@ devicesRouter.post('/:id/announcement/toggle', (req, res) => {
   res.status(204).end();
 });
 
-devicesRouter.post('/:id/heartbeat', (req, res) => {
-  const device = store.getDevice(req.params.id);
-  if (!device) return res.status(404).json({ error: 'not found' });
-  const ip = (req.body?.ip as string | undefined) ?? req.ip ?? device.ip;
-  store.recordHeartbeat(req.params.id, ip);
+// Standalone-screen (no group) equivalents of a group's forced-content/blackout
+// controls — see Device.forcedContentId's comment in types.ts.
+devicesRouter.put('/:id/forced', (req, res) => {
+  const { libId } = req.body ?? {};
+  if (libId !== null && typeof libId !== 'string') return res.status(400).json({ error: 'libId must be a string or null' });
+  store.setDeviceForcedContent(req.params.id, libId);
+  res.status(204).end();
+});
+
+devicesRouter.put('/:id/blackout', (req, res) => {
+  const { blackout } = req.body ?? {};
+  if (typeof blackout !== 'boolean') return res.status(400).json({ error: 'blackout must be a boolean' });
+  store.setDeviceBlackout(req.params.id, blackout);
+  res.status(204).end();
+});
+
+// Standalone-screen (no group) equivalents of a group's default-playlist/events
+// scheduling — see Device.defaultPlaylist/events' comments in types.ts. Mirror
+// groups.ts's own playlist/event routes exactly, scoped to a device instead.
+devicesRouter.put('/:id/playlist', (req, res) => {
+  const { libIds } = req.body ?? {};
+  if (!Array.isArray(libIds)) return res.status(400).json({ error: 'libIds must be an array' });
+  store.setDeviceDefaultPlaylist(req.params.id, libIds);
+  res.status(204).end();
+});
+
+devicesRouter.post('/:id/playlist', (req, res) => {
+  const { libIds } = req.body ?? {};
+  if (!Array.isArray(libIds)) return res.status(400).json({ error: 'libIds must be an array' });
+  store.addToDeviceDefaultPlaylist(req.params.id, libIds);
+  res.status(204).end();
+});
+
+devicesRouter.delete('/:id/playlist/:libId', (req, res) => {
+  store.removeFromDeviceDefaultPlaylist(req.params.id, req.params.libId);
+  res.status(204).end();
+});
+
+devicesRouter.post('/:id/playlist/:libId/reorder', (req, res) => {
+  const { direction } = req.body ?? {};
+  if (direction !== 'up' && direction !== 'down') return res.status(400).json({ error: 'direction must be "up" or "down"' });
+  store.reorderDeviceDefaultPlaylist(req.params.id, req.params.libId, direction);
+  res.status(204).end();
+});
+
+devicesRouter.post('/:id/events', (req, res) => {
+  const { name, start, end, libIds, startTime, endTime } = req.body ?? {};
+  if (typeof name !== 'string' || typeof start !== 'string' || typeof end !== 'string' || !Array.isArray(libIds)) {
+    return res.status(400).json({ error: 'name, start, end, libIds are required' });
+  }
+  if ((startTime !== undefined && typeof startTime !== 'string') || (endTime !== undefined && typeof endTime !== 'string')) {
+    return res.status(400).json({ error: 'startTime/endTime must be strings when provided' });
+  }
+  res.status(201).json(store.addDeviceEvent(req.params.id, { name, start, end, libIds, startTime, endTime }));
+});
+
+devicesRouter.delete('/:id/events/:eventId', (req, res) => {
+  store.removeDeviceEvent(req.params.id, req.params.eventId);
   res.status(204).end();
 });

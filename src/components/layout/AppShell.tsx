@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Icon, type IconName } from '../icons/Icon';
+import { HelpDialog } from '../dialogs/HelpDialog';
 
 export type Tab = 'home' | 'library' | 'schedule' | 'announcements' | 'settings';
 
@@ -20,15 +21,25 @@ interface AppShellProps {
 }
 
 export function AppShell({ tab, onTabChange, deviceCount, onAddScreen, children }: AppShellProps) {
+  // Self-contained — a static reference with no app data to show, so it doesn't need
+  // to live in App.tsx's own dialog state alongside every data-driven dialog.
+  const [showHelp, setShowHelp] = useState(false);
+
   return (
     <div className="app-shell">
       <div className="app-mobile-topbar nav">
         <span className="nav-brand">SignageMadeEasy</span>
+        <button type="button" className="btn btn-ghost btn-icon" aria-label="Help" onClick={() => setShowHelp(true)}>
+          <Icon name="helpCircle" size={18} />
+        </button>
       </div>
 
       <div className="app-desktop-nav nav">
         <span className="nav-brand">SignageMadeEasy</span>
         <span className="tag tag-neutral">{deviceCount} screen{deviceCount === 1 ? '' : 's'}</span>
+        <button type="button" className="btn btn-ghost btn-icon" aria-label="Help" onClick={() => setShowHelp(true)}>
+          <Icon name="helpCircle" size={16} />
+        </button>
         <button type="button" className="btn btn-primary btn-icon" aria-label="Add a screen" onClick={onAddScreen}>
           <Icon name="plus" size={16} />
         </button>
@@ -64,6 +75,8 @@ export function AppShell({ tab, onTabChange, deviceCount, onAddScreen, children 
           </button>
         ))}
       </nav>
+
+      {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
     </div>
   );
 }
