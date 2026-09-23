@@ -61,14 +61,23 @@ app uses — so it needs nothing extra installed or configured on the hub itself
 - Action/feedback dropdown choices (which groups/screens/content exist) refresh
   automatically whenever the poll notices something added, renamed, or removed —
   editing a button's saved target *value* is unaffected by this refresh.
+- **File layout is load-bearing**: Companion resolves `runtime.entrypoint` from
+  `companion/manifest.json` as `<module-root>/companion/<entrypoint>` — always
+  prefixing `companion/`, per Bitfocus's own `resolveModuleEntrypoint` (see
+  `companion/main.js`'s sibling files, all of which must stay inside `companion/`
+  alongside `manifest.json` and `HELP.md`). Only `package.json`, `package-lock.json`,
+  and `node_modules` belong at the module root, one level up. Getting this wrong
+  produces a "Module files missing" error in Companion with nothing useful in its
+  normal log (the module process never starts, so it never gets a chance to log
+  anything itself).
 - This module was built and its API client integration-tested directly against a
   running hub (login, cookie handling, every action's actual hub call, and the
-  401-retry path all verified end-to-end), and its manifest was validated against
-  the `@companion-module/base` package's own schema validator. It has **not** been
-  loaded inside a real Companion instance, since one isn't available in the
-  environment this was built in — if your installed Companion version expects a
-  slightly different `companion/manifest.json` shape, that's the first place to
-  check.
+  401-retry path all verified end-to-end); its manifest was validated against
+  `@companion-module/base`'s own schema validator; and its file layout was verified
+  against Bitfocus's actual `companion` source (cloned directly, entrypoint
+  resolution logic and tests read and re-run against this module's own files). It
+  has **not** been loaded inside a live, running Companion instance end-to-end,
+  since one isn't available in the environment this was built in.
 
 ## Installing as a custom/dev module
 
