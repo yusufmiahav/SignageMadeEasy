@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
-import type { AnnouncementSchedule, Device, DeviceStatus, DiscoveredDevice, Group, LibraryItem, PlayerState, ScheduleEvent } from './types.js';
+import * as tflStatus from './tflStatus.js';
+import * as tflArrivals from './tflArrivals.js';
+import type { AnnouncementSchedule, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PlayerState, ScheduleEvent, TflStationConfig } from './types.js';
 
-const ONLINE_WINDOW_MS = 45_000;
+// The Pi heartbeats every 5s (pi-player/src/poller.ts's POLL_INTERVAL_MS) — this
+// window needs to be a few multiples of that so one dropped heartbeat (WiFi jitter)
+// doesn't flip a screen to "Offline" and back on its own, but not so wide that a
+// real disconnect takes forever to show up. 12s tolerates one missed heartbeat.
+const ONLINE_WINDOW_MS = 12_000;
 
 function uid(prefix: string): string {
   return `${prefix}${randomUUID().replace(/-/g, '').slice(0, 16)}`;
@@ -12,11 +18,22 @@ function uid(prefix: string): string {
 
 interface LibraryRow {
   id: string; name: string; type: LibraryItem['type']; size: string | null; duration: string | null; durationSec: number | null; thumb: string | null; text: string | null; pageCount: number | null;
-  fullUrl: string | null; transcodeStatus: LibraryItem['transcodeStatus'] | null;
+  fullUrl: string | null; transcodeStatus: LibraryItem['transcodeStatus'] | null; tags: string; ndiSourceName: string | null; tflModes: string | null;
+  // The three legacy single-station columns are read-only from here on (kept only
+  // for rowToLibraryItem's fallback below) — new rows always write tflStations
+  // instead. See db.ts's tflStations migration comment for why the old columns
+  // aren't dropped.
+  tflStopPointId: string | null; tflStopPointName: string | null; tflArrivalLines: string | null;
+  tflStations: string | null;
+  folderId: string | null;
+  createdAt: number | null;
 }
+const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines, tflStations, folderId, createdAt';
 
 function rowToLibraryItem(r: LibraryRow): LibraryItem {
-  const item: LibraryItem = { id: r.id, name: r.name, type: r.type };
+  const item: LibraryItem = { id: r.id, name: r.name, type: r.type, tags: r.tags ? JSON.parse(r.tags) : [] };
+  if (r.folderId != null) item.folderId = r.folderId;
+  if (r.createdAt != null) item.createdAt = r.createdAt;
   if (r.size != null) item.size = r.size;
   if (r.duration != null) item.duration = r.duration;
   if (r.durationSec != null) item.durationSec = r.durationSec;
@@ -25,32 +42,53 @@ function rowToLibraryItem(r: LibraryRow): LibraryItem {
   if (r.pageCount != null) item.pageCount = r.pageCount;
   if (r.fullUrl != null) item.fullUrl = r.fullUrl;
   if (r.transcodeStatus != null) item.transcodeStatus = r.transcodeStatus;
+  if (r.ndiSourceName != null) item.ndiSourceName = r.ndiSourceName;
+  if (r.tflModes != null) item.tflModes = JSON.parse(r.tflModes);
+  if (r.tflStations != null) {
+    item.tflStations = JSON.parse(r.tflStations);
+  } else if (r.tflStopPointId != null) {
+    // Pre-multi-station row (see db.ts's tflStations migration comment) — synthesize
+    // the one-element array shape on read so an item saved before this feature
+    // existed keeps working with no manual migration.
+    item.tflStations = [{
+      stopPointId: r.tflStopPointId,
+      stopPointName: r.tflStopPointName ?? r.tflStopPointId,
+      ...(r.tflArrivalLines != null && { lines: JSON.parse(r.tflArrivalLines) }),
+    }];
+  }
   return item;
 }
 
 export function listLibrary(): LibraryItem[] {
-  const rows = db.prepare('SELECT id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus FROM library ORDER BY sortOrder ASC').all() as LibraryRow[];
+  const rows = db.prepare(`SELECT ${LIBRARY_COLUMNS} FROM library ORDER BY sortOrder ASC`).all() as LibraryRow[];
   return rows.map(rowToLibraryItem);
 }
 
 export function addLibraryItem(input: {
   name: string; type: LibraryItem['type']; size?: string; duration?: string; thumb?: string; text?: string; pageCount?: number;
-  fullUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus'];
+  fullUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus']; ndiSourceName?: string; tflModes?: string[];
+  tflStations?: TflStationConfig[];
 }): LibraryItem {
   const id = uid('l');
   const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM library').get() as { n: number }).n;
-  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@sortOrder,@createdAt)').run({
+  const createdAt = Date.now();
+  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, ndiSourceName, tflModes, tflStations, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@ndiSourceName,@tflModes,@tflStations,@sortOrder,@createdAt)').run({
     id, name: input.name, type: input.type,
     size: input.size ?? null, duration: input.duration ?? null, thumb: input.thumb ?? null, text: input.text ?? null, pageCount: input.pageCount ?? null,
-    fullUrl: input.fullUrl ?? null, transcodeStatus: input.transcodeStatus ?? null,
+    fullUrl: input.fullUrl ?? null, transcodeStatus: input.transcodeStatus ?? null, ndiSourceName: input.ndiSourceName ?? null,
+    tflModes: input.tflModes ? JSON.stringify(input.tflModes) : null,
+    tflStations: input.tflStations ? JSON.stringify(input.tflStations) : null,
     sortOrder: nextOrder,
-    createdAt: Date.now(),
+    createdAt,
   });
   return {
-    id, name: input.name, type: input.type,
+    id, name: input.name, type: input.type, tags: [], createdAt,
     ...(input.size && { size: input.size }), ...(input.duration && { duration: input.duration }),
     ...(input.thumb && { thumb: input.thumb }), ...(input.text && { text: input.text }), ...(input.pageCount != null && { pageCount: input.pageCount }),
     ...(input.fullUrl && { fullUrl: input.fullUrl }), ...(input.transcodeStatus && { transcodeStatus: input.transcodeStatus }),
+    ...(input.ndiSourceName && { ndiSourceName: input.ndiSourceName }),
+    ...(input.tflModes && { tflModes: input.tflModes }),
+    ...(input.tflStations && { tflStations: input.tflStations }),
   };
 }
 
@@ -90,26 +128,183 @@ export function removeLibraryItem(id: string): void {
   }
   db.prepare('DELETE FROM announcement_schedules WHERE announcementId = ?').run(id);
   db.prepare('UPDATE devices SET announcementId = NULL, announcementOn = 0 WHERE announcementId = ?').run(id);
+  db.prepare('UPDATE devices SET forcedContentId = NULL WHERE forcedContentId = ?').run(id);
+  const devicesWithPlaylist = db.prepare('SELECT id, defaultPlaylist FROM devices').all() as { id: string; defaultPlaylist: string }[];
+  const updateDevicePlaylist = db.prepare('UPDATE devices SET defaultPlaylist = ? WHERE id = ?');
+  for (const d of devicesWithPlaylist) {
+    const playlist: string[] = JSON.parse(d.defaultPlaylist);
+    if (playlist.includes(id)) updateDevicePlaylist.run(JSON.stringify(playlist.filter((x) => x !== id)), d.id);
+  }
   db.prepare('DELETE FROM library WHERE id = ?').run(id);
 }
 
 export function setItemDuration(id: string, durationSec: number): void {
-  db.prepare("UPDATE library SET durationSec = ? WHERE id = ? AND type IN ('image', 'clock')").run(durationSec, id);
+  db.prepare("UPDATE library SET durationSec = ? WHERE id = ? AND type IN ('image', 'clock', 'ndi', 'tfl-status', 'tfl-arrivals')").run(durationSec, id);
 }
 
 export function renameLibraryItem(id: string, name: string): void {
   db.prepare('UPDATE library SET name = ? WHERE id = ?').run(name, id);
 }
 
+export function setLibraryItemTags(id: string, tags: string[]): void {
+  const clean = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
+  db.prepare('UPDATE library SET tags = ? WHERE id = ?').run(JSON.stringify(clean), id);
+}
+
+/** Reconfigures an existing 'ndi' item's source name — see AddNdiSourceDialog.tsx's edit mode, same "change it in place" reasoning as the two TfL setters below. */
+export function setLibraryItemNdiSourceName(id: string, ndiSourceName: string): void {
+  db.prepare("UPDATE library SET ndiSourceName = ? WHERE id = ? AND type = 'ndi'").run(ndiSourceName, id);
+}
+
+/** Reconfigures an existing 'tfl-status' item's modes — see AddTflStatusDialog.tsx, now reused in an edit mode rather than only at creation time. */
+export function setLibraryItemTflModes(id: string, tflModes: string[]): void {
+  db.prepare("UPDATE library SET tflModes = ? WHERE id = ? AND type = 'tfl-status'").run(JSON.stringify(tflModes), id);
+}
+
+/** Reconfigures an existing 'tfl-arrivals' item's whole station list (add/remove a station, or change one's line filter) — see AddTflArrivalsDialog.tsx's edit mode. A full replace, not a merge, same as setLibraryItemTflModes above. */
+export function setLibraryItemTflStations(id: string, tflStations: TflStationConfig[]): void {
+  db.prepare("UPDATE library SET tflStations = ? WHERE id = ? AND type = 'tfl-arrivals'").run(JSON.stringify(tflStations), id);
+}
+
+/** Files a library item under a folder, or `null` to move it back to the library root — see LibraryScreen.tsx's drag-and-drop and "Move to folder" action. Every item type can be foldered; this is purely organizational and has no effect on playback. */
+export function setLibraryItemFolder(id: string, folderId: string | null): void {
+  db.prepare('UPDATE library SET folderId = ? WHERE id = ?').run(folderId, id);
+}
+
+// ---- Folders ----
+
+interface FolderRow { id: string; name: string; parentId: string | null; createdAt: number | null }
+const FOLDER_COLUMNS = 'id, name, parentId, createdAt';
+
+function rowToFolder(r: FolderRow): Folder {
+  return { id: r.id, name: r.name, parentId: r.parentId, ...(r.createdAt != null && { createdAt: r.createdAt }) };
+}
+
+export function listFolders(): Folder[] {
+  const rows = db.prepare(`SELECT ${FOLDER_COLUMNS} FROM folders ORDER BY name COLLATE NOCASE ASC`).all() as FolderRow[];
+  return rows.map(rowToFolder);
+}
+
+export function addFolder(name: string, parentId: string | null): Folder {
+  const id = uid('f');
+  const cleanName = name.trim() || 'New folder';
+  const createdAt = Date.now();
+  db.prepare('INSERT INTO folders (id, name, parentId, createdAt) VALUES (?,?,?,?)').run(id, cleanName, parentId, createdAt);
+  return { id, name: cleanName, parentId, createdAt };
+}
+
+export function renameFolder(id: string, name: string): void {
+  if (!name.trim()) return;
+  db.prepare('UPDATE folders SET name = ? WHERE id = ?').run(name.trim(), id);
+}
+
+/** True if moving `id` under `newParentId` would nest it inside its own subtree (itself included) — walks newParentId's own ancestor chain looking for `id`. Called before every move so a folder can never become its own descendant. */
+function wouldCreateCycle(folders: Folder[], id: string, newParentId: string | null): boolean {
+  let current = newParentId;
+  while (current != null) {
+    if (current === id) return true;
+    current = folders.find((f) => f.id === current)?.parentId ?? null;
+  }
+  return false;
+}
+
+/** Moves a folder under a new parent (`null` = top level). Returns false (no-op) rather than throwing if this would create a cycle, since that's an expected, recoverable user action (e.g. a stray drag) — the route layer turns a false into a 409. */
+export function moveFolder(id: string, parentId: string | null): boolean {
+  if (wouldCreateCycle(listFolders(), id, parentId)) return false;
+  db.prepare('UPDATE folders SET parentId = ? WHERE id = ?').run(parentId, id);
+  return true;
+}
+
+/**
+ * Deletes a folder WITHOUT deleting its contents — every subfolder and library item
+ * filed directly under it moves up to the deleted folder's own parent (or the root,
+ * if it had none), same "flatten up one level" behavior as removing a folder in a
+ * normal file browser while keeping the files. A destructive "delete everything
+ * inside" was deliberately not built — losing library items (which may still be
+ * referenced by a playlist/schedule elsewhere) as a side effect of tidying up folders
+ * would be a much worse failure mode than a folder move.
+ */
+export const removeFolder = db.transaction((id: string): void => {
+  const row = db.prepare('SELECT parentId FROM folders WHERE id = ?').get(id) as { parentId: string | null } | undefined;
+  if (!row) return;
+  db.prepare('UPDATE folders SET parentId = ? WHERE parentId = ?').run(row.parentId, id);
+  db.prepare('UPDATE library SET folderId = ? WHERE folderId = ?').run(row.parentId, id);
+  db.prepare('DELETE FROM folders WHERE id = ?').run(id);
+});
+
+// ---- Locations ----
+// Purely organizational — see types.ts's Location. No content/schedule of its own;
+// holds Groups and standalone screens for browsing/managing a whole site at once.
+
+interface LocationRow { id: string; name: string }
+const LOCATION_COLUMNS = 'id, name';
+
+function rowToLocation(r: LocationRow): Location {
+  return { id: r.id, name: r.name };
+}
+
+export function listLocations(): Location[] {
+  const rows = db.prepare(`SELECT ${LOCATION_COLUMNS} FROM locations ORDER BY sortOrder ASC`).all() as LocationRow[];
+  return rows.map(rowToLocation);
+}
+
+export function addLocation(name: string): Location {
+  const id = uid('loc');
+  const cleanName = name.trim() || 'New location';
+  const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM locations').get() as { n: number }).n;
+  db.prepare('INSERT INTO locations (id, name, sortOrder) VALUES (?,?,?)').run(id, cleanName, nextOrder);
+  return { id, name: cleanName };
+}
+
+export function renameLocation(id: string, name: string): void {
+  if (!name.trim()) return;
+  db.prepare('UPDATE locations SET name = ? WHERE id = ?').run(name.trim(), id);
+}
+
+/** Persists a full drag-and-drop/up-down reorder of locations — mirrors reorderGroups. */
+export const reorderLocations = db.transaction((ids: string[]): void => {
+  const setOrder = db.prepare('UPDATE locations SET sortOrder = ? WHERE id = ?');
+  ids.forEach((id, i) => setOrder.run(i, id));
+  const rest = db.prepare('SELECT id FROM locations WHERE id NOT IN (SELECT value FROM json_each(?)) ORDER BY sortOrder ASC').all(JSON.stringify(ids)) as { id: string }[];
+  rest.forEach((r, i) => setOrder.run(ids.length + i, r.id));
+});
+
+/**
+ * Deletes a Location WITHOUT touching anything filed under it — every Group and
+ * standalone screen that referenced it just becomes un-filed (locationId back to
+ * null), same "never destroy content over a tidy-up action" reasoning as
+ * removeFolder. Nothing here owns any content for this to lose in the first place,
+ * but the "don't cascade-delete real things" principle still applies to the
+ * screens/groups themselves.
+ */
+export const removeLocation = db.transaction((id: string): void => {
+  db.prepare('UPDATE groups_ SET locationId = NULL WHERE locationId = ?').run(id);
+  db.prepare('UPDATE devices SET locationId = NULL WHERE locationId = ?').run(id);
+  db.prepare('DELETE FROM locations WHERE id = ?').run(id);
+});
+
 // ---- Groups ----
 
-interface GroupRow { id: string; name: string; defaultPlaylist: string; forcedContentId: string | null; forcedAnnouncementId: string | null }
-interface EventRow { id: string; groupId: string; name: string; start: string; end: string; libIds: string }
+interface GroupRow { id: string; name: string; locationId: string | null; defaultPlaylist: string; forcedContentId: string | null; forcedAnnouncementId: string | null; blackout: number }
+const GROUP_COLUMNS = 'id, name, locationId, defaultPlaylist, forcedContentId, forcedAnnouncementId, blackout';
+interface EventRow { id: string; groupId: string | null; deviceId: string | null; name: string; start: string; end: string; libIds: string; startTime: string | null; endTime: string | null }
 interface AnnouncementScheduleRow { id: string; groupId: string; announcementId: string; startDate: string; endDate: string; startTime: string; endTime: string }
 
 function eventsForGroup(groupId: string): ScheduleEvent[] {
-  const rows = db.prepare('SELECT id, groupId, name, start, end, libIds FROM events WHERE groupId = ? ORDER BY start ASC').all(groupId) as EventRow[];
-  return rows.map((r) => ({ id: r.id, name: r.name, start: r.start, end: r.end, libIds: JSON.parse(r.libIds) }));
+  const rows = db.prepare('SELECT id, groupId, deviceId, name, start, end, libIds, startTime, endTime FROM events WHERE groupId = ? ORDER BY start ASC').all(groupId) as EventRow[];
+  return rows.map((r) => ({
+    id: r.id, name: r.name, start: r.start, end: r.end, libIds: JSON.parse(r.libIds),
+    startTime: r.startTime ?? undefined, endTime: r.endTime ?? undefined,
+  }));
+}
+
+/** Mirrors eventsForGroup — see Device.events' comment in types.ts. */
+function eventsForDevice(deviceId: string): ScheduleEvent[] {
+  const rows = db.prepare('SELECT id, groupId, deviceId, name, start, end, libIds, startTime, endTime FROM events WHERE deviceId = ? ORDER BY start ASC').all(deviceId) as EventRow[];
+  return rows.map((r) => ({
+    id: r.id, name: r.name, start: r.start, end: r.end, libIds: JSON.parse(r.libIds),
+    startTime: r.startTime ?? undefined, endTime: r.endTime ?? undefined,
+  }));
 }
 
 function announcementSchedulesForGroup(groupId: string): AnnouncementSchedule[] {
@@ -119,26 +314,45 @@ function announcementSchedulesForGroup(groupId: string): AnnouncementSchedule[] 
 
 function rowToGroup(r: GroupRow): Group {
   return {
-    id: r.id, name: r.name, defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForGroup(r.id),
+    id: r.id, name: r.name, locationId: r.locationId, defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForGroup(r.id),
     forcedContentId: r.forcedContentId, forcedAnnouncementId: r.forcedAnnouncementId, announcementSchedules: announcementSchedulesForGroup(r.id),
+    blackout: !!r.blackout,
   };
 }
 
 export function listGroups(): Group[] {
-  const rows = db.prepare('SELECT id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId FROM groups_ ORDER BY rowid ASC').all() as GroupRow[];
+  const rows = db.prepare(`SELECT ${GROUP_COLUMNS} FROM groups_ ORDER BY sortOrder ASC`).all() as GroupRow[];
   return rows.map(rowToGroup);
 }
 
 export function getGroup(id: string): Group | null {
-  const row = db.prepare('SELECT id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId FROM groups_ WHERE id = ?').get(id) as GroupRow | undefined;
+  const row = db.prepare(`SELECT ${GROUP_COLUMNS} FROM groups_ WHERE id = ?`).get(id) as GroupRow | undefined;
   return row ? rowToGroup(row) : null;
 }
 
-export function addGroup(name: string): Group {
+export function addGroup(name: string, locationId: string | null = null): Group {
   const id = uid('g');
-  const cleanName = name.trim() || 'New location';
-  db.prepare('INSERT INTO groups_ (id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId) VALUES (?,?,?,?,?)').run(id, cleanName, '[]', null, null);
-  return { id, name: cleanName, defaultPlaylist: [], events: [], forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [] };
+  const cleanName = name.trim() || 'New group';
+  const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM groups_').get() as { n: number }).n;
+  db.prepare('INSERT INTO groups_ (id, name, locationId, defaultPlaylist, forcedContentId, forcedAnnouncementId, sortOrder, blackout) VALUES (?,?,?,?,?,?,?,0)').run(id, cleanName, locationId, '[]', null, null, nextOrder);
+  return { id, name: cleanName, locationId, defaultPlaylist: [], events: [], forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [], blackout: false };
+}
+
+/** Files an existing group under a Location, or `null` to un-file it — purely organizational, has no effect on its content. */
+export function setGroupLocation(groupId: string, locationId: string | null): void {
+  db.prepare('UPDATE groups_ SET locationId = ? WHERE id = ?').run(locationId, groupId);
+}
+
+/** Persists a full drag-and-drop reorder of groups from the Home screen — mirrors reorderLibrary. */
+export const reorderGroups = db.transaction((ids: string[]): void => {
+  const setOrder = db.prepare('UPDATE groups_ SET sortOrder = ? WHERE id = ?');
+  ids.forEach((id, i) => setOrder.run(i, id));
+  const rest = db.prepare('SELECT id FROM groups_ WHERE id NOT IN (SELECT value FROM json_each(?)) ORDER BY sortOrder ASC').all(JSON.stringify(ids)) as { id: string }[];
+  rest.forEach((r, i) => setOrder.run(ids.length + i, r.id));
+});
+
+export function setGroupBlackout(groupId: string, blackout: boolean): void {
+  db.prepare('UPDATE groups_ SET blackout = ? WHERE id = ?').run(blackout ? 1 : 0, groupId);
 }
 
 export function renameGroup(id: string, name: string): void {
@@ -183,7 +397,9 @@ export function reorderDefaultPlaylist(groupId: string, libId: string, direction
 
 export function addEvent(groupId: string, event: Omit<ScheduleEvent, 'id'>): ScheduleEvent {
   const id = uid('e');
-  db.prepare('INSERT INTO events (id, groupId, name, start, end, libIds) VALUES (?,?,?,?,?,?)').run(id, groupId, event.name, event.start, event.end, JSON.stringify(event.libIds));
+  db.prepare('INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime) VALUES (?,?,NULL,?,?,?,?,?,?)').run(
+    id, groupId, event.name, event.start, event.end, JSON.stringify(event.libIds), event.startTime ?? null, event.endTime ?? null,
+  );
   return { id, ...event };
 }
 
@@ -212,7 +428,14 @@ export function removeAnnouncementSchedule(groupId: string, scheduleId: string):
 
 // ---- Devices ----
 
-interface DeviceRow { id: string; name: string; ip: string; mac: string | null; groupId: string; announcementId: string | null; announcementOn: number; videoQuality: Device['videoQuality']; lastSeenAt: number | null }
+interface DeviceRow {
+  id: string; name: string; ip: string; mac: string | null; groupId: string | null; locationId: string | null; announcementId: string | null; announcementOn: number;
+  videoQuality: Device['videoQuality']; lastSeenAt: number | null;
+  tempC: number | null; throttled: string | null; uptimeSec: number | null; diskFreeMb: number | null; diskTotalMb: number | null;
+  forcedContentId: string | null; blackout: number; defaultPlaylist: string;
+}
+
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, forcedContentId, blackout, defaultPlaylist';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -220,41 +443,125 @@ function statusFor(lastSeenAt: number | null): DeviceStatus {
 
 function rowToDevice(r: DeviceRow): Device {
   return {
-    id: r.id, name: r.name, ip: r.ip, mac: r.mac, groupId: r.groupId,
+    id: r.id, name: r.name, ip: r.ip, mac: r.mac, groupId: r.groupId, locationId: r.locationId,
     announcementId: r.announcementId, announcementOn: !!r.announcementOn, videoQuality: r.videoQuality,
     status: statusFor(r.lastSeenAt), lastSeenAt: r.lastSeenAt ?? undefined,
+    tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
+    forcedContentId: r.forcedContentId, blackout: !!r.blackout,
+    defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForDevice(r.id),
   };
 }
 
 export function listDevices(): Device[] {
-  const rows = db.prepare('SELECT id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt FROM devices ORDER BY rowid ASC').all() as DeviceRow[];
+  const rows = db.prepare(`SELECT ${DEVICE_COLUMNS} FROM devices ORDER BY sortOrder ASC, rowid ASC`).all() as DeviceRow[];
   return rows.map(rowToDevice);
 }
 
 export function getDevice(id: string): Device | null {
-  const row = db.prepare('SELECT id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt FROM devices WHERE id = ?').get(id) as DeviceRow | undefined;
+  const row = db.prepare(`SELECT ${DEVICE_COLUMNS} FROM devices WHERE id = ?`).get(id) as DeviceRow | undefined;
   return row ? rowToDevice(row) : null;
 }
 
-export function pairDevice(input: { name: string; ip: string; mac?: string | null; groupId: string; status?: DeviceStatus }): Device {
+export function pairDevice(input: { name: string; ip: string; mac?: string | null; groupId: string | null; locationId?: string | null; status?: DeviceStatus }): Device {
   const id = uid('d');
   const lastSeenAt = input.status === 'offline' ? null : Date.now();
   const mac = input.mac ?? null;
-  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt) VALUES (?,?,?,?,?,?,0,?,?)').run(id, input.name, input.ip, mac, input.groupId, null, 'auto', lastSeenAt);
-  return { id, name: input.name, ip: input.ip, mac, groupId: input.groupId, announcementId: null, announcementOn: false, videoQuality: 'auto', status: statusFor(lastSeenAt) };
+  const locationId = input.locationId ?? null;
+  // Scoped to this device's own group (or the standalone/no-group bucket, via IS —
+  // SQLite's null-safe equality — for a null groupId) since sortOrder is only ever
+  // compared within that scope; MAX ignores other groups' devices entirely, so a
+  // new screen always lands last in ITS list, not last globally.
+  const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM devices WHERE groupId IS ?').get(input.groupId) as { n: number }).n;
+  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, sortOrder) VALUES (?,?,?,?,?,?,?,0,?,?,?)').run(id, input.name, input.ip, mac, input.groupId, locationId, null, 'auto', lastSeenAt, nextOrder);
+  return {
+    id, name: input.name, ip: input.ip, mac, groupId: input.groupId, locationId, announcementId: null, announcementOn: false,
+    videoQuality: 'auto', status: statusFor(lastSeenAt), forcedContentId: null, blackout: false,
+    defaultPlaylist: [], events: [],
+  };
+}
+
+export function setDeviceForcedContent(id: string, libId: string | null): void {
+  db.prepare('UPDATE devices SET forcedContentId = ? WHERE id = ?').run(libId, id);
+}
+
+export function setDeviceBlackout(id: string, blackout: boolean): void {
+  db.prepare('UPDATE devices SET blackout = ? WHERE id = ?').run(blackout ? 1 : 0, id);
+}
+
+export function setDeviceDefaultPlaylist(deviceId: string, libIds: string[]): void {
+  db.prepare('UPDATE devices SET defaultPlaylist = ? WHERE id = ?').run(JSON.stringify(libIds), deviceId);
+}
+
+export function addToDeviceDefaultPlaylist(deviceId: string, libIds: string[]): void {
+  const device = getDevice(deviceId);
+  if (!device) return;
+  const merged = [...device.defaultPlaylist, ...libIds.filter((id) => !device.defaultPlaylist.includes(id))];
+  setDeviceDefaultPlaylist(deviceId, merged);
+}
+
+export function removeFromDeviceDefaultPlaylist(deviceId: string, libId: string): void {
+  const device = getDevice(deviceId);
+  if (!device) return;
+  setDeviceDefaultPlaylist(deviceId, device.defaultPlaylist.filter((id) => id !== libId));
+}
+
+export function reorderDeviceDefaultPlaylist(deviceId: string, libId: string, direction: 'up' | 'down'): void {
+  const device = getDevice(deviceId);
+  if (!device) return;
+  const idx = device.defaultPlaylist.indexOf(libId);
+  const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+  if (idx < 0 || swapWith < 0 || swapWith >= device.defaultPlaylist.length) return;
+  const list = [...device.defaultPlaylist];
+  [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
+  setDeviceDefaultPlaylist(deviceId, list);
+}
+
+/** Mirrors addEvent/removeEvent — see Device.events' comment in types.ts. */
+export function addDeviceEvent(deviceId: string, event: Omit<ScheduleEvent, 'id'>): ScheduleEvent {
+  const id = uid('e');
+  db.prepare('INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime) VALUES (?,NULL,?,?,?,?,?,?,?)').run(
+    id, deviceId, event.name, event.start, event.end, JSON.stringify(event.libIds), event.startTime ?? null, event.endTime ?? null,
+  );
+  return { id, ...event };
+}
+
+export function removeDeviceEvent(deviceId: string, eventId: string): void {
+  db.prepare('DELETE FROM events WHERE id = ? AND deviceId = ?').run(eventId, deviceId);
 }
 
 export function setDeviceVideoQuality(id: string, videoQuality: Device['videoQuality']): void {
   db.prepare('UPDATE devices SET videoQuality = ? WHERE id = ?').run(videoQuality, id);
 }
 
+/**
+ * Persists a reorder of screens shown under one group (or the standalone/no-group
+ * list) on Settings/Home — unlike reorderLibrary/reorderGroups, `ids` is expected to
+ * already be the complete set of devices in that one scope, not a global list, so
+ * there's no "remaining" bucket to append: sortOrder only ever gets compared within
+ * a single groupId anyway (see listDevices' ORDER BY), so devices outside `ids`
+ * belong to a different scope entirely and must not be touched here.
+ */
+export const reorderDevices = db.transaction((ids: string[]): void => {
+  const setOrder = db.prepare('UPDATE devices SET sortOrder = ? WHERE id = ?');
+  ids.forEach((id, i) => setOrder.run(i, id));
+});
+
 export function renameDevice(id: string, name: string): void {
   if (!name.trim()) return;
   db.prepare('UPDATE devices SET name = ? WHERE id = ?').run(name.trim(), id);
 }
 
-export function moveDevice(id: string, groupId: string): void {
-  db.prepare('UPDATE devices SET groupId = ? WHERE id = ?').run(groupId, id);
+export function moveDevice(id: string, groupId: string | null): void {
+  // Lands last in the target group's (or standalone list's) own order, same
+  // reasoning as pairDevice's nextOrder — its old sortOrder value is meaningless
+  // once it's scoped to a different groupId bucket.
+  const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM devices WHERE groupId IS ?').get(groupId) as { n: number }).n;
+  db.prepare('UPDATE devices SET groupId = ?, sortOrder = ? WHERE id = ?').run(groupId, nextOrder, id);
+}
+
+/** Files a standalone screen under a Location, or `null` to un-file it — purely organizational, meaningless while the screen is in a group (its Location comes from the group instead). */
+export function setDeviceLocation(id: string, locationId: string | null): void {
+  db.prepare('UPDATE devices SET locationId = ? WHERE id = ?').run(locationId, id);
 }
 
 export function removeDevice(id: string): void {
@@ -272,18 +579,42 @@ export function toggleDeviceAnnouncement(id: string): void {
   }
 }
 
-export function recordHeartbeat(id: string, ip: string): void {
-  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ? WHERE id = ?').run(Date.now(), ip, id);
+export interface HeartbeatDiagnostics {
+  tempC?: number | null;
+  throttled?: string | null;
+  uptimeSec?: number | null;
+  diskFreeMb?: number | null;
+  diskTotalMb?: number | null;
 }
 
-// ---- Pairing helper (simulated placeholder for a real LAN scan) ----
+export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnostics): void {
+  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ? WHERE id = ?').run(
+    Date.now(), ip,
+    diag?.tempC ?? null, diag?.throttled ?? null, diag?.uptimeSec ?? null, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null,
+    id,
+  );
+}
 
-export function scanNetwork(): DiscoveredDevice[] {
-  const randOctet = () => 20 + Math.floor(Math.random() * 200);
-  return [
-    { id: uid('n'), name: 'New Display', ip: `192.168.1.${randOctet()}` },
-    { id: uid('n'), name: 'New Display', ip: `192.168.1.${randOctet()}` },
-  ];
+// ---- Settings (hub-wide, readable by both the control app and every Pi) ----
+
+function getSetting(key: string): string | null {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+function setSetting(key: string, value: string): void {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
+}
+
+// Defaults to true — matches this project's original, always-on behavior (a Pi
+// already caches its last-resolved content and keeps showing it through a
+// disconnect) for every hub that predates this being a toggle at all.
+export function getSafetyHold(): boolean {
+  return getSetting('safetyHold') !== '0';
+}
+
+export function setSafetyHold(enabled: boolean): void {
+  setSetting('safetyHold', enabled ? '1' : '0');
 }
 
 // ---- Content resolution (mirrors src/api/resolve.ts) ----
@@ -293,21 +624,34 @@ function toISODate(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-export function activeContentIds(group: Group, today: string = toISODate(new Date())): { ids: string[]; kind: 'forced' | 'event' | 'default'; label: string } {
+export function activeContentIds(group: Group, now: Date = new Date()): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
+  // Highest priority, above even forced content — an emergency override meant to
+  // win regardless of anything else configured for this group.
+  if (group.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
   if (group.forcedContentId) return { ids: [group.forcedContentId], kind: 'forced', label: 'Forced' };
-  const event = group.events.find((e) => today >= e.start && today <= e.end);
+  const today = toISODate(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  // An event with no startTime/endTime runs all day, every day in [start, end] (the
+  // original behavior); one with both set only replaces the default playlist during
+  // that daily window — same "doesn't span midnight" string-compare caveat as
+  // activeAnnouncementId's schedules below.
+  const event = group.events.find((e) => {
+    if (today < e.start || today > e.end) return false;
+    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
+    return true;
+  });
   if (event) return { ids: event.libIds, kind: 'event', label: event.name };
   return { ids: group.defaultPlaylist, kind: 'default', label: 'Default playlist' };
 }
 
 // Resolution order, highest priority first: (1) forcedAnnouncementId — manually forced
-// on for every screen at this location, same "until cleared" model as forced content;
+// on for every screen in this group, same "until cleared" model as forced content;
 // (2) an announcement schedule whose date range AND time-of-day window both cover
 // `now` (string-compared "HH:MM" sorts the same as numeric comparison since it's
 // always zero-padded 24h — doesn't handle a window that spans midnight, e.g.
 // 22:00-02:00, by design: not a case this project's signage use targets); (3) null,
 // meaning each device's own manual announcementId/announcementOn toggle applies
-// instead (see getPlayerState below) — this location-level resolution only ever
+// instead (see getPlayerState below) — this group-level resolution only ever
 // overrides that per-device toggle, never replaces it as the base behavior.
 export function activeAnnouncementId(group: Group, now: Date = new Date()): string | null {
   if (group.forcedAnnouncementId) return group.forcedAnnouncementId;
@@ -319,13 +663,33 @@ export function activeAnnouncementId(group: Group, now: Date = new Date()): stri
   return active?.announcementId ?? null;
 }
 
+// A screen not assigned to any group has no group-level schedule to fall back on,
+// but does have its own — forcedContentId/blackout (the standalone-screen
+// equivalents of a group's controls, see Device.forcedContentId's comment in
+// types.ts), then its own events/defaultPlaylist, same priority order and
+// time-window matching as activeContentIds above.
+function activeContentIdsForDevice(device: Device, now: Date = new Date()): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
+  if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
+  if (device.forcedContentId) return { ids: [device.forcedContentId], kind: 'forced', label: 'Forced' };
+  const today = toISODate(now);
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const event = device.events.find((e) => {
+    if (today < e.start || today > e.end) return false;
+    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
+    return true;
+  });
+  if (event) return { ids: event.libIds, kind: 'event', label: event.name };
+  if (device.defaultPlaylist.length > 0) return { ids: device.defaultPlaylist, kind: 'default', label: 'Default playlist' };
+  return { ids: [], kind: 'default', label: 'No content' };
+}
+
 export function getPlayerState(deviceId: string): PlayerState | null {
   const device = getDevice(deviceId);
   if (!device) return null;
-  const group = getGroup(device.groupId);
-  if (!group) return null;
+  const group = device.groupId ? getGroup(device.groupId) : null;
+  if (device.groupId && !group) return null;
 
-  const active = activeContentIds(group);
+  const active = group ? activeContentIds(group) : activeContentIdsForDevice(device);
   const libraryById = new Map(listLibrary().map((item) => [item.id, item]));
   const items = active.ids
     .map((id) => libraryById.get(id))
@@ -337,22 +701,49 @@ export function getPlayerState(deviceId: string): PlayerState | null {
       // upload; otherwise the resolution-capped copy once one exists, falling back to
       // the original while it's still processing or if capping failed outright.
       url: (item.type === 'video' && device.videoQuality === 'full' ? item.fullUrl : undefined) ?? item.thumb ?? item.fullUrl ?? '',
-      duration: item.type === 'video' ? null : item.type === 'image' || item.type === 'clock' ? (item.durationSec ?? 8) : 8,
+      duration: item.type === 'video' ? null : item.type === 'image' || item.type === 'clock' || item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals' ? (item.durationSec ?? 8) : 8,
       ...(item.type === 'pdf' && { pageCount: item.pageCount ?? 1 }),
+      ...(item.type === 'ndi' && { ndiSourceName: item.ndiSourceName ?? '' }),
+      // Resolved fresh from tflStatus.ts's cache on every poll, not stored on the
+      // library item — this is what makes the board feel "live" without the device
+      // needing any TfL-specific polling of its own (see tflStatus.ts's header comment).
+      ...(item.type === 'tfl-status' && { tflLines: tflStatus.getLinesForModes(item.tflModes ?? []) }),
+      // Same reasoning, resolved fresh from tflArrivals.ts's per-station cache — see
+      // its header comment and getPlayerState's tflArrivals.startPolling wiring in
+      // index.ts (which decides which stations are "needed" from these same items).
+      // One entry per configured station, in order, so a multi-station board (see
+      // types.ts's LibraryItem.tflStations) can render each as its own panel.
+      ...(item.type === 'tfl-arrivals' && item.tflStations && {
+        tflStationBoards: item.tflStations.map((station) => ({
+          stopPointName: station.stopPointName,
+          boards: tflArrivals.getBoardForStop(station.stopPointId, station.lines),
+        })),
+      }),
     }));
 
-  // Location-level forced/scheduled announcement overrides this device's own manual
+  const safetyHold = getSafetyHold();
+
+  // Blackout means a genuinely blank screen — even the announcement ticker goes
+  // dark, since the whole point is an emergency "nothing shows here" state, not
+  // just swapping out the main content.
+  if (active.kind === 'blackout') {
+    return { kind: 'blackout', label: active.label, items: [], announcement: { on: false, text: null }, safetyHold };
+  }
+
+  // Group-level forced/scheduled announcement overrides this device's own manual
   // toggle when active; otherwise the device's own announcementId/announcementOn
-  // applies exactly as before.
-  const locationAnnouncementId = activeAnnouncementId(group);
-  const announcementId = locationAnnouncementId ?? device.announcementId;
-  const announcementOn = locationAnnouncementId != null || device.announcementOn;
+  // applies exactly as before. No group at all means there's nothing to override
+  // with — the device's own toggle is the only source.
+  const groupAnnouncementId = group ? activeAnnouncementId(group) : null;
+  const announcementId = groupAnnouncementId ?? device.announcementId;
+  const announcementOn = groupAnnouncementId != null || device.announcementOn;
   const announcement = announcementId ? libraryById.get(announcementId) : undefined;
   return {
     kind: active.kind,
     label: active.label,
     items,
     announcement: { on: announcementOn && !!announcement, text: announcement?.text ?? null },
+    safetyHold,
   };
 }
 
@@ -364,9 +755,11 @@ export interface Backup {
   library: LibraryItem[];
   groups: Group[];
   devices: Device[];
+  folders: Folder[];
+  locations: Location[];
 }
 
-/** Full snapshot of everything the control app manages — content metadata, locations/playlists/schedules, and paired screens (name, IP, MAC, settings). Uploaded media files themselves aren't included (they're not JSON-portable); back up hub/data/uploads separately if you need those too. */
+/** Full snapshot of everything the control app manages — content metadata, groups/playlists/schedules, Locations, paired screens (name, IP, MAC, settings), and the Library screen's folder tree. Uploaded media files themselves aren't included (they're not JSON-portable); back up hub/data/uploads separately if you need those too. */
 export function exportBackup(): Backup {
   return {
     version: 1,
@@ -374,6 +767,8 @@ export function exportBackup(): Backup {
     library: listLibrary(),
     groups: listGroups(),
     devices: listDevices(),
+    folders: listFolders(),
+    locations: listLocations(),
   };
 }
 
@@ -387,41 +782,72 @@ export function exportBackup(): Backup {
  * (lastSeenAt cleared) until each Pi's own poller heartbeats again, rather than
  * presenting stale liveness state as current.
  */
-export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'groups' | 'devices'>): void => {
+export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'groups' | 'devices'> & { folders?: Folder[]; locations?: Location[] }): void => {
   db.prepare('DELETE FROM events').run();
   db.prepare('DELETE FROM announcement_schedules').run();
   db.prepare('DELETE FROM devices').run();
   db.prepare('DELETE FROM groups_').run();
   db.prepare('DELETE FROM library').run();
+  db.prepare('DELETE FROM folders').run();
+  db.prepare('DELETE FROM locations').run();
+
+  const insertLocation = db.prepare('INSERT INTO locations (id, name, sortOrder) VALUES (@id,@name,@sortOrder)');
+  (backup.locations ?? []).forEach((location, i) => {
+    insertLocation.run({ id: location.id, name: location.name, sortOrder: i });
+  });
+
+  // folders has no FK to enforce insert order (see db.ts's folderId migration
+  // comment), so parents and children can be inserted in whatever order the
+  // backup happens to list them in.
+  const insertFolder = db.prepare('INSERT INTO folders (id, name, parentId, createdAt) VALUES (@id,@name,@parentId,@createdAt)');
+  (backup.folders ?? []).forEach((folder) => {
+    // Preserves the original creation date when the backup has one; a backup taken
+    // before this field existed has no truthful answer, so "now" is the best guess.
+    insertFolder.run({ id: folder.id, name: folder.name, parentId: folder.parentId, createdAt: folder.createdAt ?? Date.now() });
+  });
 
   const insertLibrary = db.prepare(
-    'INSERT INTO library (id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, sortOrder, createdAt) ' +
-    'VALUES (@id,@name,@type,@size,@duration,@durationSec,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@sortOrder,@createdAt)',
+    'INSERT INTO library (id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStations, folderId, sortOrder, createdAt) ' +
+    'VALUES (@id,@name,@type,@size,@duration,@durationSec,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@tags,@ndiSourceName,@tflModes,@tflStations,@folderId,@sortOrder,@createdAt)',
   );
   backup.library.forEach((item, i) => {
     insertLibrary.run({
       id: item.id, name: item.name, type: item.type,
       size: item.size ?? null, duration: item.duration ?? null, durationSec: item.durationSec ?? null,
       thumb: item.thumb ?? null, text: item.text ?? null, pageCount: item.pageCount ?? null,
-      fullUrl: item.fullUrl ?? null, transcodeStatus: item.transcodeStatus ?? null,
-      sortOrder: i, createdAt: Date.now() + i, // +i keeps insertion order stable if createdAt is ever read as a tiebreaker
+      fullUrl: item.fullUrl ?? null, transcodeStatus: item.transcodeStatus ?? null, tags: JSON.stringify(item.tags ?? []),
+      ndiSourceName: item.ndiSourceName ?? null,
+      tflModes: item.tflModes ? JSON.stringify(item.tflModes) : null,
+      tflStations: item.tflStations ? JSON.stringify(item.tflStations) : null,
+      folderId: item.folderId ?? null,
+      sortOrder: i,
+      // Preserves the original "added on" date when the backup has one; a backup
+      // taken before this field existed has no truthful answer, so this falls back
+      // to a synthetic one that at least keeps insertion order stable as a tiebreaker.
+      createdAt: item.createdAt ?? Date.now() + i,
     });
   });
 
   const insertGroup = db.prepare(
-    'INSERT INTO groups_ (id, name, defaultPlaylist, forcedContentId, forcedAnnouncementId) VALUES (@id,@name,@defaultPlaylist,@forcedContentId,@forcedAnnouncementId)',
+    'INSERT INTO groups_ (id, name, locationId, defaultPlaylist, forcedContentId, forcedAnnouncementId, sortOrder, blackout) VALUES (@id,@name,@locationId,@defaultPlaylist,@forcedContentId,@forcedAnnouncementId,@sortOrder,@blackout)',
   );
-  const insertEvent = db.prepare('INSERT INTO events (id, groupId, name, start, end, libIds) VALUES (@id,@groupId,@name,@start,@end,@libIds)');
+  const insertEvent = db.prepare(
+    'INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime) VALUES (@id,@groupId,@deviceId,@name,@start,@end,@libIds,@startTime,@endTime)',
+  );
   const insertAnnSchedule = db.prepare(
     'INSERT INTO announcement_schedules (id, groupId, announcementId, startDate, endDate, startTime, endTime) VALUES (@id,@groupId,@announcementId,@startDate,@endDate,@startTime,@endTime)',
   );
-  for (const group of backup.groups) {
+  backup.groups.forEach((group, i) => {
     insertGroup.run({
-      id: group.id, name: group.name, defaultPlaylist: JSON.stringify(group.defaultPlaylist),
+      id: group.id, name: group.name, locationId: group.locationId ?? null, defaultPlaylist: JSON.stringify(group.defaultPlaylist),
       forcedContentId: group.forcedContentId, forcedAnnouncementId: group.forcedAnnouncementId,
+      sortOrder: i, blackout: group.blackout ? 1 : 0,
     });
     for (const event of group.events) {
-      insertEvent.run({ id: event.id, groupId: group.id, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds) });
+      insertEvent.run({
+        id: event.id, groupId: group.id, deviceId: null, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds),
+        startTime: event.startTime ?? null, endTime: event.endTime ?? null,
+      });
     }
     for (const s of group.announcementSchedules) {
       insertAnnSchedule.run({
@@ -429,16 +855,24 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
         startDate: s.startDate, endDate: s.endDate, startTime: s.startTime, endTime: s.endTime,
       });
     }
-  }
+  });
 
   const insertDevice = db.prepare(
-    'INSERT INTO devices (id, name, ip, mac, groupId, announcementId, announcementOn, videoQuality, lastSeenAt) ' +
-    'VALUES (@id,@name,@ip,@mac,@groupId,@announcementId,@announcementOn,@videoQuality,NULL)',
+    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedContentId, blackout, defaultPlaylist, sortOrder) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedContentId,@blackout,@defaultPlaylist,@sortOrder)',
   );
-  for (const device of backup.devices) {
+  backup.devices.forEach((device, i) => {
     insertDevice.run({
-      id: device.id, name: device.name, ip: device.ip, mac: device.mac, groupId: device.groupId,
+      id: device.id, name: device.name, ip: device.ip, mac: device.mac, groupId: device.groupId, locationId: device.locationId ?? null,
       announcementId: device.announcementId, announcementOn: device.announcementOn ? 1 : 0, videoQuality: device.videoQuality,
+      forcedContentId: device.forcedContentId ?? null, blackout: device.blackout ? 1 : 0,
+      defaultPlaylist: JSON.stringify(device.defaultPlaylist ?? []), sortOrder: i,
     });
-  }
+    for (const event of device.events ?? []) {
+      insertEvent.run({
+        id: event.id, groupId: null, deviceId: device.id, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds),
+        startTime: event.startTime ?? null, endTime: event.endTime ?? null,
+      });
+    }
+  });
 });

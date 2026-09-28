@@ -50,3 +50,19 @@ export async function unpair(ip: string): Promise<void> {
   const res = await agentFetch(ip, '/unpair', { method: 'POST' });
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected unpair: ${res.status}`);
 }
+
+// NDI source discovery (Pi 4/5 or an x86 device only — see pi-player/src/ndiPlayer.ts's
+// findSources). Discovery itself takes a few seconds on the device, so this gets a
+// longer timeout than the other agent calls above.
+export async function listNdiSources(ip: string): Promise<string[]> {
+  const res = await agentFetch(ip, '/native-ndi/sources', undefined, 8000);
+  if (!res.ok) throw new Error(`Pi agent at ${ip} rejected ndi-sources: ${res.status}`);
+  const body = (await res.json()) as { sources: string[] };
+  return body.sources;
+}
+
+// Settings screen's "Identify" button (bulb icon) — see pi-player/src/identifyFlash.ts.
+export async function identifyFlash(ip: string): Promise<void> {
+  const res = await agentFetch(ip, '/identify-flash', { method: 'POST' });
+  if (!res.ok) throw new Error(`Pi agent at ${ip} rejected identify-flash: ${res.status}`);
+}

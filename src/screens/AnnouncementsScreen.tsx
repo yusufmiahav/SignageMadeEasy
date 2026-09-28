@@ -51,7 +51,7 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
 
       <div className="card" style={{ gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="card-kicker">This location</div>
+          <div className="card-kicker">This group</div>
           {activeItem && <span className="tag tag-accent">On now: {activeItem.name}</span>}
         </div>
         {forcedItem ? (
@@ -73,7 +73,7 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
             style={{ alignSelf: 'flex-start', fontSize: 12, padding: '4px 10px' }}
             onClick={() => onOpenForceAnnouncement(selectedGroup.id)}
           >
-            Force on for this location
+            Force on for this group
           </button>
         )}
       </div>
@@ -86,7 +86,7 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
           </button>
         </div>
         {selectedGroup.announcementSchedules.length === 0 ? (
-          <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>Nothing scheduled at this location.</p>
+          <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>Nothing scheduled for this group.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {selectedGroup.announcementSchedules.map((s) => (

@@ -1,15 +1,34 @@
 #!/usr/bin/env bash
-# SignageMadeEasy Pi provisioning script — run ONCE, as root, over SSH, on a freshly
-# flashed Raspberry Pi OS Lite (64-bit, Bookworm or newer). Idempotent: safe to re-run
-# after a git pull to pick up player updates.
+# SignageMadeEasy player provisioning script — run ONCE, as root, over SSH, on
+# either a freshly flashed Raspberry Pi OS Lite (64-bit, Bookworm or newer) or a
+# freshly installed Debian (Bookworm/Trixie) x86_64 machine — e.g. an Intel HDMI
+# compute stick. Idempotent: safe to re-run after a git pull to pick up player
+# updates. The player app itself (pi-player/src) is plain Node.js with zero native
+# or architecture-specific dependencies — the only parts of this script that differ
+# by platform are how the boot-splash kernel command line is set (Raspberry Pi's
+# flat cmdline.txt vs. GRUB on a generic PC) and a couple of Pi-only hardware
+# tweaks (arm_freq underclock, forcing HDMI audio) that have no x86 equivalent —
+# branched inline below via $IS_PI rather than as a separate script, so a fix to
+# the ~90% that's shared never has to be applied twice.
 #
-# Before this: flash with Raspberry Pi Imager, using its own gear-icon "OS
-# customisation" dialog to set hostname, enable SSH, and set your Wi-Fi SSID/password
-# — none of that is this script's job.
+# x86 note: use Debian, not Ubuntu — recent Ubuntu releases only ship Chromium as
+# a snap, which complicates a kiosk autostart (confinement, unpredictable binary
+# path/timing) in a way a native .deb doesn't. Enable the `contrib` and
+# `non-free-firmware` components in /etc/apt/sources.list (or tick them during
+# install) — plain `main` alone isn't enough for every Chromium dependency, and
+# newer Intel iGPUs need non-free-firmware for reliable display/hardware video
+# decode via the i915 driver.
+#
+# Before this: flash/install the OS —
+#   - Raspberry Pi: flash with Raspberry Pi Imager, using its own gear-icon "OS
+#     customisation" dialog to set hostname, enable SSH, and set your Wi-Fi
+#     SSID/password — none of that is this script's job.
+#   - x86 stick: install Debian (netinst is fine) with an SSH server and no
+#     desktop environment, same idea as "Lite" on the Pi.
 #
 #   ssh pi@<ip-shown-on-first-boot>
 #   sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/pi-player/provision.sh)"
-# or, if you've already cloned the repo onto the Pi:
+# or, if you've already cloned the repo onto the device:
 #   sudo ./pi-player/provision.sh
 
 set -euo pipefail
@@ -26,54 +45,38 @@ SIGNAGE_USER=signage
 
 log() { echo -e "\n==> $*"; }
 
+# /proc/device-tree/model exists on real Raspberry Pi hardware regardless of which
+# OS is installed on it — a more reliable check than `uname -m` (arm64 also covers
+# other ARM boards, and this project doesn't try to support those) or os-release
+# (Raspberry Pi OS is just Debian under the hood, so its own os-release doesn't
+# say "raspberry" anywhere).
+IS_PI=0
+if [[ -f /proc/device-tree/model ]] && grep -qi 'raspberry pi' /proc/device-tree/model 2>/dev/null; then
+  IS_PI=1
+fi
+
+# Distinct from IS_PI above — this is "has enough headroom for the NDI-in feature"
+# (native GStreamer + gst-plugin-ndi, see pi-player/src/ndiPlayer.ts and README.md),
+# not "is a Raspberry Pi". A Pi 4/5 qualifies (a plain 32-bit "Raspberry Pi 4" board
+# string and a 64-bit one both match, same as IS_PI's own check); a Pi 3B+ doesn't —
+# it's the one board this project targets that's genuinely underpowered for it. Every
+# x86_64 stick this script supports qualifies too: ndiPlayer.ts/waylandDisplay.ts have
+# no Pi-specific logic at all (just spawns gst-launch-1.0 and finds whatever Wayland
+# socket the compositor exposes), an x86 CPU generally has more headroom than a Pi 4/5
+# for this, and the NDI SDK itself ships an x86_64-linux-gnu build alongside its ARM
+# ones — nothing here is actually Pi-specific, IS_PI4_5 was just scoped too narrowly
+# when this shipped, before x86 support existed as a target for it.
+SUPPORTS_NDI=0
+if [[ "$IS_PI" -eq 0 ]] || { [[ -f /proc/device-tree/model ]] && grep -qiE 'raspberry pi (4|5)' /proc/device-tree/model 2>/dev/null; }; then
+  SUPPORTS_NDI=1
+fi
+
 # ---------------------------------------------------------------------------
 log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  cage curl ca-certificates git rsync plymouth plymouth-themes
-
-# ydotool/ydotoold (used to warp the cursor off-screen — see signage-kiosk.service,
-# the part actually confirmed on real hardware to hide it) aren't in every
-# release's default repo — e.g. Raspberry Pi OS Trixie only has them in
-# trixie-backports. Best-effort and isolated from the required packages above on
-# purpose: this failing must never take the rest of provisioning down with it
-# (that's exactly what happened before this was split out — one missing package
-# killed the whole script via set -euo pipefail before it ever reached anything
-# else, the same failure mode as the earlier git-ownership bug).
-#
-# Package name varies by architecture too, confirmed on real hardware: on
-# Raspberry Pi OS's 32-bit (armhf) build, `ydotoold` isn't an installable
-# package at all — `ydotool` alone bundles both the client and the daemon —
-# whereas other architectures split them into two separate packages. Try the
-# two-package form first, fall back to the single-package form, and verify
-# with the actual binary rather than trusting either apt-get call's exit code
-# alone, since apt-get can succeed while still not providing what we need.
-try_install_ydotool() {
-  apt-get install -y --no-install-recommends "$@" ydotool ydotoold 2>/dev/null || \
-  apt-get install -y --no-install-recommends "$@" ydotool 2>/dev/null
-}
-
-HAVE_YDOTOOL=0
-if try_install_ydotool && command -v ydotoold >/dev/null 2>&1; then
-  HAVE_YDOTOOL=1
-elif [[ -f /etc/os-release ]] && grep -q '^VERSION_CODENAME=trixie' /etc/os-release; then
-  BACKPORTS_LIST=/etc/apt/sources.list.d/trixie-backports.list
-  if [[ ! -f "$BACKPORTS_LIST" ]]; then
-    echo "deb http://deb.debian.org/debian trixie-backports main" > "$BACKPORTS_LIST"
-  fi
-  # Pinned to trixie-backports specifically (-t) so this doesn't pull anything
-  # else up from backports as a side effect — only touches these two packages.
-  if apt-get update 2>/dev/null && \
-     try_install_ydotool -t trixie-backports && command -v ydotoold >/dev/null 2>&1; then
-    HAVE_YDOTOOL=1
-  fi
-fi
-if [[ "$HAVE_YDOTOOL" -eq 0 ]]; then
-  echo "ydotool/ydotoold not available — skipping the cursor off-screen warp (the" >&2
-  echo "XCURSOR_THEME/XCURSOR_SIZE attempt still applies, but wasn't confirmed" >&2
-  echo "sufficient on its own — see signage-kiosk.service)." >&2
-fi
+  sway curl ca-certificates git rsync plymouth plymouth-themes network-manager
 
 # Package name for Chromium differs across Raspberry Pi OS releases.
 if apt-cache show chromium >/dev/null 2>&1; then
@@ -102,6 +105,23 @@ if ! id "$SIGNAGE_USER" >/dev/null 2>&1; then
   useradd --system --create-home --shell /usr/sbin/nologin \
     --groups video,render,input,tty "$SIGNAGE_USER"
 fi
+
+# ---------------------------------------------------------------------------
+log "Enabling linger for $SIGNAGE_USER"
+# Root cause of a real-hardware crash-loop confirmed via journalctl: cage
+# failed with "XDG_RUNTIME_DIR is not set" on the first 2-3 boot attempts,
+# self-healing only because Restart=always kept buying time. An After=
+# ordering on systemd-logind.service/dbus.service alone wasn't enough — that
+# unit being "active" doesn't mean logind has finished registering *this*
+# session yet, and the existing ExecStartPre bus-socket check in
+# signage-kiosk.service can pass instantly by observing its own just-opened
+# session rather than actually waiting for one. Linger sidesteps the race
+# entirely instead of trying to win it: it tells logind to create
+# /run/user/<uid> (and its D-Bus session bus) at boot, before any login
+# session exists at all, so it's already there and stable by the time
+# signage-kiosk.service starts. Idempotent — enabling linger for an
+# already-lingering user is a harmless no-op.
+loginctl enable-linger "$SIGNAGE_USER"
 
 # ---------------------------------------------------------------------------
 log "Granting $SIGNAGE_USER passwordless nmcli access (Wi-Fi fallback hotspot — see pi-player/src/wifiManager.ts)"
@@ -170,90 +190,161 @@ chown "$SIGNAGE_USER:$SIGNAGE_USER" "$INSTALL_DIR"
 chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$APP_DIR"
 
 # ---------------------------------------------------------------------------
-log "Installing the underclock toggle script (root-owned — see pi-player/src/underclock.ts)"
-# Deliberately NOT under $APP_DIR: that whole tree is chowned to $SIGNAGE_USER
-# above, and $SIGNAGE_USER can invoke this script via the sudoers grant below —
-# if $SIGNAGE_USER could also edit the script it runs as root, that grant would
-# be a straight path to arbitrary root access instead of the one fixed on/off
-# toggle it's meant to be.
-mkdir -p /opt/signage/bin
-install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/set-underclock.sh" /opt/signage/bin/set-underclock.sh
+# arm_freq (see pi-player/src/underclock.ts) only exists on Raspberry Pi firmware —
+# an x86 stick has no equivalent knob here, and doesn't need one: it's not a bare
+# board with no heatsink the way a Pi 3B+ can be. The underclock toggle on the
+# local setup page still degrades gracefully without this (app.ts's /underclock
+# route already catches the missing-script error and reports it to the page,
+# rather than crashing) — this just skips installing something that would never
+# be usable on this hardware.
+if [[ "$IS_PI" -eq 1 ]]; then
+  log "Installing the underclock toggle script (root-owned — see pi-player/src/underclock.ts)"
+  # Deliberately NOT under $APP_DIR: that whole tree is chowned to $SIGNAGE_USER
+  # above, and $SIGNAGE_USER can invoke this script via the sudoers grant below —
+  # if $SIGNAGE_USER could also edit the script it runs as root, that grant would
+  # be a straight path to arbitrary root access instead of the one fixed on/off
+  # toggle it's meant to be.
+  mkdir -p /opt/signage/bin
+  install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/set-underclock.sh" /opt/signage/bin/set-underclock.sh
+fi
 
 # ---------------------------------------------------------------------------
-log "Granting $SIGNAGE_USER passwordless access to the underclock script and reboot"
+if [[ "$IS_PI" -eq 1 ]]; then
+  log "Granting $SIGNAGE_USER passwordless access to the underclock script and reboot"
+else
+  log "Granting $SIGNAGE_USER passwordless access to reboot"
+fi
 # Same reasoning and same visudo-validate-before-install pattern as the nmcli grant
 # above: narrow, specific, fixed commands only — never a blanket NOPASSWD:ALL.
-# reboot's real path varies across Raspberry Pi OS releases (merged-/usr or not) —
-# resolved here rather than hardcoded, same as $CHROMIUM_BIN above.
+# reboot's real path varies across OS releases (merged-/usr or not) — resolved
+# here rather than hardcoded, same as $CHROMIUM_BIN above. The reboot grant itself
+# isn't underclock-specific — the local setup page's static-IP/Wi-Fi flows use it
+# too — so it's unconditional even on hardware with no underclock toggle to grant.
 REBOOT_BIN="$(command -v reboot)"
 SUDOERS_TMP="$(mktemp)"
 {
-  echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /opt/signage/bin/set-underclock.sh"
+  if [[ "$IS_PI" -eq 1 ]]; then
+    echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /opt/signage/bin/set-underclock.sh"
+  fi
   echo "$SIGNAGE_USER ALL=(root) NOPASSWD: $REBOOT_BIN"
 } > "$SUDOERS_TMP"
 if visudo -c -f "$SUDOERS_TMP" >/dev/null 2>&1; then
   install -m 440 "$SUDOERS_TMP" /etc/sudoers.d/signage-underclock
 else
-  echo "Generated underclock sudoers rule failed validation — skipping. The" >&2
-  echo "underclock toggle and reboot-from-the-setup-page won't work without it." >&2
+  echo "Generated underclock/reboot sudoers rule failed validation — skipping. The" >&2
+  echo "underclock toggle (if applicable) and reboot-from-the-setup-page won't work without it." >&2
 fi
 rm -f "$SUDOERS_TMP"
 
 # ---------------------------------------------------------------------------
-log "Installing a blank cursor theme"
-# cage always draws *a* cursor with no direct API to suppress it — but it does
-# receive XCURSOR_THEME/XCURSOR_SIZE (confirmed via /proc/<pid>/environ on real
-# hardware): the cursor it draws is just a normal Xcursor theme lookup at a
-# given size. Pointing XCURSOR_THEME at a fully transparent theme genuinely
-# hides it, PROVIDED XCURSOR_SIZE is a real size — see signage-kiosk.service
-# for why it must not be 0.
-SIGNAGE_HOME="$(getent passwd "$SIGNAGE_USER" | cut -d: -f6)"
-CURSOR_DIR="$SIGNAGE_HOME/.icons/blank/cursors"
-mkdir -p "$CURSOR_DIR"
-cp "$APP_DIR/assets/blank-cursor" "$CURSOR_DIR/left_ptr"
-ln -sf left_ptr "$CURSOR_DIR/default"
-cat > "$SIGNAGE_HOME/.icons/blank/index.theme" <<'EOF'
-[Icon Theme]
-Name=blank
-EOF
-chown -R "$SIGNAGE_USER:$SIGNAGE_USER" "$SIGNAGE_HOME/.icons"
-
-# ---------------------------------------------------------------------------
 log "Installing the SignageMadeEasy boot splash (Plymouth)"
-# Replaces the raw kernel/systemd boot text with a plain white screen, wordmark, and
+# Replaces the raw kernel/systemd boot text with a plain black screen, wordmark, and
 # small corner spinner — see assets/plymouth/signagemadeeasy.script. Its syntax was
 # checked against real, working Plymouth themes, but this sandbox has no way to
 # actually render a boot splash (no kernel framebuffer/DRM to test against), so this
 # still needs a real-hardware look before trusting it fully. Wrapped so a failure
 # here (initramfs tooling issue, disk space, etc.) can't take the rest of
-# provisioning down with it — same reasoning as the ydotool install above.
+# provisioning down with it — same reasoning as the GStreamer/NDI install below.
 mkdir -p /usr/share/plymouth/themes/signagemadeeasy
 cp "$APP_DIR/assets/plymouth/signagemadeeasy.plymouth" /usr/share/plymouth/themes/signagemadeeasy/
 cp "$APP_DIR/assets/plymouth/signagemadeeasy.script" /usr/share/plymouth/themes/signagemadeeasy/
+# `-R` both sets the theme and rebuilds the initramfs to include it in one step. On
+# a Pi whose /boot partition has filled up from repeated re-provisioning (old kernels/
+# initramfs images accumulating on the small FAT boot partition), that rebuild can
+# fail — confirmed as the actual difference between a correctly-configured Pi and one
+# that still shows plain boot text: everything below here used to be gated on `-R`
+# succeeding, so a failed rebuild silently skipped the serial-console fix too (see
+# that fix's own comment below) even though the two are unrelated. Falls back to
+# setting the theme without a rebuild, then rebuilding separately, so a
+# rebuild-specific failure is at least visible instead of masking the working
+# theme-selection call.
 if plymouth-set-default-theme signagemadeeasy -R; then
+  :
+elif plymouth-set-default-theme signagemadeeasy && update-initramfs -u; then
+  :
+else
+  echo "Could not set/rebuild the boot splash theme — continuing anyway. The kiosk" >&2
+  echo "itself is unaffected; boot may show default console text instead of the logo." >&2
+fi
+
+# Kernel command line: `splash quiet` (show the theme, suppress raw console text),
+# `consoleblank=0` (see "Disabling console screen blanking" below — folded in here
+# since it's the exact same file/mechanism), and stripping any serial console.
+#
+# Real root cause of the serial-console strip, confirmed via
+# /var/log/plymouth-debug.log on real Pi hardware (plymouth.debug=file:... added
+# as a one-off diagnostic, then removed again): every other prerequisite was
+# individually correct — theme installed, set as default, splash+quiet present —
+# yet Plymouth never loaded our theme at all. The log showed why: "console
+# /dev/ttyS0 found!" then "serial consoles detected, managing them with details
+# forced" — Plymouth hardcodes a fallback to its plain-text "details" plugin
+# (exactly the "[ OK ] Starting..." boot-log text this was meant to hide) whenever
+# a serial console is present alongside the real HDMI one, regardless of theme
+# config — not something plymouthd.conf can override. Raspberry Pi OS's default
+# cmdline.txt sets both `console=serial0,...` (or ttyS0/ttyAMA0) and
+# `console=tty1` together; trades away UART-cable boot debugging, which isn't used
+# on a deployed kiosk with HDMI + SSH available. Kept unconditional (not gated on
+# the theme-set step above succeeding) — a device that failed the initramfs
+# rebuild above still needs this, since the serial-console fallback happens
+# independently of whether its own theme's initramfs rebuild worked.
+if [[ "$IS_PI" -eq 1 ]]; then
   CMDLINE_FILE=/boot/firmware/cmdline.txt
   [[ -f "$CMDLINE_FILE" ]] || CMDLINE_FILE=/boot/cmdline.txt
   if [[ -f "$CMDLINE_FILE" ]] && ! grep -q '\bsplash\b' "$CMDLINE_FILE"; then
     # Single line, space-appended — cmdline.txt must never contain a newline.
     sed -i 's/$/ splash quiet/' "$CMDLINE_FILE"
   fi
+  if [[ -f "$CMDLINE_FILE" ]] && ! grep -q consoleblank=0 "$CMDLINE_FILE"; then
+    sed -i 's/$/ consoleblank=0/' "$CMDLINE_FILE"
+  fi
+  if [[ -f "$CMDLINE_FILE" ]] && grep -qE 'console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?' "$CMDLINE_FILE"; then
+    sed -i -E 's/console=(serial0|ttyS0|ttyAMA0)(,[0-9]+)?[[:space:]]*//g; s/[[:space:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//' "$CMDLINE_FILE"
+  fi
 else
-  echo "Failed to set the boot splash theme — skipping. The kiosk itself is" >&2
-  echo "unaffected; boot will just show the default console text instead." >&2
+  # Generic x86/GRUB boot has no flat cmdline.txt — the kernel command line comes
+  # from /etc/default/grub's GRUB_CMDLINE_LINUX_DEFAULT instead, baked into
+  # /boot/grub/grub.cfg by update-grub. Some cloud-image-derived x86 installs set a
+  # serial console (console=ttyS0) for headless use, which would hit the exact
+  # same Plymouth fallback documented above — stripped here too just in case, even
+  # though a plain Debian install typically won't have one. Idempotent: re-running
+  # with these tokens already present is a harmless no-op (the `[[ ... == * ]]`
+  # checks skip re-adding what's already there).
+  GRUB_FILE=/etc/default/grub
+  if [[ -f "$GRUB_FILE" ]]; then
+    CURRENT="$(sed -n 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"$/\1/p' "$GRUB_FILE" | head -1)"
+    NEW="$CURRENT"
+    [[ "$NEW" == *splash* ]] || NEW="$NEW splash"
+    [[ "$NEW" == *quiet* ]] || NEW="$NEW quiet"
+    [[ "$NEW" == *consoleblank=0* ]] || NEW="$NEW consoleblank=0"
+    NEW="$(echo "$NEW" | sed -E 's/console=(ttyS[0-9]+|serial0)(,[0-9]+)?[[:space:]]*//g; s/[[:space:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//')"
+    if grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_FILE"; then
+      sed -i "s#^GRUB_CMDLINE_LINUX_DEFAULT=.*#GRUB_CMDLINE_LINUX_DEFAULT=\"$NEW\"#" "$GRUB_FILE"
+    else
+      echo "GRUB_CMDLINE_LINUX_DEFAULT=\"$NEW\"" >> "$GRUB_FILE"
+    fi
+    update-grub
+  else
+    echo "No /etc/default/grub found — skipping boot-splash kernel cmdline setup." >&2
+  fi
 fi
 
 # ---------------------------------------------------------------------------
 log "Installing systemd units"
 cp "$APP_DIR/systemd/signage-player.service" /etc/systemd/system/
-sed "s#/usr/bin/chromium#${CHROMIUM_BIN}#" "$APP_DIR/systemd/signage-kiosk.service" \
-  > /etc/systemd/system/signage-kiosk.service
+KIOSK_SED="s#/usr/bin/chromium#${CHROMIUM_BIN}#"
+if [[ "$IS_PI" -eq 0 ]]; then
+  # --disable-accelerated-video-decode works around a Pi-specific Chromium/V4L2
+  # hang (see this flag's own comment in sway-kiosk.config) — Intel's VAAPI
+  # video decode in Chromium is solid, so there's no reason to force software
+  # decode here and give up the hardware-decode advantage an x86 stick actually has.
+  KIOSK_SED="$KIOSK_SED; /--disable-accelerated-video-decode/d"
+fi
+# The sway config (not the systemd unit itself) is where chromium's binary path
+# and flags live — see sway-kiosk.config's own header comment.
+sed "$KIOSK_SED" "$APP_DIR/systemd/sway-kiosk.config" > "$INSTALL_DIR/sway-kiosk.config"
+cp "$APP_DIR/systemd/signage-kiosk.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now signage-player.service
-if [[ "$HAVE_YDOTOOL" -eq 1 ]]; then
-  cp "$APP_DIR/systemd/ydotoold.service" /etc/systemd/system/
-  systemctl daemon-reload
-  systemctl enable --now ydotoold.service
-fi
 systemctl enable signage-kiosk.service
 
 # ---------------------------------------------------------------------------
@@ -266,21 +357,50 @@ ExecStart=-/sbin/agetty --autologin ${SIGNAGE_USER} --noclear %I \$TERM
 EOF
 systemctl daemon-reload
 
-log "Disabling console screen blanking"
-if [[ -f /boot/firmware/cmdline.txt ]] && ! grep -q consoleblank=0 /boot/firmware/cmdline.txt; then
-  sed -i 's/$/ consoleblank=0/' /boot/firmware/cmdline.txt
+if [[ "$IS_PI" -eq 1 ]]; then
+  log "Forcing full HDMI mode (video + audio) instead of a DVI-compatible, audio-less negotiation"
+  # Some monitors/EDIDs make the Pi negotiate HDMI in a video-only mode with no audio
+  # at all, regardless of what the OS or player tries to output — a well-known,
+  # low-risk Pi gotcha, distinct from (and much safer than) forcing a specific
+  # resolution: this doesn't touch EDID parsing or the chosen video mode, it only
+  # tells the firmware "this is a real HDMI sink, always enable audio." No x86
+  # equivalent — a standard Intel HDMI output already carries audio by default;
+  # if a particular stick/monitor combo doesn't, that's an ALSA/PulseAudio output
+  # selection issue specific to that hardware, not something safe to script here.
+  CONFIG_FILE=/boot/firmware/config.txt
+  [[ -f "$CONFIG_FILE" ]] || CONFIG_FILE=/boot/config.txt
+  if [[ -f "$CONFIG_FILE" ]] && ! grep -q '^hdmi_drive=' "$CONFIG_FILE"; then
+    echo "hdmi_drive=2" >> "$CONFIG_FILE"
+  fi
 fi
 
-log "Forcing full HDMI mode (video + audio) instead of a DVI-compatible, audio-less negotiation"
-# Some monitors/EDIDs make the Pi negotiate HDMI in a video-only mode with no audio
-# at all, regardless of what the OS or player tries to output — a well-known,
-# low-risk Pi gotcha, distinct from (and much safer than) forcing a specific
-# resolution: this doesn't touch EDID parsing or the chosen video mode, it only
-# tells the firmware "this is a real HDMI sink, always enable audio."
-CONFIG_FILE=/boot/firmware/config.txt
-[[ -f "$CONFIG_FILE" ]] || CONFIG_FILE=/boot/config.txt
-if [[ -f "$CONFIG_FILE" ]] && ! grep -q '^hdmi_drive=' "$CONFIG_FILE"; then
-  echo "hdmi_drive=2" >> "$CONFIG_FILE"
+# ---------------------------------------------------------------------------
+if [[ "$SUPPORTS_NDI" -eq 1 ]]; then
+  log "Installing GStreamer (for NDI live-source support — see pi-player/README.md)"
+  # plugins-bad is required, not optional despite the name — waylandsink (what
+  # actually renders NDI video onto the kiosk's Wayland surface) lives there, not in
+  # -base/-good. Confirmed missing on real Pi 5 hardware: gst-launch-1.0 rejected the
+  # NDI pipeline outright with "no element waylandsink" without it.
+  apt-get install -y --no-install-recommends \
+    gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+
+  # gst-plugin-ndi and the ndi-find discovery helper both need to be built by hand
+  # against the proprietary NDI SDK (Vizrt's EULA requires a human to accept it —
+  # can't be curled/scripted here, see README.md), so this only checks whether that
+  # one-time manual step has already happened and points at the docs if not.
+  # Deliberately non-fatal — since a device provisioned before that manual step is
+  # still a working screen for every other content type.
+  if ! gst-inspect-1.0 ndisrc >/dev/null 2>&1; then
+    echo "gst-plugin-ndi (the 'ndisrc' GStreamer element) isn't installed yet — NDI" >&2
+    echo "sources won't play until it's built. See pi-player/README.md for the" >&2
+    echo "one-time manual NDI SDK download/build step." >&2
+  fi
+  if [[ ! -x /opt/signage/bin/ndi-find ]]; then
+    echo "The NDI discovery helper (/opt/signage/bin/ndi-find) isn't built yet — the" >&2
+    echo "control app's 'Scan for sources' button won't find anything on this screen" >&2
+    echo "until it is. See pi-player/README.md." >&2
+  fi
 fi
 
 log "Done. Reboot to start the kiosk: sudo reboot"
