@@ -96,8 +96,17 @@ export interface SignageApiClient {
 
   // Devices
   listDevices(): Promise<Device[]>;
-  /** `groupId: null` pairs it standalone (no shared content yet, assignable later); `locationId` optionally files a standalone screen under a Location right away. */
-  pairDevice(input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus }): Promise<Device>;
+  /**
+   * `groupId: null` pairs it standalone (no shared content yet, assignable later);
+   * `locationId` optionally files a standalone screen under a Location right away.
+   * `hubUrl` overrides which address the hub tells this screen to poll from now on
+   * (see hub/src/routes/devices.ts's publicHubUrl) — the hub otherwise guesses from
+   * whatever host the browser used to make this very request, which is wrong
+   * whenever that's not an address the screen itself can reach (pairing remotely,
+   * or a hub with more than one network interface where the screen and the
+   * browser doing the pairing sit on different ones).
+   */
+  pairDevice(input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus; hubUrl?: string }): Promise<Device>;
   renameDevice(id: string, name: string): Promise<void>;
   /** Persists a reorder of screens shown under one group (or the standalone/no-group list) on Settings/Home/Schedule — the complete new display order for that one scope, not a global list. */
   reorderDevices(ids: string[]): Promise<void>;

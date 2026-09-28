@@ -90,17 +90,37 @@ on the front door, not a wall around the building. Put the hub behind HTTPS (a
 reverse proxy with a self-signed or real certificate) before relying on this PIN to
 keep out anyone more determined than a casual LAN user.
 
-**Multi-homed NAS (more than one network)**: when pairing a screen, the hub tells it
-which address to poll based on whatever host the *browser* used to reach the hub —
-fine on a single-subnet LAN, but if your NAS has multiple NICs (e.g. one on
-`192.168.x`, another on `10.21.x`) and a Pi ends up on a different one than the
-browser doing the pairing, the Pi gets handed an address it can't route to and sits
-stuck on "waiting for the hub." Set `SIGNAGE_PUBLIC_HUB_URL` (e.g.
-`http://10.21.0.5:4000`) as an environment variable on the hub container to always
-hand out one specific, known-reachable address regardless of which interface the
-pairing request came in on. A screen already paired with the wrong address needs its
-`hubUrl` fixed directly in `/opt/signage/config.json` on the Pi (then
-`sudo systemctl restart signage-player`) — re-pairing isn't required.
+**Multi-homed NAS / remote pairing**: when pairing a screen, the hub tells it which
+address to poll based on whatever host the *browser* used to reach the hub at that
+moment — fine as long as that's always an address every Pi can also reach, but two
+setups break it: a multi-homed NAS (more than one NIC/subnet, e.g. one on
+`192.168.x`, another on `10.21.x`) where a Pi ends up on a different one than the
+browser doing the pairing; or pairing screens while accessing the control app
+remotely (a Cloudflare tunnel, a VPN) even though the hub and every Pi are genuinely
+on one LAN, so the browser's host at pairing time is that remote address/domain, not
+the hub's real LAN one. Either way the Pi gets handed an address it can't route to
+and sits stuck failing its poll forever — the symptom on the Pi's own screen is
+"Last error: Unexpected token '<' … is not valid JSON" (it got an HTML page back —
+a proxy's error/login page, or an unrelated device answering on that address —
+instead of the hub's JSON API).
+
+If every screen shares one single address the browser doesn't (e.g. you always pair
+remotely, but the hub and every Pi are on one LAN), set `SIGNAGE_PUBLIC_HUB_URL`
+(e.g. `http://192.168.1.47:4000`) as an environment variable on the hub container to
+always hand out that one known-reachable address regardless of which host the
+pairing request came in on.
+
+If different screens need *different* addresses — a genuinely multi-homed hub where
+some Pis are on `192.168.x` and others on `10.21.x`, for instance — one env var can't
+cover both. Use the **"Hub address for this screen"** field in the "Add a screen"
+dialog instead: it's pre-filled with a guess (your browser's own current address),
+editable per pairing, and always wins over both the guess and `SIGNAGE_PUBLIC_HUB_URL`
+when set. Point it at whichever address is actually correct for the specific screen
+you're pairing right now.
+
+A screen already paired with the wrong address needs its `hubUrl` fixed directly in
+`/opt/signage/config.json` on the Pi (then `sudo systemctl restart signage-player`)
+— re-pairing isn't required.
 
 ## Pairing a Raspberry Pi
 

@@ -49,6 +49,14 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   const [scanning, setScanning] = useState(false);
   const [discovered, setDiscovered] = useState<{ id: string; name: string; ip: string }[]>([]);
   const [manualIp, setManualIp] = useState('');
+  // Which address this screen is told to poll from now on — the hub otherwise
+  // guesses from whatever host this browser used to reach it, which is wrong
+  // whenever that's not an address the screen itself can reach: pairing remotely
+  // (a tunnel/VPN) while the hub and screen are genuinely on one LAN, or a hub with
+  // more than one fixed network address where different screens sit on different
+  // ones. Pre-filled with this browser's own address as a reasonable starting
+  // guess — correct for same-network pairing, needs overriding otherwise.
+  const [hubUrl, setHubUrl] = useState(() => window.location.origin);
   // Pairing can take a few seconds when the target IP is unreachable (the hub's own
   // identify() call waits out a timeout before giving up and pairing offline — see
   // hub/src/piAgent.ts) - most noticeable trying to pair a screen on a separate,
@@ -92,7 +100,7 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     setPairingIp(found.ip);
     try {
       const gid = await resolveGroupId();
-      await pairDevice({ name: found.name, ip: found.ip, groupId: gid, locationId: locationId || null });
+      await pairDevice({ name: found.name, ip: found.ip, groupId: gid, locationId: locationId || null, hubUrl: hubUrl.trim() || undefined });
       showToast(`Paired ${found.name}`);
       onClose();
     } catch (err) {
@@ -115,7 +123,7 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     setPairingIp(manualIp);
     try {
       const gid = await resolveGroupId();
-      await pairDevice({ name: 'Display', ip: manualIp, groupId: gid, locationId: locationId || null });
+      await pairDevice({ name: 'Display', ip: manualIp, groupId: gid, locationId: locationId || null, hubUrl: hubUrl.trim() || undefined });
       showToast(`Connected to ${manualIp}`);
       onClose();
     } catch (err) {
@@ -154,6 +162,15 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
           </select>
         </div>
       )}
+      <div className="field">
+        <label htmlFor="pair-hub-url">Hub address for this screen</label>
+        <input className="input" id="pair-hub-url" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
+        <p className="text-muted" style={{ fontSize: 11, margin: '2px 0 0' }}>
+          Auto-filled from your current connection. Change this if you're pairing remotely (a
+          tunnel/VPN) or this hub has more than one network address — it needs to be one this
+          specific screen can actually reach, not just one you can.
+        </p>
+      </div>
 
       <div className="seg" style={{ alignSelf: 'flex-start', flexWrap: 'wrap' }}>
         <label className="seg-opt"><input type="radio" name="pairMode" checked={mode === 'scan'} onChange={() => changeMode('scan')} />Scan network</label>

@@ -472,7 +472,10 @@ class LocalStoreClient implements SignageApiClient {
     return [...this.data.devices];
   }
 
-  async pairDevice(input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus }): Promise<Device> {
+  // hubUrl is a no-op here — there's no real hub/Pi handshake to hand an address
+  // to in standalone/localStorage mode, only accepted so this stays call-compatible
+  // with httpClient's pairDevice.
+  async pairDevice(input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus; hubUrl?: string }): Promise<Device> {
     if (this.data.devices.some((d) => d.ip === input.ip)) {
       throw new Error(`A screen is already paired at ${input.ip}`);
     }

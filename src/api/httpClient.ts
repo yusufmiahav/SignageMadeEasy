@@ -126,7 +126,7 @@ export const httpClient: SignageApiClient = {
 
   // Devices
   listDevices: () => request<Device[]>('/api/devices'),
-  pairDevice: (input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus }) =>
+  pairDevice: (input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus; hubUrl?: string }) =>
     request<Device>('/api/devices/pair', { method: 'POST', ...json(input) }),
   renameDevice: (id, name) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ name }) }),
   reorderDevices: (ids) => request<void>('/api/devices/reorder', { method: 'PUT', ...json({ ids }) }),

@@ -5,12 +5,15 @@ import { requireAuth } from '../auth.js';
 
 export const devicesRouter = Router();
 
-// The hub can't know which of its own addresses a given Pi can actually reach — on a
-// multi-homed NAS (e.g. one NIC on 192.168.x, another on 10.21.x), the browser doing
-// the pairing might be on a different subnet than the Pi being paired, and blindly
-// trusting req.get('host') below bakes in whichever address the *browser* happened to
-// use, not one the Pi can necessarily route to. Set this to an address reachable from
-// every Pi's network when that's not always the same one.
+// The hub can't know which of its own addresses a given Pi can actually reach —
+// blindly trusting req.get('host') below bakes in whichever address the *browser*
+// happened to use at pairing time, not one the Pi can necessarily route to. A single
+// SIGNAGE_PUBLIC_HUB_URL env var only helps when there's ONE address every screen
+// can reach; a hub with more than one fixed network address (e.g. 192.168.1.x and
+// 10.21.1.x, each serving different screens) has no single correct answer here at
+// all — see the pair route's own `hubUrl` request field below, which lets the
+// person pairing say explicitly "this screen reaches the hub at X" per screen
+// instead, overriding this guess.
 function publicHubUrl(req: Request): string {
   return process.env.SIGNAGE_PUBLIC_HUB_URL ?? `${req.protocol}://${req.get('host')}`;
 }
@@ -48,12 +51,15 @@ devicesRouter.put('/reorder', (req, res) => {
 });
 
 devicesRouter.post('/pair', async (req, res) => {
-  const { name, ip, groupId, locationId, skipHandshake } = req.body ?? {};
+  const { name, ip, groupId, locationId, skipHandshake, hubUrl } = req.body ?? {};
   if (typeof ip !== 'string' || (typeof groupId !== 'string' && groupId !== null)) {
     return res.status(400).json({ error: 'ip is required; groupId must be a string or null (no group)' });
   }
   if (locationId !== undefined && locationId !== null && typeof locationId !== 'string') {
     return res.status(400).json({ error: 'locationId must be a string or null' });
+  }
+  if (hubUrl !== undefined && typeof hubUrl !== 'string') {
+    return res.status(400).json({ error: 'hubUrl must be a string' });
   }
   if (store.listDevices().some((d) => d.ip === ip)) {
     return res.status(409).json({ error: `A screen is already paired at ${ip}` });
@@ -81,7 +87,9 @@ devicesRouter.post('/pair', async (req, res) => {
 
   if (!skipHandshake && status === 'online') {
     try {
-      await piAgent.configure(ip, device.id, publicHubUrl(req));
+      // An explicit hubUrl from the pairing request always wins over the
+      // env-var/req.get('host') guess — see publicHubUrl's own comment.
+      await piAgent.configure(ip, device.id, hubUrl || publicHubUrl(req));
     } catch {
       // Non-fatal — the Pi will show its unpaired screen until it can be reconfigured.
     }
