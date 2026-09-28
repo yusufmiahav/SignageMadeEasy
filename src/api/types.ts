@@ -176,6 +176,18 @@ export interface TflStationResult {
   lines: TflStationLine[];
 }
 
+/**
+ * A named hub address for pairing screens across more than one network (a
+ * multi-homed hub, or pairing remotely) — see PairDeviceDialog.tsx's "Hub address
+ * for this screen" field, which becomes a dropdown of these once any exist instead
+ * of a plain text box.
+ */
+export interface SavedHubNetwork {
+  id: string;
+  name: string;
+  url: string;
+}
+
 export interface AppData {
   library: LibraryItem[];
   groups: Group[];

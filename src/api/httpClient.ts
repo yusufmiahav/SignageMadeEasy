@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, ScheduleEvent, TflStationResult } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationResult } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -149,13 +149,14 @@ export const httpClient: SignageApiClient = {
   removeDeviceEvent: (deviceId, eventId) => request<void>(`/api/devices/${deviceId}/events/${eventId}`, { method: 'DELETE' }),
 
   // Pairing helpers
-  scanNetwork: () => request<DiscoveredDevice[]>('/api/scan'),
+  scanNetwork: (subnetHint) => request<DiscoveredDevice[]>(`/api/scan${subnetHint ? `?subnet=${encodeURIComponent(subnetHint)}` : ''}`),
 
   // Backup / restore
   exportBackup: () => request<Backup>('/api/backup'),
   importBackup: (backup) => request<void>('/api/backup/restore', { method: 'POST', ...json(backup) }),
 
   // Settings
-  getSettings: () => request<{ safetyHold: boolean }>('/api/settings'),
+  getSettings: () => request<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] }>('/api/settings'),
   setSafetyHold: (safetyHold) => request<void>('/api/settings', { method: 'PATCH', ...json({ safetyHold }) }),
+  setSavedHubNetworks: (networks) => request<void>('/api/settings/hub-networks', { method: 'PUT', ...json({ networks }) }),
 };

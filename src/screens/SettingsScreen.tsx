@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
 import type { Theme } from '../hooks/useTheme';
-import type { Backup, Device, Group } from '../api/types';
+import type { Backup, Device, Group, SavedHubNetwork } from '../api/types';
 import { copyText } from '../utils/clipboard';
 import { authGateEnabled, logout } from '../api/auth';
 
@@ -36,8 +36,28 @@ export function SettingsScreen({
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
-    safetyHold, setSafetyHold, flashDevice,
+    safetyHold, setSafetyHold, flashDevice, savedHubNetworks, setSavedHubNetworks,
   } = app;
+  const [hubNetworkDrafts, setHubNetworkDrafts] = useState<SavedHubNetwork[]>(savedHubNetworks);
+  useEffect(() => setHubNetworkDrafts(savedHubNetworks), [savedHubNetworks]);
+  const [newNetworkName, setNewNetworkName] = useState('');
+  const [newNetworkUrl, setNewNetworkUrl] = useState('');
+  const updateNetworkDraft = (id: string, field: 'name' | 'url', value: string) =>
+    setHubNetworkDrafts((prev) => prev.map((n) => (n.id === id ? { ...n, [field]: value } : n)));
+  const commitNetworkDrafts = () => void setSavedHubNetworks(hubNetworkDrafts);
+  const removeNetwork = (id: string) => {
+    const next = hubNetworkDrafts.filter((n) => n.id !== id);
+    setHubNetworkDrafts(next);
+    void setSavedHubNetworks(next);
+  };
+  const addNetwork = () => {
+    if (!newNetworkName.trim() || !newNetworkUrl.trim()) return;
+    const next = [...hubNetworkDrafts, { id: crypto.randomUUID(), name: newNetworkName.trim(), url: newNetworkUrl.trim() }];
+    setHubNetworkDrafts(next);
+    void setSavedHubNetworks(next);
+    setNewNetworkName('');
+    setNewNetworkUrl('');
+  };
   const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' | 'location' } | null>(null);
   const [editingName, setEditingName] = useState('');
   // Groups/screens filed under a Location render inside that Location's own section
@@ -632,8 +652,58 @@ export function SettingsScreen({
 
       <div className="card" style={{ gap: 8 }}>
         <div className="card-kicker">Network</div>
-        <div className="card-title">This computer's Wi-Fi</div>
-        <p className="card-body">Screens must be on the same network to appear here.</p>
+        <div className="card-title">Saved hub networks</div>
+        <p className="card-body">
+          Named hub addresses for pairing screens across more than one network — a hub with more
+          than one fixed IP, or pairing remotely. Screens must be on the same network as the
+          address they're paired with to appear here. Once you save one or more below, "Add a
+          screen" offers them as a dropdown (with a "custom address" option) instead of a plain
+          text box that only defaults to whatever network you're currently on.
+        </p>
+        {hubNetworkDrafts.map((network) => (
+          <div key={network.id} style={{ display: 'flex', gap: 8 }}>
+            <input
+              className="input"
+              style={{ width: 140 }}
+              placeholder="Name"
+              value={network.name}
+              onChange={(e) => updateNetworkDraft(network.id, 'name', e.target.value)}
+              onBlur={commitNetworkDrafts}
+            />
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              placeholder="http://192.168.1.47:4000"
+              value={network.url}
+              onChange={(e) => updateNetworkDraft(network.id, 'url', e.target.value)}
+              onBlur={commitNetworkDrafts}
+            />
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeNetwork(network.id)}>
+              <Icon name="trash" size={13} />
+            </button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 8, paddingTop: hubNetworkDrafts.length > 0 ? 4 : 0 }}>
+          <input
+            className="input"
+            style={{ width: 140 }}
+            placeholder="e.g. Main office"
+            value={newNetworkName}
+            onChange={(e) => setNewNetworkName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addNetwork()}
+          />
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            placeholder="http://192.168.1.47:4000"
+            value={newNetworkUrl}
+            onChange={(e) => setNewNetworkUrl(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addNetwork()}
+          />
+          <button type="button" className="btn btn-secondary" disabled={!newNetworkName.trim() || !newNetworkUrl.trim()} onClick={addNetwork}>
+            Add network
+          </button>
+        </div>
       </div>
 
       <div className="card" style={{ gap: 8 }}>

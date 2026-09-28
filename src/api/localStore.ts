@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
+import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -52,17 +52,20 @@ function save(data: AppData): void {
 // UI consistency with the hub-backed client.
 const SETTINGS_KEY = 'signagemadeeasy.settings.v1';
 
-function loadSettings(): { safetyHold: boolean } {
+function loadSettings(): { safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] } {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return JSON.parse(raw) as { safetyHold: boolean };
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] }>;
+      return { safetyHold: parsed.safetyHold ?? true, savedHubNetworks: parsed.savedHubNetworks ?? [] };
+    }
   } catch {
     // Fall through to the default below.
   }
-  return { safetyHold: true };
+  return { safetyHold: true, savedHubNetworks: [] };
 }
 
-function saveSettings(settings: { safetyHold: boolean }): void {
+function saveSettings(settings: { safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] }): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
@@ -641,16 +644,22 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   // ---- Settings ----
-  async getSettings(): Promise<{ safetyHold: boolean }> {
+  async getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] }> {
     return loadSettings();
   }
 
   async setSafetyHold(enabled: boolean): Promise<void> {
-    saveSettings({ safetyHold: enabled });
+    saveSettings({ ...loadSettings(), safetyHold: enabled });
+  }
+
+  async setSavedHubNetworks(networks: SavedHubNetwork[]): Promise<void> {
+    saveSettings({ ...loadSettings(), savedHubNetworks: networks });
   }
 
   // ---- Pairing helpers ----
-  async scanNetwork(): Promise<DiscoveredDevice[]> {
+  // subnetHint is a no-op here — standalone/localStorage mode has no real LAN to
+  // scan, only accepted so this stays call-compatible with httpClient's scanNetwork.
+  async scanNetwork(_subnetHint?: string): Promise<DiscoveredDevice[]> {
     await delay(1300);
     const randOctet = () => 20 + Math.floor(Math.random() * 200);
     return [

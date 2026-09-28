@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -133,8 +133,15 @@ export interface SignageApiClient {
   addDeviceEvent(deviceId: string, event: Omit<ScheduleEvent, 'id'>): Promise<ScheduleEvent>;
   removeDeviceEvent(deviceId: string, eventId: string): Promise<void>;
 
-  // Pairing helpers (simulated placeholders until the hub can do a real LAN scan)
-  scanNetwork(): Promise<DiscoveredDevice[]>;
+  /**
+   * Probes the hub's own LAN subnet(s) for unpaired displays. `subnetHint` — a
+   * hub-address URL/IP/prefix, typically whatever's currently in the pairing
+   * dialog's "Hub address for this screen" field — adds that address's /24 to the
+   * subnets probed, on top of the hub's own auto-detected ones; ignored (and
+   * harmless to pass) in standalone/localStorage mode, which has no real LAN to
+   * scan at all.
+   */
+  scanNetwork(subnetHint?: string): Promise<DiscoveredDevice[]>;
 
   // Backup / restore — everything except the uploaded media files themselves.
   exportBackup(): Promise<Backup>;
@@ -144,13 +151,15 @@ export interface SignageApiClient {
   // Hub-wide settings (unlike the frontend's own purely-local Settings toggles —
   // dark mode, advanced device info — these need to be known by every Pi too, so
   // they live on the hub, not localStorage).
-  getSettings(): Promise<{ safetyHold: boolean }>;
+  getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] }>;
   /**
    * Defaults to true (see hub/src/store.ts's getSafetyHold): a Pi already caches its
    * last-resolved content and keeps showing it through a disconnect from the hub.
    * Turning this off makes a disconnected screen go blank instead.
    */
   setSafetyHold(enabled: boolean): Promise<void>;
+  /** Replaces the whole saved-hub-networks list at once — see SavedHubNetwork. */
+  setSavedHubNetworks(networks: SavedHubNetwork[]): Promise<void>;
 }
 
 // Setting VITE_API_BASE_URL at build time (even to an empty string, for a same-origin

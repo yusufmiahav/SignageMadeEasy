@@ -25,13 +25,31 @@ function rememberPairedGroup(groupId: string): void {
   }
 }
 
+const CUSTOM_HUB_NETWORK = '__custom__';
+
+// Display-only — pulls a `a.b.c` /24 prefix out of the current hub-address field so
+// the "Scanning…" status names the real subnet instead of a stale hardcoded one.
+// Returns null for anything that isn't a dotted-quad host (a domain name); the scan
+// itself still goes ahead either way, this just can't describe it as precisely.
+function subnetPrefixForDisplay(input: string): string | null {
+  let host = input.trim();
+  try {
+    host = new URL(input).hostname;
+  } catch {
+    host = host.split(':')[0];
+  }
+  const octets = host.split('.');
+  if (octets.length < 3 || !octets.slice(0, 3).every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255)) return null;
+  return octets.slice(0, 3).join('.');
+}
+
 interface PairDeviceDialogProps {
   app: AppState;
   onClose: () => void;
 }
 
 export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
-  const { groups, locations, addGroup, pairDevice, scanNetwork, showToast } = app;
+  const { groups, locations, addGroup, pairDevice, scanNetwork, showToast, savedHubNetworks } = app;
   // Remembers whatever was picked last time (including "no group") rather than
   // always defaulting to the first group — a group shouldn't be forced on a screen
   // just because it's the first one in the list; "no group, assign later" is the
@@ -57,6 +75,16 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   // ones. Pre-filled with this browser's own address as a reasonable starting
   // guess — correct for same-network pairing, needs overriding otherwise.
   const [hubUrl, setHubUrl] = useState(() => window.location.origin);
+  // Once one or more networks are saved (Settings → Network), the hub-address field
+  // above becomes a dropdown of them instead of a plain text box — defaulting to
+  // whichever saved network matches this browser's own current address, or to the
+  // "+ Custom address" option (which reveals the same free-text input as before)
+  // when none match. No saved networks at all: skip the dropdown entirely and keep
+  // the original always-editable, autofilled-from-this-connection text box.
+  const [hubNetworkSelection, setHubNetworkSelection] = useState(() => {
+    const match = savedHubNetworks.find((n) => n.url === window.location.origin);
+    return match ? match.id : CUSTOM_HUB_NETWORK;
+  });
   // Pairing can take a few seconds when the target IP is unreachable (the hub's own
   // identify() call waits out a timeout before giving up and pairing offline — see
   // hub/src/piAgent.ts) - most noticeable trying to pair a screen on a separate,
@@ -90,7 +118,11 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   const startScan = () => {
     setScanning(true);
     setDiscovered([]);
-    scanNetwork().then((found) => {
+    // Passes whatever hub address is currently selected/entered as a subnet hint —
+    // the hub unions its own auto-detected subnets with this one, so a genuinely
+    // multi-homed hub or a remote-pairing session still finds displays on the
+    // network this screen is actually meant to reach.
+    scanNetwork(hubUrl).then((found) => {
       setScanning(false);
       setDiscovered(found);
     });
@@ -162,15 +194,53 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
           </select>
         </div>
       )}
-      <div className="field">
-        <label htmlFor="pair-hub-url">Hub address for this screen</label>
-        <input className="input" id="pair-hub-url" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
-        <p className="text-muted" style={{ fontSize: 11, margin: '2px 0 0' }}>
-          Auto-filled from your current connection. Change this if you're pairing remotely (a
-          tunnel/VPN) or this hub has more than one network address — it needs to be one this
-          specific screen can actually reach, not just one you can.
-        </p>
-      </div>
+      {savedHubNetworks.length > 0 ? (
+        <div className="field">
+          <label htmlFor="pair-hub-network">Hub address for this screen</label>
+          <select
+            className="input"
+            id="pair-hub-network"
+            value={hubNetworkSelection}
+            onChange={(e) => {
+              const value = e.target.value;
+              setHubNetworkSelection(value);
+              if (value !== CUSTOM_HUB_NETWORK) {
+                const network = savedHubNetworks.find((n) => n.id === value);
+                if (network) setHubUrl(network.url);
+              }
+            }}
+          >
+            {savedHubNetworks.map((n) => (
+              <option key={n.id} value={n.id}>{n.name} ({n.url})</option>
+            ))}
+            <option value={CUSTOM_HUB_NETWORK}>+ Custom address</option>
+          </select>
+          {hubNetworkSelection === CUSTOM_HUB_NETWORK && (
+            <input
+              className="input"
+              style={{ marginTop: 6 }}
+              value={hubUrl}
+              onChange={(e) => setHubUrl(e.target.value)}
+              placeholder="http://192.168.1.47:4000"
+            />
+          )}
+          <p className="text-muted" style={{ fontSize: 11, margin: '2px 0 0' }}>
+            It needs to be one this specific screen can actually reach, not just one you can.
+            Manage the saved list under Settings → Network.
+          </p>
+        </div>
+      ) : (
+        <div className="field">
+          <label htmlFor="pair-hub-url">Hub address for this screen</label>
+          <input className="input" id="pair-hub-url" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
+          <p className="text-muted" style={{ fontSize: 11, margin: '2px 0 0' }}>
+            Auto-filled from your current connection. Change this if you're pairing remotely (a
+            tunnel/VPN) or this hub has more than one network address — it needs to be one this
+            specific screen can actually reach, not just one you can. Save it under Settings →
+            Network to pick it from a dropdown next time.
+          </p>
+        </div>
+      )}
 
       <div className="seg" style={{ alignSelf: 'flex-start', flexWrap: 'wrap' }}>
         <label className="seg-opt"><input type="radio" name="pairMode" checked={mode === 'scan'} onChange={() => changeMode('scan')} />Scan network</label>
@@ -188,7 +258,12 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
       {mode === 'scan' && scanning && (
         <div style={{ textAlign: 'center', padding: '20px 0', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
           <div className="scan-pulse" />
-          <p className="text-muted" style={{ margin: 0 }}>Searching 192.168.1.0/24…</p>
+          <p className="text-muted" style={{ margin: 0 }}>
+            {(() => {
+              const prefix = subnetPrefixForDisplay(hubUrl);
+              return prefix ? `Searching ${prefix}.0/24…` : 'Searching your network…';
+            })()}
+          </p>
         </div>
       )}
       {mode === 'scan' && !scanning && discovered.length > 0 && (

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DiscoveredDevice } from '../api/client';
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, ScheduleEvent, TflStationConfig } from '../api/types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig } from '../api/types';
 
 export function useAppState() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
@@ -12,6 +12,7 @@ export function useAppState() {
   // original always-on behavior until the initial load below overwrites it with the
   // hub's real value.
   const [safetyHold, setSafetyHoldState] = useState(true);
+  const [savedHubNetworks, setSavedHubNetworksState] = useState<SavedHubNetwork[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -49,13 +50,22 @@ export function useAppState() {
     setDevices(next);
   }, [showToast]);
 
-  const refreshSettings = useCallback(async () => setSafetyHoldState((await api.getSettings()).safetyHold), []);
+  const refreshSettings = useCallback(async () => {
+    const settings = await api.getSettings();
+    setSafetyHoldState(settings.safetyHold);
+    setSavedHubNetworksState(settings.savedHubNetworks);
+  }, []);
 
   const setSafetyHold = useCallback(async (enabled: boolean) => {
     await api.setSafetyHold(enabled);
     setSafetyHoldState(enabled);
     showToast(enabled ? 'Safety hold enabled' : 'Safety hold disabled');
   }, [showToast]);
+
+  const setSavedHubNetworks = useCallback(async (networks: SavedHubNetwork[]) => {
+    await api.setSavedHubNetworks(networks);
+    setSavedHubNetworksState(networks);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -504,7 +514,7 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
-  const scanNetwork = useCallback((): Promise<DiscoveredDevice[]> => api.scanNetwork(), []);
+  const scanNetwork = useCallback((subnetHint?: string): Promise<DiscoveredDevice[]> => api.scanNetwork(subnetHint), []);
 
   // ---- Backup / restore ----
   const exportBackup = useCallback((): Promise<Backup> => api.exportBackup(), []);
@@ -521,6 +531,8 @@ export function useAppState() {
     locations,
     safetyHold,
     setSafetyHold,
+    savedHubNetworks,
+    setSavedHubNetworks,
     toast,
     showToast,
     addImage,

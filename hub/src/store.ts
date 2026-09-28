@@ -617,6 +617,33 @@ export function setSafetyHold(enabled: boolean): void {
   setSetting('safetyHold', enabled ? '1' : '0');
 }
 
+export interface SavedHubNetwork {
+  id: string;
+  name: string;
+  url: string;
+}
+
+// Named hub addresses for pairing across more than one network (a multi-homed hub,
+// or pairing remotely) — surfaced as a dropdown on the "Add a screen" hub-address
+// field instead of a plain text box once at least one exists. Stored as a single
+// JSON blob under the generic settings table rather than its own table: this is a
+// short, hand-maintained list (a handful of entries at most), not a growing
+// collection that ever needs its own id-based lookups/joins.
+export function listSavedHubNetworks(): SavedHubNetwork[] {
+  const raw = getSetting('savedHubNetworks');
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as SavedHubNetwork[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setSavedHubNetworks(networks: SavedHubNetwork[]): void {
+  setSetting('savedHubNetworks', JSON.stringify(networks));
+}
+
 // ---- Content resolution (mirrors src/api/resolve.ts) ----
 
 function toISODate(d: Date): string {
