@@ -83,21 +83,34 @@ export async function preview(ip: string): Promise<Buffer> {
 // Settings screen's "Update"/"Re-provision" buttons — see pi-player/src/selfUpdate.ts.
 // Both return as soon as the Pi's agent has kicked the relevant script off, not once
 // it's finished (that can take anywhere from ~10s to a couple of minutes plus a
-// reboot) — so, unlike restart/identifyFlash above, the error thrown here is worth
-// surfacing verbatim rather than collapsing to a generic message: the most likely
-// failure (a Pi that hasn't been re-provisioned since this feature shipped) comes
-// back with a specific, actionable reason from the agent itself.
+// reboot) — so, unlike restart/identifyFlash above, an error the agent actually
+// responded with is worth surfacing verbatim rather than collapsing to a generic
+// message: the most likely such failure (a Pi that hasn't been re-provisioned since
+// this feature shipped) comes back with a specific, actionable reason. A request
+// that never got a response at all (offline, unreachable, timed out) is a different
+// case — surfacing fetch's own error text there ("This operation was aborted", a bare
+// "fetch failed") reads as an internal error, not something a person can act on, so
+// that case still collapses to the same generic message every other agent-relayed
+// call in this file uses.
 async function agentErrorMessage(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as { error?: string } | null;
   return body?.error ?? `Pi agent responded ${res.status}`;
 }
 
+async function postToAgent(ip: string, path: string): Promise<Response> {
+  try {
+    return await agentFetch(ip, path, { method: 'POST' });
+  } catch {
+    throw new Error('could not reach device');
+  }
+}
+
 export async function update(ip: string): Promise<void> {
-  const res = await agentFetch(ip, '/update', { method: 'POST' });
+  const res = await postToAgent(ip, '/update');
   if (!res.ok) throw new Error(await agentErrorMessage(res));
 }
 
 export async function reprovision(ip: string): Promise<void> {
-  const res = await agentFetch(ip, '/reprovision', { method: 'POST' });
+  const res = await postToAgent(ip, '/reprovision');
   if (!res.ok) throw new Error(await agentErrorMessage(res));
 }

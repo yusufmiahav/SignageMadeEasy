@@ -527,6 +527,29 @@ export function useAppState() {
     }
   }, [showToast]);
 
+  // Bulk fast-path update, skipping devices already known offline (no point
+  // spending a round trip on a screen that can't answer). Deliberately calls
+  // api.updateDevice directly rather than the single-device updateDevice above —
+  // that one shows its own toast per call, which would just overwrite itself N
+  // times in a row here; this shows one consolidated result instead.
+  const updateAllDevices = useCallback(async () => {
+    const targets = devices.filter((d) => d.status === 'online');
+    if (targets.length === 0) {
+      showToast('No online screens to update.');
+      return;
+    }
+    const results = await Promise.allSettled(targets.map((d) => api.updateDevice(d.id)));
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    const succeeded = results.length - failed;
+    if (failed === 0) {
+      showToast(`Updating ${succeeded} screen${succeeded === 1 ? '' : 's'}… this can take up to a minute.`);
+    } else if (succeeded === 0) {
+      showToast("Couldn't update any screens — check they've been re-provisioned since this feature shipped.");
+    } else {
+      showToast(`Updating ${succeeded} screen${succeeded === 1 ? '' : 's'}… ${failed} couldn't be reached.`);
+    }
+  }, [devices, showToast]);
+
   const setDeviceAnnouncement = useCallback(async (id: string, announcementId: string | null) => {
     await api.setDeviceAnnouncement(id, announcementId);
     await refreshDevices();
@@ -621,6 +644,7 @@ export function useAppState() {
     previewDevice,
     updateDevice,
     reprovisionDevice,
+    updateAllDevices,
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,

@@ -25,6 +25,7 @@ import { BlackoutDialog } from './components/dialogs/BlackoutDialog';
 import { UploadContentDialog } from './components/dialogs/UploadContentDialog';
 import { ContentPreviewDialog } from './components/dialogs/ContentPreviewDialog';
 import { DevicePreviewDialog } from './components/dialogs/DevicePreviewDialog';
+import { UpdateDeviceDialog } from './components/dialogs/UpdateDeviceDialog';
 import { LoginScreen } from './screens/LoginScreen';
 import { useAppState } from './hooks/useAppState';
 import { useTheme } from './hooks/useTheme';
@@ -64,6 +65,8 @@ type DialogState =
   | { type: 'preview'; item: LibraryItem }
   /** Settings screen's "Preview" button (eye icon) — see DevicePreviewDialog.tsx. */
   | { type: 'previewDevice'; device: Device }
+  /** Settings screen's "Update" button (download icon) — see UpdateDeviceDialog.tsx. */
+  | { type: 'updateDevice'; device: Device }
   | null;
 
 export default function App() {
@@ -160,6 +163,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             hideAnnouncementRow={uiSettings.hideAnnouncementRow}
             onSetHideAnnouncementRow={uiSettings.setHideAnnouncementRow}
             onOpenDevicePreview={(device) => setDialog({ type: 'previewDevice', device })}
+            onOpenDeviceUpdate={(device) => setDialog({ type: 'updateDevice', device })}
           />
         )}
       </AppShell>
@@ -275,6 +279,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       {dialog?.type === 'addAnnouncementSchedule' && <AddAnnouncementScheduleDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
       {dialog?.type === 'preview' && <ContentPreviewDialog item={dialog.item} onClose={closeDialog} />}
       {dialog?.type === 'previewDevice' && <DevicePreviewDialog app={app} device={dialog.device} onClose={closeDialog} />}
+      {dialog?.type === 'updateDevice' && <UpdateDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
 
       <Toast message={app.toast} />
     </>

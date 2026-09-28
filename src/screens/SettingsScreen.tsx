@@ -16,6 +16,7 @@ interface SettingsScreenProps {
   hideAnnouncementRow: boolean;
   onSetHideAnnouncementRow: (value: boolean) => void;
   onOpenDevicePreview: (device: Device) => void;
+  onOpenDeviceUpdate: (device: Device) => void;
 }
 
 function isBackup(value: unknown): value is Backup {
@@ -34,11 +35,12 @@ export function SettingsScreen({
   hideAnnouncementRow,
   onSetHideAnnouncementRow,
   onOpenDevicePreview,
+  onOpenDeviceUpdate,
 }: SettingsScreenProps) {
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
-    safetyHold, setSafetyHold, flashDevice, savedHubNetworks, setSavedHubNetworks, updateDevice, reprovisionDevice,
+    safetyHold, setSafetyHold, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices,
   } = app;
   const [hubNetworkDrafts, setHubNetworkDrafts] = useState<SavedHubNetwork[]>(savedHubNetworks);
   useEffect(() => setHubNetworkDrafts(savedHubNetworks), [savedHubNetworks]);
@@ -290,11 +292,11 @@ export function SettingsScreen({
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Preview" title="See what's currently on this screen" onClick={() => onOpenDevicePreview(device)}>
               <Icon name="eye" size={13} />
             </button>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="Update" title="Pull and rebuild the latest player code (~10-30s)" onClick={() => void updateDevice(device)}>
-              <Icon name="download" size={13} />
-            </button>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="Re-provision" title="Full reinstall and reboot — for system-level changes, not routine updates" onClick={() => void reprovisionDevice(device)}>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" title="Restart the player process" onClick={() => void restartDevice(device)}>
               <Icon name="restart" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Update" title="Update or re-provision this screen" onClick={() => onOpenDeviceUpdate(device)}>
+              <Icon name="download" size={13} />
             </button>
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(device.id, device.name, 'device')}>
               <Icon name="pencil" size={13} />
@@ -542,16 +544,30 @@ export function SettingsScreen({
       <div className="card" style={{ gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="card-kicker">Groups & Screens</div>
-          {devices.length > 1 && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              style={{ fontSize: 12, padding: '4px 8px' }}
-              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-            >
-              {selectMode ? 'Cancel select' : 'Select screens'}
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: 6 }}>
+            {devices.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: 12, padding: '4px 8px' }}
+                title="Pulls the latest player code and restarts every online screen (~10-30s each)"
+                onClick={() => void updateAllDevices()}
+              >
+                <Icon name="download" size={12} />
+                Update all
+              </button>
+            )}
+            {devices.length > 1 && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: 12, padding: '4px 8px' }}
+                onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              >
+                {selectMode ? 'Cancel select' : 'Select screens'}
+              </button>
+            )}
+          </div>
         </div>
 
         {selectMode && (
