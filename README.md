@@ -213,6 +213,19 @@ ffmpeg -i input.mp4 -vf scale=1280:720 -c:v libx264 -profile:v main -preset medi
 ```
 (`-an` strips audio — the kiosk always plays muted, so it's dead weight.)
 
+**A portrait video shows a black screen with a stuck loading icon, never plays.**
+Fixed — the hub's automatic video-capping (`hub/src/videoTranscode.ts`) used to cap
+only a video's *width*, which is meaningless for a portrait video where the long
+side is its height: a 2002×3552 upload has a "width" of just 2002 (under the
+1280 cap, so treated as fine), while its real long side (3552, driving decode
+cost) went through completely uncapped — the "capped" copy the Pi actually
+received came out *larger* (1280×2272, 2.9M px/frame) than the exact 1080p source
+already confirmed too much for a Pi 3B+'s software decoder. It now caps whichever
+side is actually longer, landscape or portrait alike. If you're on a hub build from
+before this fix, manually re-encode a portrait video the same way as the choppy-video
+case above, just with width/height swapped in the scale filter, e.g.
+`scale=720:1280` instead of `scale=1280:720`.
+
 **A fresh hub still shows old locations/screens/library items.** It isn't seeded
 with demo data — anything you see was added through the app itself. If you expected
 an empty install, double-check you're pointed at the hub you think you are (its data
