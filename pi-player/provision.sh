@@ -237,6 +237,33 @@ fi
 rm -f "$SUDOERS_TMP"
 
 # ---------------------------------------------------------------------------
+log "Installing the remote-update scripts (root-owned — see pi-player/src/selfUpdate.ts)"
+# Unconditional on both platforms, unlike the underclock script above — the
+# Settings screen's "Update"/"Re-provision" buttons apply to any paired screen,
+# not just Raspberry Pi hardware. Same "deliberately NOT under $APP_DIR" reasoning
+# as the underclock script: $SIGNAGE_USER can invoke these via the sudoers grant
+# below, so it must not also be able to edit what it's allowed to run as root.
+mkdir -p /opt/signage/bin
+install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/self-update.sh" /opt/signage/bin/self-update.sh
+install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/reprovision.sh" /opt/signage/bin/reprovision.sh
+
+log "Granting $SIGNAGE_USER passwordless access to the remote-update scripts"
+# Same reasoning and same visudo-validate-before-install pattern as the nmcli/
+# underclock grants above: narrow, specific, fixed commands only.
+SUDOERS_TMP="$(mktemp)"
+{
+  echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /opt/signage/bin/self-update.sh"
+  echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /opt/signage/bin/reprovision.sh"
+} > "$SUDOERS_TMP"
+if visudo -c -f "$SUDOERS_TMP" >/dev/null 2>&1; then
+  install -m 440 "$SUDOERS_TMP" /etc/sudoers.d/signage-update
+else
+  echo "Generated remote-update sudoers rule failed validation — skipping. The" >&2
+  echo "Settings screen's Update/Re-provision buttons won't work without it." >&2
+fi
+rm -f "$SUDOERS_TMP"
+
+# ---------------------------------------------------------------------------
 log "Installing the SignageMadeEasy boot splash (Plymouth)"
 # Replaces the raw kernel/systemd boot text with a plain black screen, wordmark, and
 # small corner spinner — see assets/plymouth/signagemadeeasy.script. Its syntax was

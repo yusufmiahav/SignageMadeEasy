@@ -5,6 +5,7 @@ import { startPolling, stopPolling } from './poller.js';
 import { getLocalMac } from './localIp.js';
 import * as identifyFlash from './identifyFlash.js';
 import { captureScreenshot } from './preview.js';
+import * as selfUpdate from './selfUpdate.js';
 
 export const agentRouter = Router();
 
@@ -52,6 +53,27 @@ agentRouter.get('/preview', async (_req, res) => {
   try {
     const jpeg = await captureScreenshot();
     res.type('image/jpeg').send(jpeg);
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// Settings screen's "Update" button (fast path: app code only) — see selfUpdate.ts.
+// 202, not 204: this reports the update as accepted/underway, not completed.
+agentRouter.post('/update', async (_req, res) => {
+  try {
+    await selfUpdate.triggerUpdate();
+    res.status(202).end();
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// Settings screen's "Re-provision" button (full path) — see selfUpdate.ts.
+agentRouter.post('/reprovision', async (_req, res) => {
+  try {
+    await selfUpdate.triggerReprovision();
+    res.status(202).end();
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) });
   }

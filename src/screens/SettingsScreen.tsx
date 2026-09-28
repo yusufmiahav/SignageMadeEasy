@@ -38,7 +38,7 @@ export function SettingsScreen({
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
-    safetyHold, setSafetyHold, flashDevice, savedHubNetworks, setSavedHubNetworks,
+    safetyHold, setSafetyHold, flashDevice, savedHubNetworks, setSavedHubNetworks, updateDevice, reprovisionDevice,
   } = app;
   const [hubNetworkDrafts, setHubNetworkDrafts] = useState<SavedHubNetwork[]>(savedHubNetworks);
   useEffect(() => setHubNetworkDrafts(savedHubNetworks), [savedHubNetworks]);
@@ -289,6 +289,12 @@ export function SettingsScreen({
             </button>
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Preview" title="See what's currently on this screen" onClick={() => onOpenDevicePreview(device)}>
               <Icon name="eye" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Update" title="Pull and rebuild the latest player code (~10-30s)" onClick={() => void updateDevice(device)}>
+              <Icon name="download" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Re-provision" title="Full reinstall and reboot — for system-level changes, not routine updates" onClick={() => void reprovisionDevice(device)}>
+              <Icon name="restart" size={13} />
             </button>
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(device.id, device.name, 'device')}>
               <Icon name="pencil" size={13} />

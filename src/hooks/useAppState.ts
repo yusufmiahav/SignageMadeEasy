@@ -503,6 +503,30 @@ export function useAppState() {
   // reasoning as listNdiSources above.
   const previewDevice = useCallback((id: string): Promise<string> => api.previewDevice(id), []);
 
+  // Unlike flashDevice/restartDevice above, these catch and toast their own
+  // failures rather than leaving an unhandled rejection: the single most likely
+  // failure — a screen that hasn't been re-provisioned since this capability
+  // shipped — is a near-certainty on the very first click for every
+  // already-deployed screen, not a rare edge case, so it needs to be visible
+  // rather than silent.
+  const updateDevice = useCallback(async (device: Device) => {
+    try {
+      await api.updateDevice(device.id);
+      showToast(`Updating ${device.name}… this can take up to a minute.`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : `Could not update ${device.name}`);
+    }
+  }, [showToast]);
+
+  const reprovisionDevice = useCallback(async (device: Device) => {
+    try {
+      await api.reprovisionDevice(device.id);
+      showToast(`Re-provisioning ${device.name}… it will reboot shortly.`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : `Could not re-provision ${device.name}`);
+    }
+  }, [showToast]);
+
   const setDeviceAnnouncement = useCallback(async (id: string, announcementId: string | null) => {
     await api.setDeviceAnnouncement(id, announcementId);
     await refreshDevices();
@@ -595,6 +619,8 @@ export function useAppState() {
     restartDevice,
     flashDevice,
     previewDevice,
+    updateDevice,
+    reprovisionDevice,
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,

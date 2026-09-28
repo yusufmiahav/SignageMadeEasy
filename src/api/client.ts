@@ -127,6 +127,23 @@ export interface SignageApiClient {
    * or always in standalone/localStorage mode (no real screen to preview).
    */
   previewDevice(id: string): Promise<string>;
+  /**
+   * Fast path: pulls the latest pi-player code, rebuilds, and restarts the player
+   * process on this screen (~10-30s) — for routine app updates, not system-level
+   * changes (see reprovisionDevice for those). Needs the Pi to have been
+   * re-provisioned at least once after this capability shipped (see
+   * pi-player/README.md) — until then this rejects with a specific, actionable
+   * message from the Pi's own agent, not a generic failure. No-op in
+   * standalone/localStorage mode (no real Pi to ask).
+   */
+  updateDevice(id: string): Promise<void>;
+  /**
+   * Full path: re-runs the entire provisioning script fresh from GitHub (system
+   * packages, boot config, systemd units, and the app) and reboots — for the rare
+   * system-level change updateDevice can't cover. Same one-time bootstrap
+   * requirement and no-op-in-standalone-mode behavior as updateDevice above.
+   */
+  reprovisionDevice(id: string): Promise<void>;
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
   setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;

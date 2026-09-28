@@ -143,6 +143,8 @@ export const httpClient: SignageApiClient = {
     }
     return URL.createObjectURL(await res.blob());
   },
+  updateDevice: (id) => request<void>(`/api/devices/${id}/update`, { method: 'POST' }),
+  reprovisionDevice: (id) => request<void>(`/api/devices/${id}/reprovision`, { method: 'POST' }),
   setDeviceAnnouncement: (id, announcementId) => request<void>(`/api/devices/${id}/announcement`, { method: 'PUT', ...json({ announcementId }) }),
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
   setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),

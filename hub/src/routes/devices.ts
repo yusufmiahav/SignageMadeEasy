@@ -178,6 +178,35 @@ devicesRouter.get('/:id/preview', async (req, res) => {
   }
 });
 
+// Settings screen's "Update" button (fast path) — see pi-player/src/selfUpdate.ts.
+// Unlike the other agent-relayed routes above, the error message is relayed
+// verbatim rather than collapsed to a generic "could not reach device" — the most
+// likely failure (a Pi not yet re-provisioned since this feature shipped) comes
+// back from the agent with a specific, actionable reason worth showing.
+devicesRouter.post('/:id/update', async (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  try {
+    await piAgent.update(device.ip);
+    res.status(204).end();
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : 'could not reach device' });
+  }
+});
+
+// Settings screen's "Re-provision" button (full path) — see
+// pi-player/src/selfUpdate.ts. Same verbatim-error reasoning as /update above.
+devicesRouter.post('/:id/reprovision', async (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  try {
+    await piAgent.reprovision(device.ip);
+    res.status(204).end();
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : 'could not reach device' });
+  }
+});
+
 devicesRouter.put('/:id/announcement', (req, res) => {
   const { announcementId } = req.body ?? {};
   store.setDeviceAnnouncement(req.params.id, announcementId ?? null);

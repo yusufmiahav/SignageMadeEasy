@@ -72,6 +72,25 @@ After reboot the display shows its **IP address and a QR code**. Pair it from th
 control app (Home or Settings → "Add a screen") via Scan network, Scan QR, or Enter
 IP — any of those has the hub reach the Pi directly to finish pairing.
 
+### Updating from the control app (no SSH needed, after this first provision)
+
+This one-time manual provision also installs two narrow, fixed-command `sudo`
+grants (see `bin/self-update.sh`/`bin/reprovision.sh` and `src/selfUpdate.ts`) that
+let the Settings screen's per-screen **Update** and **Re-provision** buttons do the
+rest remotely from then on:
+
+- **Update** (download icon) — the fast path: pulls the latest player code,
+  rebuilds, and restarts just the player process (~10-30s). Covers routine app
+  changes; doesn't touch system packages, boot config, or systemd units.
+- **Re-provision** (restart icon) — the full path: re-runs this exact provisioning
+  script fresh from GitHub and reboots. For the rare system-level change Update
+  can't cover; slower and briefly blanks the screen.
+
+Until a screen has been through this manual provisioning step at least once since
+these buttons shipped, clicking either one reports a clear "hasn't been set up for
+remote updates yet" error rather than doing nothing silently — re-run the command
+above once and they'll work from then on.
+
 ## How it works
 
 - **`signage-player.service`** — a small Node/Express process on port 8088.

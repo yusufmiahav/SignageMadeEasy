@@ -610,6 +610,14 @@ class LocalStoreClient implements SignageApiClient {
     throw new Error('No real screen to preview in standalone mode');
   }
 
+  async updateDevice(): Promise<void> {
+    // No real Pi to update in standalone mode.
+  }
+
+  async reprovisionDevice(): Promise<void> {
+    // No real Pi to re-provision in standalone mode.
+  }
+
   async setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void> {
     const device = this.data.devices.find((d) => d.id === id);
     if (device) {

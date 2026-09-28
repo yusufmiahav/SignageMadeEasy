@@ -79,3 +79,25 @@ export async function preview(ip: string): Promise<Buffer> {
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected preview: ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }
+
+// Settings screen's "Update"/"Re-provision" buttons — see pi-player/src/selfUpdate.ts.
+// Both return as soon as the Pi's agent has kicked the relevant script off, not once
+// it's finished (that can take anywhere from ~10s to a couple of minutes plus a
+// reboot) — so, unlike restart/identifyFlash above, the error thrown here is worth
+// surfacing verbatim rather than collapsing to a generic message: the most likely
+// failure (a Pi that hasn't been re-provisioned since this feature shipped) comes
+// back with a specific, actionable reason from the agent itself.
+async function agentErrorMessage(res: Response): Promise<string> {
+  const body = (await res.json().catch(() => null)) as { error?: string } | null;
+  return body?.error ?? `Pi agent responded ${res.status}`;
+}
+
+export async function update(ip: string): Promise<void> {
+  const res = await agentFetch(ip, '/update', { method: 'POST' });
+  if (!res.ok) throw new Error(await agentErrorMessage(res));
+}
+
+export async function reprovision(ip: string): Promise<void> {
+  const res = await agentFetch(ip, '/reprovision', { method: 'POST' });
+  if (!res.ok) throw new Error(await agentErrorMessage(res));
+}
