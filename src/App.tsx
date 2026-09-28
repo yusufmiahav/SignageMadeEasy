@@ -24,6 +24,7 @@ import { ForceContentDialog } from './components/dialogs/ForceContentDialog';
 import { BlackoutDialog } from './components/dialogs/BlackoutDialog';
 import { UploadContentDialog } from './components/dialogs/UploadContentDialog';
 import { ContentPreviewDialog } from './components/dialogs/ContentPreviewDialog';
+import { DevicePreviewDialog } from './components/dialogs/DevicePreviewDialog';
 import { LoginScreen } from './screens/LoginScreen';
 import { useAppState } from './hooks/useAppState';
 import { useTheme } from './hooks/useTheme';
@@ -61,6 +62,8 @@ type DialogState =
   | { type: 'blackoutDevice'; deviceId: string }
   | { type: 'addAnnouncementSchedule'; groupId: string }
   | { type: 'preview'; item: LibraryItem }
+  /** Settings screen's "Preview" button (eye icon) — see DevicePreviewDialog.tsx. */
+  | { type: 'previewDevice'; device: Device }
   | null;
 
 export default function App() {
@@ -156,6 +159,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onSetAdvancedDeviceInfo={uiSettings.setAdvancedDeviceInfo}
             hideAnnouncementRow={uiSettings.hideAnnouncementRow}
             onSetHideAnnouncementRow={uiSettings.setHideAnnouncementRow}
+            onOpenDevicePreview={(device) => setDialog({ type: 'previewDevice', device })}
           />
         )}
       </AppShell>
@@ -270,6 +274,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       )}
       {dialog?.type === 'addAnnouncementSchedule' && <AddAnnouncementScheduleDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
       {dialog?.type === 'preview' && <ContentPreviewDialog item={dialog.item} onClose={closeDialog} />}
+      {dialog?.type === 'previewDevice' && <DevicePreviewDialog app={app} device={dialog.device} onClose={closeDialog} />}
 
       <Toast message={app.toast} />
     </>

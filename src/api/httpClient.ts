@@ -135,6 +135,14 @@ export const httpClient: SignageApiClient = {
   removeDevice: (id) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
   flashDevice: (id) => request<void>(`/api/devices/${id}/identify-flash`, { method: 'POST' }),
+  previewDevice: async (id) => {
+    const res = await fetch(`${BASE_URL}/api/devices/${id}/preview`, { credentials: 'include' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.error || `GET /api/devices/${id}/preview failed: ${res.status}`);
+    }
+    return URL.createObjectURL(await res.blob());
+  },
   setDeviceAnnouncement: (id, announcementId) => request<void>(`/api/devices/${id}/announcement`, { method: 'PUT', ...json({ announcementId }) }),
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
   setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),

@@ -499,6 +499,10 @@ export function useAppState() {
     showToast(`Identifying ${device.name}…`);
   }, [showToast]);
 
+  // Just a passthrough for the preview dialog — no app state to refresh, same
+  // reasoning as listNdiSources above.
+  const previewDevice = useCallback((id: string): Promise<string> => api.previewDevice(id), []);
+
   const setDeviceAnnouncement = useCallback(async (id: string, announcementId: string | null) => {
     await api.setDeviceAnnouncement(id, announcementId);
     await refreshDevices();
@@ -590,6 +594,7 @@ export function useAppState() {
     removeDevice,
     restartDevice,
     flashDevice,
+    previewDevice,
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,

@@ -4,6 +4,7 @@ import { clearConfig, loadConfig, saveConfig } from './config.js';
 import { startPolling, stopPolling } from './poller.js';
 import { getLocalMac } from './localIp.js';
 import * as identifyFlash from './identifyFlash.js';
+import { captureScreenshot } from './preview.js';
 
 export const agentRouter = Router();
 
@@ -44,4 +45,14 @@ agentRouter.post('/restart', (_req, res) => {
 agentRouter.post('/identify-flash', (_req, res) => {
   identifyFlash.trigger();
   res.status(204).end();
+});
+
+// Settings screen's "Preview" button — see preview.ts.
+agentRouter.get('/preview', async (_req, res) => {
+  try {
+    const jpeg = await captureScreenshot();
+    res.type('image/jpeg').send(jpeg);
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });

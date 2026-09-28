@@ -118,6 +118,15 @@ export interface SignageApiClient {
   restartDevice(id: string): Promise<void>;
   /** Makes this screen's physical display blink white/black twice — helps identify which real screen an entry in Settings corresponds to. No-op in standalone/localStorage mode (no real Pi to ask). */
   flashDevice(id: string): Promise<void>;
+  /**
+   * Fetches a live screenshot of exactly what's currently rendering on this screen —
+   * via the paired Pi's own already-open Chromium DevTools port (see
+   * hub/src/piAgent.ts's preview / pi-player/src/preview.ts). Resolves to a `blob:`
+   * URL ready for an `<img src>`; the caller owns it and must
+   * `URL.revokeObjectURL` it once done. Throws if the device is offline/unreachable,
+   * or always in standalone/localStorage mode (no real screen to preview).
+   */
+  previewDevice(id: string): Promise<string>;
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
   setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;

@@ -66,3 +66,16 @@ export async function identifyFlash(ip: string): Promise<void> {
   const res = await agentFetch(ip, '/identify-flash', { method: 'POST' });
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected identify-flash: ${res.status}`);
 }
+
+// Settings screen's "Preview" button — a live JPEG screenshot of exactly what's
+// currently rendering on this screen, relayed through the Pi's agent rather than the
+// hub reaching Chromium's DevTools port on the Pi directly (see
+// pi-player/src/preview.ts) — keeps all hub->Pi traffic on this one well-known
+// port/protocol instead of two. Longer timeout than the other calls here: capturing
+// and JPEG-encoding a full-screen frame on a Pi 3B+ is real work, not just an
+// instant local read.
+export async function preview(ip: string): Promise<Buffer> {
+  const res = await agentFetch(ip, '/preview', undefined, 8000);
+  if (!res.ok) throw new Error(`Pi agent at ${ip} rejected preview: ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}

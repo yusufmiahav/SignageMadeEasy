@@ -15,6 +15,7 @@ interface SettingsScreenProps {
   onSetAdvancedDeviceInfo: (value: boolean) => void;
   hideAnnouncementRow: boolean;
   onSetHideAnnouncementRow: (value: boolean) => void;
+  onOpenDevicePreview: (device: Device) => void;
 }
 
 function isBackup(value: unknown): value is Backup {
@@ -32,6 +33,7 @@ export function SettingsScreen({
   onSetAdvancedDeviceInfo,
   hideAnnouncementRow,
   onSetHideAnnouncementRow,
+  onOpenDevicePreview,
 }: SettingsScreenProps) {
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation,
@@ -284,6 +286,9 @@ export function SettingsScreen({
             </button>
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Identify" title="Blink this screen's display" onClick={() => void flashDevice(device)}>
               <Icon name="lightbulb" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Preview" title="See what's currently on this screen" onClick={() => onOpenDevicePreview(device)}>
+              <Icon name="eye" size={13} />
             </button>
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(device.id, device.name, 'device')}>
               <Icon name="pencil" size={13} />
