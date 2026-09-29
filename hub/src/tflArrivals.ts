@@ -84,6 +84,17 @@ export async function searchStations(query: string): Promise<StationResult[]> {
   const matches = (data.matches ?? []).slice(0, SEARCH_RESULT_CAP);
 
   const resolved = await Promise.all(matches.map(async (m): Promise<StationResult[]> => {
+    // TfL's own `modes` search param is a bias, not a hard filter — confirmed by
+    // this exact bug report: searching "St James's Park" (also a well-known royal
+    // park, with its own bus stops/pier under the same name) surfaced a non-rail
+    // match alongside the real Underground station. That decoy has no children
+    // (so it took the "leaf station" branch below) and got returned as a
+    // selectable result indistinguishable from the real station — once added,
+    // /StopPoint/<id>/Arrivals legitimately returns [] forever for it, since it
+    // was never a rail stop to begin with. The hub-children branch below already
+    // filters children by rail mode; a plain leaf match needs the exact same
+    // check on its own `modes`, or a same-named non-rail decoy slips through.
+    if (!(m.modes ?? []).some((mode) => RAIL_MODES.includes(mode))) return [];
     const detail = await stationDetail(m.id);
     const children = (detail?.children ?? []).filter((c) => (c.modes ?? []).some((mode) => RAIL_MODES.includes(mode)));
     if (children.length === 0) {

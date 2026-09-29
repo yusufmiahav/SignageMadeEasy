@@ -25,7 +25,24 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
     );
   }
 
-  if (!selectedGroup) return null;
+  // A hub can have only standalone (no-group) screens and no groups at all — a
+  // perfectly normal small setup, not an edge case. Standalone screens have no
+  // announcementSchedules of their own (that field only exists on Group; see
+  // api/types.ts), so this screen — scoped entirely to picking among *groups* —
+  // has nothing to show them. Silently rendering nothing here (the previous
+  // behavior) left a totally blank page with no explanation; point at where
+  // standalone-screen announcements actually live instead.
+  if (!selectedGroup) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <h1 style={{ margin: 0 }}>Announcements</h1>
+        <p className="text-muted" style={{ margin: 0 }}>
+          No groups yet — scheduled announcements are a per-group feature. For a standalone screen (no group), turn
+          its announcement on/off directly from its card on the Home tab instead.
+        </p>
+      </div>
+    );
+  }
 
   const activeId = activeAnnouncementId(selectedGroup);
   const activeItem = activeId ? libraryById.get(activeId) : undefined;
