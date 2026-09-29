@@ -90,7 +90,7 @@ class ModuleInstance extends InstanceBase {
 				this.updateActions()
 				this.updateFeedbacks()
 			}
-			this.checkFeedbacks('force_content_active', 'announcement_active', 'blackout_active', 'device_online')
+			this.checkFeedbacks('force_content_active', 'announcement_active', 'blackout_active', 'device_online', 'device_throttled')
 			this.updateVariables()
 		} catch (err) {
 			const message = err instanceof HubApiError ? err.message : String(err?.message ?? err)

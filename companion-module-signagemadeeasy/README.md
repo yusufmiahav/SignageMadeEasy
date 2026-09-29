@@ -47,6 +47,10 @@ app uses — so it needs nothing extra installed or configured on the hub itself
      *something* is forced, regardless of which.
    - **Blackout is active** — pick a group or standalone screen.
    - **Screen is online** — pick one specific screen.
+   - **Screen is running hot / throttled** — pick one specific screen; reads the
+     same `vcgencmd get_throttled` bits the control app's own device card shows
+     (under-voltage, ARM-frequency-capped, thermally throttled, soft temperature
+     limit) — real Raspberry Pi hardware only, always false for anything else.
 
 4. **Variables** — `$(signagemadeeasy:online_count)`, `$(signagemadeeasy:offline_count)`,
    `$(signagemadeeasy:total_count)` — updated every poll.

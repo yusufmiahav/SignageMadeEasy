@@ -34,6 +34,9 @@ announcements, for one screen, one group, or every screen at once.
   content/announcement at all, same as before this option existed.
 - **Blackout is active** — pick a group or standalone screen.
 - **Screen is online** — pick one specific screen.
+- **Screen is running hot / throttled** — pick one specific screen; true while it's
+  currently under-voltage, ARM-frequency-capped, thermally throttled, or hitting
+  its soft temperature limit (real Raspberry Pi hardware only).
 
 ## Variables
 

@@ -1,6 +1,6 @@
 {
   "name": "companion-module-signagemadeeasy",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "main": "companion/main.js",
   "license": "MIT",
   "private": true,

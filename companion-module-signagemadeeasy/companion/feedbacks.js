@@ -117,6 +117,22 @@ function getFeedbackDefinitions(self) {
 			options: [{ type: 'dropdown', id: 'device', label: 'Screen', choices: buildDeviceChoices(self), default: buildDeviceChoices(self)[0]?.id ?? '' }],
 			callback: (feedback) => findDevice(self, feedback.options.device)?.status === 'online',
 		},
+		device_throttled: {
+			type: 'boolean',
+			name: 'Screen is running hot / throttled',
+			description:
+				'True while the chosen screen is currently under-voltage, ARM-frequency-capped, thermally throttled, or hitting its soft temperature limit — the same bits the control app\'s own device card reads from vcgencmd get_throttled. Only meaningful on real Raspberry Pi hardware reporting this (a fresh/unheatsinked Pi 3B+ under load is the usual real-world case).',
+			defaultStyle: { bgcolor: combineRgb(200, 0, 0), color: combineRgb(255, 255, 255) },
+			options: [{ type: 'dropdown', id: 'device', label: 'Screen', choices: buildDeviceChoices(self), default: buildDeviceChoices(self)[0]?.id ?? '' }],
+			// Bits 0-3 of the hex bitmask are CURRENT state (bits 16-19 are "has
+			// happened since boot," not checked here) — mirrors
+			// src/components/DeviceCard.tsx's isCurrentlyThrottled exactly.
+			callback: (feedback) => {
+				const throttled = findDevice(self, feedback.options.device)?.throttled
+				if (!throttled) return false
+				return (Number.parseInt(throttled, 16) & 0xf) !== 0
+			},
+		},
 	}
 }
 
