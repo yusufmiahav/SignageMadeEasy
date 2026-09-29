@@ -39,8 +39,13 @@ app uses — so it needs nothing extra installed or configured on the hub itself
      retried, and the module logs how many succeeded/failed.
 
 3. **Feedbacks** — color a button based on live state:
-   - **Forced content is active** / **Forced announcement is active** /
-     **Blackout is active** — pick a group or standalone screen.
+   - **Forced content is active** / **Forced announcement is active** — pick a
+     group or standalone screen, and optionally a specific content item or
+     announcement to narrow the match (e.g. light up only while "Photo 1" is the
+     one forced on "Screen 1", not just any forced content). Leave the
+     content/announcement picker as "Any" for the original behavior — true while
+     *something* is forced, regardless of which.
+   - **Blackout is active** — pick a group or standalone screen.
    - **Screen is online** — pick one specific screen.
 
 4. **Variables** — `$(signagemadeeasy:online_count)`, `$(signagemadeeasy:offline_count)`,

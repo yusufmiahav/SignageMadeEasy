@@ -28,8 +28,11 @@ announcements, for one screen, one group, or every screen at once.
 
 ## Feedbacks
 
-- **Forced content is active** / **Forced announcement is active** / **Blackout
-  is active** — pick a group or standalone screen.
+- **Forced content is active** / **Forced announcement is active** — pick a group
+  or standalone screen, and optionally a specific content item/announcement (e.g.
+  "Photo 1 is live on Screen 1") — leave it as "Any" to match any forced
+  content/announcement at all, same as before this option existed.
+- **Blackout is active** — pick a group or standalone screen.
 - **Screen is online** — pick one specific screen.
 
 ## Variables
