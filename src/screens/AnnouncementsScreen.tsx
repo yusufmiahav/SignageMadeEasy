@@ -9,12 +9,34 @@ interface AnnouncementsScreenProps {
   onOpenAddSchedule: (groupId: string) => void;
 }
 
+// Sentinel for the "No location" tab — see ScheduleScreen.tsx's identical pattern.
+const NO_LOCATION = '__none__';
+
 export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSchedule }: AnnouncementsScreenProps) {
-  const { groups, devices, library, removeAnnouncementSchedule, setForcedAnnouncement } = app;
-  const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id ?? '');
+  const { groups, devices, locations, library, removeAnnouncementSchedule, setForcedAnnouncement } = app;
+  const [selectedLocationTab, setSelectedLocationTab] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const libraryById = new Map(library.map((item) => [item.id, item]));
-  const effectiveGroupId = groups.some((g) => g.id === selectedGroupId) ? selectedGroupId : (groups[0]?.id ?? '');
-  const selectedGroup = groups.find((g) => g.id === effectiveGroupId);
+
+  // Scoped to one Location tab at a time, same reasoning and pattern as
+  // ScheduleScreen.tsx — this screen is a flat group-tab-bar with no location
+  // structure of its own, which gets just as unwieldy to scan across several
+  // locations' worth of groups. Unlike Schedule, there's no standalone-device
+  // section here at all (announcementSchedules only exists on Group — see the
+  // no-groups-yet message below), so "No location" only needs to bucket groups.
+  const locationIds = new Set(locations.map((l) => l.id));
+  const isUnfiled = (locationId: string | null) => !locationId || !locationIds.has(locationId);
+  const locationsWithGroups = locations.filter((loc) => groups.some((g) => g.locationId === loc.id));
+  const unfiledGroups = groups.filter((g) => isUnfiled(g.locationId));
+  const locationTabs = [
+    ...locationsWithGroups.map((l) => ({ id: l.id, name: l.name })),
+    ...(unfiledGroups.length > 0 ? [{ id: NO_LOCATION, name: 'No location' }] : []),
+  ];
+  const effectiveLocationTab = locationTabs.some((t) => t.id === selectedLocationTab) ? selectedLocationTab : (locationTabs[0]?.id ?? '');
+  const tabGroups = effectiveLocationTab === NO_LOCATION ? unfiledGroups : groups.filter((g) => g.locationId === effectiveLocationTab);
+
+  const effectiveGroupId = tabGroups.some((g) => g.id === selectedGroupId) ? selectedGroupId : (tabGroups[0]?.id ?? '');
+  const selectedGroup = tabGroups.find((g) => g.id === effectiveGroupId);
 
   if (devices.length === 0) {
     return (
@@ -24,6 +46,17 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
       </div>
     );
   }
+
+  const locationTabBar = locationTabs.length > 1 && (
+    <div className="seg" style={{ flexWrap: 'wrap' }}>
+      {locationTabs.map((t) => (
+        <label key={t.id} className="seg-opt">
+          <input type="radio" name="announceLocationSel" checked={t.id === effectiveLocationTab} onChange={() => setSelectedLocationTab(t.id)} />
+          {t.name}
+        </label>
+      ))}
+    </div>
+  );
 
   // A hub can have only standalone (no-group) screens and no groups at all — a
   // perfectly normal small setup, not an edge case. Standalone screens have no
@@ -36,6 +69,7 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h1 style={{ margin: 0 }}>Announcements</h1>
+        {locationTabBar}
         <p className="text-muted" style={{ margin: 0 }}>
           No groups yet — scheduled announcements are a per-group feature. For a standalone screen (no group), turn
           its announcement on/off directly from its card on the Home tab instead.
@@ -57,8 +91,10 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
         screen everywhere at once.
       </p>
 
+      {locationTabBar}
+
       <div className="seg" style={{ flexWrap: 'wrap' }}>
-        {groups.map((g) => (
+        {tabGroups.map((g) => (
           <label key={g.id} className="seg-opt">
             <input type="radio" name="announceGroupSel" checked={g.id === effectiveGroupId} onChange={() => setSelectedGroupId(g.id)} />
             {g.name}
