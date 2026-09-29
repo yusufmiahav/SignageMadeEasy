@@ -26,20 +26,45 @@ interface ScheduleScreenProps {
   onPreviewContent: (item: LibraryItem) => void;
 }
 
+// Sentinel for the "No location" tab — groups/standalone screens not filed under
+// any Location (or filed under one that's since been deleted, e.g. a hand-edited
+// backup import — see isUnfiled below), same fallback HomeScreen/SettingsScreen
+// already give that case.
+const NO_LOCATION = '__none__';
+
 export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onOpenAddContentDevice, onOpenAddEventDevice, onPreviewContent }: ScheduleScreenProps) {
-  const { groups, devices, library, reorderDefaultPlaylist, removeFromDefaultPlaylist, removeEvent, duplicateEvent, setItemDuration } = app;
-  const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id ?? '');
+  const { groups, devices, locations, library, reorderDefaultPlaylist, removeFromDefaultPlaylist, removeEvent, duplicateEvent, setItemDuration } = app;
+  const [selectedLocationTab, setSelectedLocationTab] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const [calMonthOffset, setCalMonthOffset] = useState(0);
   const [selectedCalDate, setSelectedCalDate] = useState<string | null>(null);
   const [eventsExpanded, setEventsExpanded] = useState(false);
 
   const libraryById = new Map(library.map((item) => [item.id, item]));
-  const effectiveGroupId = groups.some((g) => g.id === selectedGroupId) ? selectedGroupId : (groups[0]?.id ?? '');
-  const selectedGroup = groups.find((g) => g.id === effectiveGroupId);
-  // Standalone (no-group) screens get their own stacked list of schedule editors
-  // below — there's no shared "current group" to select between for these, and there
-  // can be several, independently configured (see DeviceScheduleCard's own comment).
-  const miscDevices = devices.filter((d) => !d.groupId);
+
+  // Everything below is scoped to one Location tab at a time — with every group's
+  // full schedule editor (calendar, events, default playlist) plus a card per
+  // standalone screen all rendering at once, a hub with several locations' worth of
+  // screens turned this into one very long page with nothing to do with most of it
+  // at a glance. Same "unfiled" fallback as HomeScreen/SettingsScreen for a
+  // locationId pointing nowhere real.
+  const locationIds = new Set(locations.map((l) => l.id));
+  const isUnfiled = (locationId: string | null) => !locationId || !locationIds.has(locationId);
+  const locationsWithContent = locations.filter(
+    (loc) => groups.some((g) => g.locationId === loc.id) || devices.some((d) => !d.groupId && d.locationId === loc.id),
+  );
+  const unfiledGroups = groups.filter((g) => isUnfiled(g.locationId));
+  const unfiledDevices = devices.filter((d) => !d.groupId && isUnfiled(d.locationId));
+  const locationTabs = [
+    ...locationsWithContent.map((l) => ({ id: l.id, name: l.name })),
+    ...(unfiledGroups.length > 0 || unfiledDevices.length > 0 ? [{ id: NO_LOCATION, name: 'No location' }] : []),
+  ];
+  const effectiveLocationTab = locationTabs.some((t) => t.id === selectedLocationTab) ? selectedLocationTab : (locationTabs[0]?.id ?? '');
+  const tabGroups = effectiveLocationTab === NO_LOCATION ? unfiledGroups : groups.filter((g) => g.locationId === effectiveLocationTab);
+  const tabDevices = effectiveLocationTab === NO_LOCATION ? unfiledDevices : devices.filter((d) => !d.groupId && d.locationId === effectiveLocationTab);
+
+  const effectiveGroupId = tabGroups.some((g) => g.id === selectedGroupId) ? selectedGroupId : (tabGroups[0]?.id ?? '');
+  const selectedGroup = tabGroups.find((g) => g.id === effectiveGroupId);
 
   if (devices.length === 0) {
     return (
@@ -50,11 +75,23 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onOpenAd
     );
   }
 
+  const locationTabBar = locationTabs.length > 1 && (
+    <div className="seg" style={{ flexWrap: 'wrap' }}>
+      {locationTabs.map((t) => (
+        <label key={t.id} className="seg-opt">
+          <input type="radio" name="scheduleLocationSel" checked={t.id === effectiveLocationTab} onChange={() => setSelectedLocationTab(t.id)} />
+          {t.name}
+        </label>
+      ))}
+    </div>
+  );
+
   if (!selectedGroup) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h1 style={{ margin: 0 }}>Schedule</h1>
-        {miscDevices.map((device) => (
+        {locationTabBar}
+        {tabDevices.map((device) => (
           <DeviceScheduleCard
             key={device.id}
             app={app}
@@ -98,14 +135,18 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onOpenAd
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <h1 style={{ margin: 0 }}>Schedule</h1>
 
-      <div className="seg" style={{ flexWrap: 'wrap' }}>
-        {groups.map((g) => (
-          <label key={g.id} className="seg-opt">
-            <input type="radio" name="scheduleGroupSel" checked={g.id === effectiveGroupId} onChange={() => setSelectedGroupId(g.id)} />
-            {g.name}
-          </label>
-        ))}
-      </div>
+      {locationTabBar}
+
+      {tabGroups.length > 0 && (
+        <div className="seg" style={{ flexWrap: 'wrap' }}>
+          {tabGroups.map((g) => (
+            <label key={g.id} className="seg-opt">
+              <input type="radio" name="scheduleGroupSel" checked={g.id === effectiveGroupId} onChange={() => setSelectedGroupId(g.id)} />
+              {g.name}
+            </label>
+          ))}
+        </div>
+      )}
 
       {todaysEvent && (
         <div className="dialog-warning">
@@ -238,7 +279,7 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onOpenAd
         )}
       </div>
 
-      {miscDevices.map((device) => (
+      {tabDevices.map((device) => (
         <DeviceScheduleCard
           key={device.id}
           app={app}
