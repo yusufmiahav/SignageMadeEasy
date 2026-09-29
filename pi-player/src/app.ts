@@ -16,6 +16,7 @@ import * as ndiPlayer from './ndiPlayer.js';
 import * as identifyFlash from './identifyFlash.js';
 import * as orientationConfig from './orientationConfig.js';
 import * as displayOrientation from './displayOrientation.js';
+import * as bootRotation from './bootRotation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -164,7 +165,7 @@ export function createApp() {
   // design that could never rotate the pairing/QR screen itself (no paired device
   // row existed yet for the hub to attach a setting to).
   app.get('/orientation', (_req, res) => {
-    res.json({ value: orientationConfig.loadOrientation() });
+    res.json({ value: orientationConfig.loadOrientation(), bootRotation: bootRotation.getStatus() });
   });
 
   app.post('/orientation', async (req, res) => {
@@ -174,7 +175,18 @@ export function createApp() {
     }
     orientationConfig.saveOrientation(value);
     const applied = await displayOrientation.applyOrientation(value);
-    res.json({ ok: true, value, applied });
+    // Best-effort, same as the live sway transform above — a Pi with nothing
+    // connected yet to detect a DRM connector from just leaves this untouched
+    // rather than erroring the whole request (see bootRotation.ts's own comment).
+    await bootRotation.setOrientation(value).catch(() => {});
+    const status = bootRotation.getStatus();
+    // The boot splash is drawn once, at boot, before this process (or sway) even
+    // starts — there is no live way to make it catch up the way the sway
+    // transform above just did, so any non-'0' orientation always needs an
+    // explicit reboot to actually show correctly next time, same "write now,
+    // apply on reboot" shape as underclock.ts's own rebootRequired.
+    const bootRotationRebootRequired = value !== '0' && status.supported;
+    res.json({ ok: true, value, applied, bootRotation: status, bootRotationRebootRequired });
   });
 
   // Native NDI playback (Pi 4/5 or an x86 device only — see ndiPlayer.ts). Mirrors the mpv-branch's own

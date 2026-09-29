@@ -206,11 +206,18 @@ if [[ "$IS_PI" -eq 1 ]]; then
   # toggle it's meant to be.
   mkdir -p /opt/signage/bin
   install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/set-underclock.sh" /opt/signage/bin/set-underclock.sh
+
+  log "Installing the boot-rotation script (root-owned — see pi-player/src/bootRotation.ts)"
+  # Same "not under $APP_DIR" reasoning as set-underclock.sh above. Raspberry Pi
+  # only, same as underclock — see bootRotation.ts's own header comment for why
+  # (needs the DRM/KMS cmdline.txt mechanism, with no x86/GRUB equivalent built
+  # here yet).
+  install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/set-boot-rotation.sh" /opt/signage/bin/set-boot-rotation.sh
 fi
 
 # ---------------------------------------------------------------------------
 if [[ "$IS_PI" -eq 1 ]]; then
-  log "Granting $SIGNAGE_USER passwordless access to the underclock script and reboot"
+  log "Granting $SIGNAGE_USER passwordless access to the underclock/boot-rotation scripts and reboot"
 else
   log "Granting $SIGNAGE_USER passwordless access to reboot"
 fi
@@ -225,14 +232,15 @@ SUDOERS_TMP="$(mktemp)"
 {
   if [[ "$IS_PI" -eq 1 ]]; then
     echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /opt/signage/bin/set-underclock.sh"
+    echo "$SIGNAGE_USER ALL=(root) NOPASSWD: /opt/signage/bin/set-boot-rotation.sh"
   fi
   echo "$SIGNAGE_USER ALL=(root) NOPASSWD: $REBOOT_BIN"
 } > "$SUDOERS_TMP"
 if visudo -c -f "$SUDOERS_TMP" >/dev/null 2>&1; then
   install -m 440 "$SUDOERS_TMP" /etc/sudoers.d/signage-underclock
 else
-  echo "Generated underclock/reboot sudoers rule failed validation — skipping. The" >&2
-  echo "underclock toggle (if applicable) and reboot-from-the-setup-page won't work without it." >&2
+  echo "Generated underclock/boot-rotation/reboot sudoers rule failed validation — skipping. The" >&2
+  echo "underclock toggle, boot-rotation setting (if applicable), and reboot-from-the-setup-page won't work without it." >&2
 fi
 rm -f "$SUDOERS_TMP"
 

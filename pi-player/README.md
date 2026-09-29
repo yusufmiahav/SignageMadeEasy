@@ -166,15 +166,35 @@ content type after pairing since they're all the same Wayland client (Chromium)
 automatically adapting to sway's rotated output — nothing in `player.js`/
 `player.css` needs to know or care.
 
-**Known gap, not yet fixed**: this does not rotate the Plymouth boot splash (see
-"Boot splash" below) — that's drawn directly by the kernel before sway even
-starts, and needs a separate kernel/DRM-level rotation setting that's genuinely
-easy to get wrong blind (a bad value can leave a Pi with no display output until
-someone's physically at it to fix `/boot/firmware/config.txt`). Deliberately left
-as a real-hardware follow-up rather than guessing at it here — for now, a
-rotated screen briefly shows a boot splash in the *wrong* orientation for the few
-seconds before the kiosk starts, then displays correctly for everything after
-that.
+**Also rotates the Plymouth boot splash** (see "Boot splash" below) — that's drawn
+directly by the kernel before sway even starts, so it needs a second, separate
+mechanism (`src/bootRotation.ts`/`bin/set-boot-rotation.sh`): picking a non-0°
+orientation on the setup page detects the connected DRM output (reading
+`/sys/class/drm/*/status`, rather than guessing a hardcoded HDMI port name) and
+appends a `video=<connector>:d,rotate=<degrees>` kernel command-line parameter to
+`cmdline.txt`. Deliberately **not** the legacy firmware `display_rotate=` setting
+in `config.txt` — that one has a real "no display output at all until someone's
+physically at it" failure mode if it's wrong, which is what made this a
+real-hardware follow-up in the first place. The modern KMS `video=` parameter used
+here fails safe instead: an unmatched/wrong connector name is a harmless no-op
+(boot proceeds completely normally, just unrotated), and setting orientation back
+to 0° removes the parameter entirely, restoring the exact original `cmdline.txt`.
+
+This only affects the **boot splash** — the kernel reads `cmdline.txt` once, at
+boot, so it can't take effect live the way the sway transform above does. The
+setup page prompts for an explicit reboot whenever it applies, same as the
+"Performance" underclock toggle below; nothing reboots on its own.
+
+**UNVERIFIED on real hardware as of writing**: the write/idempotency mechanics
+(strip-then-reapply, never introduces a newline, restores byte-for-byte on 0°)
+are thoroughly tested against simulated `cmdline.txt` content, and connector
+auto-detection was verified against a simulated `/sys/class/drm` layout — but
+whether Plymouth's `drm` renderer actually honors this exact kernel parameter on
+real Raspberry Pi OS + `vc4-kms-v3d` has not been confirmed against physical
+hardware. Test on one spare/non-critical portrait-mounted Pi before relying on
+this across a fleet; if it doesn't visibly rotate the splash, the live sway
+rotation and everything else are unaffected either way, and setting orientation
+back to 0° cleanly removes the kernel parameter.
 
 **UNVERIFIED on real hardware as of writing** — no portrait-mounted panel was
 available to confirm this against directly (see `displayOrientation.ts`'s own

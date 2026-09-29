@@ -28,8 +28,8 @@
      inline style="display:flex" on the element itself would beat [hidden]'s
      display:none outright regardless of specificity rules, silently keeping it
      visible even while "hidden" is set. */
-  #ip-manual-fields, #underclock-reboot-prompt { display: flex; flex-direction: column; gap: 10px; }
-  #ip-manual-fields[hidden], #underclock-reboot-prompt[hidden] { display: none; }
+  #ip-manual-fields, #underclock-reboot-prompt, #boot-rotation-reboot-prompt { display: flex; flex-direction: column; gap: 10px; }
+  #ip-manual-fields[hidden], #underclock-reboot-prompt[hidden], #boot-rotation-reboot-prompt[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -101,7 +101,9 @@
     <h2>Display orientation</h2>
     <p>Rotates everything this screen shows — the pairing/QR screen included — to
       match how this Pi is physically mounted relative to the panel. Takes effect
-      immediately, no reboot needed.</p>
+      immediately, no reboot needed — except the brief boot splash shown before this
+      screen even starts, which needs a reboot to catch up (you'll be prompted below
+      when that applies).</p>
     <div>
       <label for="orientation-select">Rotation</label>
       <select id="orientation-select">
@@ -112,6 +114,10 @@
       </select>
     </div>
     <p id="orientation-status"></p>
+    <div id="boot-rotation-reboot-prompt" hidden>
+      <p style="color: #ffcf6e;">The boot splash (shown briefly before this screen starts) needs a reboot to catch up to this rotation.</p>
+      <button type="button" id="boot-rotation-reboot">Reboot now</button>
+    </div>
 
     <hr />
 
@@ -263,12 +269,17 @@
     // --- Display orientation -------------------------------------------------
     const orientationSelect = document.getElementById('orientation-select');
     const orientationStatus = document.getElementById('orientation-status');
+    const bootRotationRebootPrompt = document.getElementById('boot-rotation-reboot-prompt');
+    const bootRotationReboot = document.getElementById('boot-rotation-reboot');
 
     async function loadOrientation() {
       try {
         const res = await fetch('/orientation');
         const data = await res.json();
         orientationSelect.value = data.value;
+        // Only a hint the setting exists at load time, not "you need to reboot
+        // right now" — that only shows right after actually changing it below.
+        bootRotationRebootPrompt.hidden = true;
       } catch {
         orientationStatus.textContent = "Couldn't check the current setting.";
         orientationStatus.className = 'err';
@@ -280,6 +291,7 @@
       orientationSelect.disabled = true;
       orientationStatus.textContent = 'Applying…';
       orientationStatus.className = '';
+      bootRotationRebootPrompt.hidden = true;
       try {
         const res = await fetch('/orientation', {
           method: 'POST',
@@ -292,6 +304,7 @@
             ? 'Applied.'
             : "Saved, but couldn't apply it live right now (display still starting up?) — it'll apply the next time this Pi boots.";
           orientationStatus.className = 'ok';
+          bootRotationRebootPrompt.hidden = !data.bootRotationRebootRequired;
         } else {
           orientationStatus.textContent = `Couldn't apply: ${data.error ?? 'unknown error'}.`;
           orientationStatus.className = 'err';
@@ -301,6 +314,17 @@
         orientationStatus.className = 'err';
       } finally {
         orientationSelect.disabled = false;
+      }
+    });
+
+    bootRotationReboot.addEventListener('click', async () => {
+      bootRotationReboot.disabled = true;
+      orientationStatus.textContent = 'Rebooting…';
+      orientationStatus.className = '';
+      try {
+        await fetch('/system/reboot', { method: 'POST' });
+      } catch {
+        // Expected — the Pi is going down.
       }
     });
 
