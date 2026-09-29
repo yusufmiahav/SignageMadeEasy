@@ -6,6 +6,7 @@ import { getLocalMac } from './localIp.js';
 import * as identifyFlash from './identifyFlash.js';
 import { captureScreenshot } from './preview.js';
 import * as selfUpdate from './selfUpdate.js';
+import * as underclock from './underclock.js';
 
 export const agentRouter = Router();
 
@@ -32,12 +33,20 @@ agentRouter.post('/unpair', (_req, res) => {
   res.status(204).end();
 });
 
-agentRouter.post('/restart', (_req, res) => {
+// A real hardware reboot, not just this Node process bouncing — a quick process
+// restart left the screen looking "stuck" in exactly the same way a genuine hang
+// would (still no picture, same blank moment), so there was no way to tell from
+// the control app whether this actually did anything. `sudo reboot` already has
+// an unconditional sudoers grant (see provision.sh — the local setup page's own
+// "Reboot this display" button already uses it via underclock.ts), so this needs
+// no new provisioning to work, even on a Pi provisioned long before this change.
+agentRouter.post('/restart', async (_req, res) => {
   res.status(204).end();
-  // Give the response a moment to flush, then exit — systemd's Restart=always
-  // (see pi-player/systemd/signage-player.service) brings the process straight
-  // back up. There's no separate "restart" concept to build; exit-and-respawn is it.
-  setTimeout(() => process.exit(0), 200);
+  try {
+    await underclock.reboot();
+  } catch {
+    // Response already sent — nothing left to do differently if this fails.
+  }
 });
 
 // Settings screen's "Identify" button (bulb icon) — just bumps a counter the player

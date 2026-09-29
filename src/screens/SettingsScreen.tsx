@@ -292,7 +292,7 @@ export function SettingsScreen({
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Preview" title="See what's currently on this screen" onClick={() => onOpenDevicePreview(device)}>
               <Icon name="eye" size={13} />
             </button>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" title="Restart the player process" onClick={() => void restartDevice(device)}>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" title="Reboot this screen" onClick={() => void restartDevice(device)}>
               <Icon name="restart" size={13} />
             </button>
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Update" title="Update or re-provision this screen" onClick={() => onOpenDeviceUpdate(device)}>

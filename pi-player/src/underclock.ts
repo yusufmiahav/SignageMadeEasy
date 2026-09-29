@@ -58,7 +58,7 @@ export async function setEnabled(enabled: boolean): Promise<void> {
   await execFileAsync('sudo', [SCRIPT_PATH, enabled ? 'on' : 'off']);
 }
 
-/** Real hardware reboot (not the player agent's own /restart, which only restarts the Node process) — only ever triggered from the local device-setup page, never remotely from the hub. */
+/** Real hardware reboot — triggered from the local device-setup page's own "Reboot this display" button, and from the hub-facing agent's own /restart (see agent.ts), which reuses this exact function rather than duplicating the sudo call. */
 export async function reboot(): Promise<void> {
   await execFileAsync('sudo', ['reboot']);
 }

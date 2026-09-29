@@ -489,9 +489,14 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
+  // A real hardware reboot now (see pi-player/src/agent.ts's /restart handler),
+  // not just a quick process bounce — confirmed here, centrally, so every button
+  // that calls this (Home's device card, Settings' per-screen row) gets the same
+  // prompt without each needing its own window.confirm.
   const restartDevice = useCallback(async (device: Device) => {
+    if (!window.confirm(`Reboot ${device.name}? The screen will go black for a minute or so while it comes back up.`)) return;
     await api.restartDevice(device.id);
-    showToast(`Restarting ${device.name}…`);
+    showToast(`Rebooting ${device.name}…`);
   }, [showToast]);
 
   const flashDevice = useCallback(async (device: Device) => {

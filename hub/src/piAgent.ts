@@ -1,6 +1,6 @@
 // Talks directly to a Pi's tiny local agent (see pi-player/src/agent.ts) for the
 // operations that need a hub-initiated push rather than the Pi's own poll loop:
-// completing a pairing handshake, restarting the player on demand, and unpairing
+// completing a pairing handshake, rebooting the screen on demand, and unpairing
 // immediately on delete (the Pi's poller also self-detects this within one poll
 // cycle via a 404 from /api/player/:id/state, so this push is purely for snappier
 // feedback — deleting an unreachable/offline Pi still unpairs it, just not instantly).

@@ -160,7 +160,7 @@ export function DeviceCard({
       </div>
       {!editing && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-          <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" onClick={() => onRestart(device)}>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" title="Reboot this screen" onClick={() => onRestart(device)}>
             <Icon name="restart" size={14} />
           </button>
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={startEdit}>
