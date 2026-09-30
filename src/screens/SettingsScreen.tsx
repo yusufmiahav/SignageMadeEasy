@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
-import type { AppState } from '../hooks/useAppState';
+import type { AppState, UpdateResult } from '../hooks/useAppState';
 import type { Theme } from '../hooks/useTheme';
 import type { Backup, Device, Group, SavedHubNetwork } from '../api/types';
 import { copyText } from '../utils/clipboard';
@@ -17,6 +17,7 @@ interface SettingsScreenProps {
   onSetHideAnnouncementRow: (value: boolean) => void;
   onOpenDevicePreview: (device: Device) => void;
   onOpenDeviceUpdate: (device: Device) => void;
+  onOpenUpdateResults: (results: UpdateResult[]) => void;
 }
 
 function isBackup(value: unknown): value is Backup {
@@ -36,6 +37,7 @@ export function SettingsScreen({
   onSetHideAnnouncementRow,
   onOpenDevicePreview,
   onOpenDeviceUpdate,
+  onOpenUpdateResults,
 }: SettingsScreenProps) {
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation,
@@ -551,7 +553,10 @@ export function SettingsScreen({
                 className="btn btn-secondary"
                 style={{ fontSize: 12, padding: '4px 8px' }}
                 title="Pulls the latest player code and restarts every online screen (~10-30s each)"
-                onClick={() => void updateAllDevices()}
+                onClick={async () => {
+                  const results = await updateAllDevices();
+                  if (results) onOpenUpdateResults(results);
+                }}
               >
                 <Icon name="download" size={12} />
                 Update all

@@ -26,8 +26,9 @@ import { UploadContentDialog } from './components/dialogs/UploadContentDialog';
 import { ContentPreviewDialog } from './components/dialogs/ContentPreviewDialog';
 import { DevicePreviewDialog } from './components/dialogs/DevicePreviewDialog';
 import { UpdateDeviceDialog } from './components/dialogs/UpdateDeviceDialog';
+import { UpdateResultsDialog } from './components/dialogs/UpdateResultsDialog';
 import { LoginScreen } from './screens/LoginScreen';
-import { useAppState } from './hooks/useAppState';
+import { useAppState, type UpdateResult } from './hooks/useAppState';
 import { useTheme } from './hooks/useTheme';
 import { useUiSettings } from './hooks/useUiSettings';
 import { checkAuthStatus } from './api/auth';
@@ -67,6 +68,8 @@ type DialogState =
   | { type: 'previewDevice'; device: Device }
   /** Settings screen's "Update" button (download icon) — see UpdateDeviceDialog.tsx. */
   | { type: 'updateDevice'; device: Device }
+  /** Settings screen's "Update all" button — see UpdateResultsDialog.tsx. */
+  | { type: 'updateResults'; results: UpdateResult[] }
   | null;
 
 export default function App() {
@@ -164,6 +167,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onSetHideAnnouncementRow={uiSettings.setHideAnnouncementRow}
             onOpenDevicePreview={(device) => setDialog({ type: 'previewDevice', device })}
             onOpenDeviceUpdate={(device) => setDialog({ type: 'updateDevice', device })}
+            onOpenUpdateResults={(results) => setDialog({ type: 'updateResults', results })}
           />
         )}
       </AppShell>
@@ -280,6 +284,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       {dialog?.type === 'preview' && <ContentPreviewDialog item={dialog.item} onClose={closeDialog} />}
       {dialog?.type === 'previewDevice' && <DevicePreviewDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'updateDevice' && <UpdateDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
+      {dialog?.type === 'updateResults' && <UpdateResultsDialog results={dialog.results} onClose={closeDialog} />}
 
       <Toast message={app.toast} />
     </>

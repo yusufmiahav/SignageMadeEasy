@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DiscoveredDevice } from '../api/client';
 import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig } from '../api/types';
 
+// One row of updateAllDevices' result breakdown — see UpdateResultsDialog.tsx.
+export interface UpdateResult {
+  device: Device;
+  error: string | null;
+}
+
 export function useAppState() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -536,23 +542,23 @@ export function useAppState() {
   // spending a round trip on a screen that can't answer). Deliberately calls
   // api.updateDevice directly rather than the single-device updateDevice above —
   // that one shows its own toast per call, which would just overwrite itself N
-  // times in a row here; this shows one consolidated result instead.
-  const updateAllDevices = useCallback(async () => {
+  // times in a row here. Returns the full per-screen breakdown (null if there was
+  // nothing to do) rather than just a toast, so the caller can show exactly which
+  // screens succeeded and which failed and why — see UpdateResultsDialog.tsx.
+  const updateAllDevices = useCallback(async (): Promise<UpdateResult[] | null> => {
     const targets = devices.filter((d) => d.status === 'online');
     if (targets.length === 0) {
       showToast('No online screens to update.');
-      return;
+      return null;
     }
-    const results = await Promise.allSettled(targets.map((d) => api.updateDevice(d.id)));
-    const failed = results.filter((r) => r.status === 'rejected').length;
-    const succeeded = results.length - failed;
-    if (failed === 0) {
-      showToast(`Updating ${succeeded} screen${succeeded === 1 ? '' : 's'}… this can take up to a minute.`);
-    } else if (succeeded === 0) {
-      showToast("Couldn't update any screens — check they've been re-provisioned since this feature shipped.");
-    } else {
-      showToast(`Updating ${succeeded} screen${succeeded === 1 ? '' : 's'}… ${failed} couldn't be reached.`);
-    }
+    const settled = await Promise.allSettled(targets.map((d) => api.updateDevice(d.id)));
+    return targets.map((device, i) => {
+      const outcome = settled[i];
+      return {
+        device,
+        error: outcome.status === 'rejected' ? (outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)) : null,
+      };
+    });
   }, [devices, showToast]);
 
   const setDeviceAnnouncement = useCallback(async (id: string, announcementId: string | null) => {
