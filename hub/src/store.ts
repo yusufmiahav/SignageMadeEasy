@@ -480,14 +480,21 @@ export function removeAnnouncementSchedule(groupId: string, scheduleId: string):
 interface DeviceRow {
   id: string; name: string; ip: string; mac: string | null; groupId: string | null; locationId: string | null; announcementId: string | null; announcementOn: number;
   videoQuality: Device['videoQuality']; lastSeenAt: number | null;
-  tempC: number | null; throttled: string | null; uptimeSec: number | null; diskFreeMb: number | null; diskTotalMb: number | null;
+  tempC: number | null; throttled: string | null; uptimeSec: number | null; baseUptimeSec: number; diskFreeMb: number | null; diskTotalMb: number | null;
   forcedPlaylist: string | null; forcedContentId: string | null; blackout: number; defaultPlaylist: string;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
+}
+
+// null until the first heartbeat with diagnostics ever arrives (baseUptimeSec is
+// still 0 and uptimeSec is still null) — see recordHeartbeat's reboot-detection
+// comment for how baseUptimeSec accumulates.
+function totalUptimeFor(r: { uptimeSec: number | null; baseUptimeSec: number }): number | null {
+  return r.uptimeSec == null && r.baseUptimeSec === 0 ? null : r.baseUptimeSec + (r.uptimeSec ?? 0);
 }
 
 function rowToDevice(r: DeviceRow): Device {
@@ -496,7 +503,7 @@ function rowToDevice(r: DeviceRow): Device {
     id: r.id, name: r.name, ip: r.ip, mac: r.mac, groupId: r.groupId, locationId: r.locationId,
     announcementId: r.announcementId, announcementOn: !!r.announcementOn, videoQuality: r.videoQuality,
     status: statusFor(r.lastSeenAt), lastSeenAt: r.lastSeenAt ?? undefined,
-    tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
+    tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, totalUptimeSec: totalUptimeFor(r), diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
     forcedPlaylist, forcedContentId: forcedPlaylist[0] ?? null, blackout: !!r.blackout,
     defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForDevice(r.id),
   };
@@ -668,9 +675,21 @@ export interface HeartbeatDiagnostics {
 }
 
 export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnostics): void {
+  const newUptime = diag?.uptimeSec ?? null;
+  // Heartbeats arrive every few seconds (pi-player/src/poller.ts) reporting raw
+  // os.uptime() — a reboot shows up here as the new value going BACKWARDS relative
+  // to the last one we saw. When that happens, bank the prior session's uptime into
+  // baseUptimeSec before it's overwritten, so Device.totalUptimeSec keeps
+  // accumulating across the reboot instead of losing everything before it.
+  if (newUptime != null) {
+    const prev = db.prepare('SELECT uptimeSec FROM devices WHERE id = ?').get(id) as { uptimeSec: number | null } | undefined;
+    if (prev?.uptimeSec != null && newUptime < prev.uptimeSec) {
+      db.prepare('UPDATE devices SET baseUptimeSec = baseUptimeSec + ? WHERE id = ?').run(prev.uptimeSec, id);
+    }
+  }
   db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ? WHERE id = ?').run(
     Date.now(), ip,
-    diag?.tempC ?? null, diag?.throttled ?? null, diag?.uptimeSec ?? null, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null,
+    diag?.tempC ?? null, diag?.throttled ?? null, newUptime, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null,
     id,
   );
 }
@@ -969,8 +988,8 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   });
 
   const insertDevice = db.prepare(
-    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, sortOrder) ' +
-    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedPlaylist,@forcedContentId,@blackout,@defaultPlaylist,@sortOrder)',
+    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, baseUptimeSec, sortOrder) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedPlaylist,@forcedContentId,@blackout,@defaultPlaylist,@baseUptimeSec,@sortOrder)',
   );
   backup.devices.forEach((device, i) => {
     // Same pre-migration fallback as the group loop above.
@@ -979,7 +998,17 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       id: device.id, name: device.name, ip: device.ip, mac: device.mac, groupId: device.groupId, locationId: device.locationId ?? null,
       announcementId: device.announcementId, announcementOn: device.announcementOn ? 1 : 0, videoQuality: device.videoQuality,
       forcedPlaylist: JSON.stringify(forcedPlaylist), forcedContentId: forcedPlaylist[0] ?? null, blackout: device.blackout ? 1 : 0,
-      defaultPlaylist: JSON.stringify(device.defaultPlaylist ?? []), sortOrder: i,
+      defaultPlaylist: JSON.stringify(device.defaultPlaylist ?? []),
+      // uptimeSec itself resets to NULL like the rest of this device's live
+      // diagnostics (see this function's own doc comment) until its Pi heartbeats
+      // again — but the lifetime total leading up to the backup is real history,
+      // not stale liveness state, so it's carried forward as the new base instead
+      // of being lost. Exact, not an approximation: totalUptimeSec at export time
+      // already reflects every prior session plus the live one, so restoring it as
+      // the new base and starting uptimeSec fresh from NULL reproduces the exact
+      // same total the instant the next heartbeat arrives.
+      baseUptimeSec: device.totalUptimeSec ?? 0,
+      sortOrder: i,
     });
     for (const event of device.events ?? []) {
       insertEvent.run({

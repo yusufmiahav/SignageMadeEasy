@@ -189,7 +189,7 @@ export function DeviceCard({
         {advancedInfo && device.mac && <span className="tag tag-neutral">{device.mac}</span>}
         <span className="tag tag-neutral">{device.status === 'online' ? 'Online' : 'Offline'}</span>
       </div>
-      {advancedInfo && (device.tempC != null || device.uptimeSec != null || device.diskFreeMb != null) && (
+      {advancedInfo && (device.tempC != null || device.uptimeSec != null || device.totalUptimeSec != null || device.diskFreeMb != null) && (
         <div className="text-muted" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
           {device.tempC != null && (
             <span style={isCurrentlyThrottled(device.throttled) ? { color: 'var(--color-danger, #c0392b)', fontWeight: 600 } : undefined}>
@@ -197,6 +197,9 @@ export function DeviceCard({
             </span>
           )}
           {device.uptimeSec != null && <span>Up {formatUptime(device.uptimeSec)}</span>}
+          {device.totalUptimeSec != null && (
+            <span title="Total time this screen has spent running, across every reboot">Lifetime {formatUptime(device.totalUptimeSec)}</span>
+          )}
           {device.diskFreeMb != null && device.diskTotalMb != null && (
             <span>{(device.diskFreeMb / 1024).toFixed(1)} / {(device.diskTotalMb / 1024).toFixed(1)} GB free</span>
           )}

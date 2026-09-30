@@ -162,7 +162,10 @@ export interface Device {
   tempC?: number | null;
   /** Raw hex string from `vcgencmd get_throttled` — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot." */
   throttled?: string | null;
+  /** Current boot session's uptime only — resets to a small number on every reboot. For the screen's running total across every reboot, see totalUptimeSec. */
   uptimeSec?: number | null;
+  /** Total hours this screen has spent running, across every reboot — an odometer, not a "since last restart" clock like uptimeSec. Always null in standalone/localStorage mode (no real Pi to accumulate it). */
+  totalUptimeSec?: number | null;
   diskFreeMb?: number | null;
   diskTotalMb?: number | null;
 }

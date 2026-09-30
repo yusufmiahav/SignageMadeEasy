@@ -333,6 +333,18 @@ if (!groupColsForced.includes('forcedPlaylist')) db.exec('ALTER TABLE groups_ AD
 const deviceColsForced = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
 if (!deviceColsForced.includes('forcedPlaylist')) db.exec('ALTER TABLE devices ADD COLUMN forcedPlaylist TEXT');
 
+// Same reasoning, for hubs deployed before a screen's lifetime running hours were
+// tracked — uptimeSec above only ever holds the CURRENT boot session's uptime (raw
+// `os.uptime()`, reset to 0 by every reboot), so it can't answer "how many hours has
+// this screen run in total." This column banks every PRIOR session's uptime once
+// store.ts's recordHeartbeat detects a reboot (the reported uptimeSec going
+// backwards); Device.totalUptimeSec is baseUptimeSec + the current uptimeSec, see
+// its comment in types.ts. Defaults to 0 for every existing screen — its history
+// before this shipped isn't recoverable, so lifetime tracking starts counting from
+// whatever its current boot session already has on the clock.
+const deviceColsUptime = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceColsUptime.includes('baseUptimeSec')) db.exec("ALTER TABLE devices ADD COLUMN baseUptimeSec INTEGER NOT NULL DEFAULT 0");
+
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's
