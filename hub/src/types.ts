@@ -111,12 +111,15 @@ export interface Group {
   locationId: string | null;
   defaultPlaylist: string[];
   events: ScheduleEvent[];
+  /** Ordered forced playlist, replacing the rolling schedule with this fixed sequence — same per-item duration/looping behavior as defaultPlaylist, see activeContentIds — until cleared back to an empty array. */
+  forcedPlaylist: string[];
+  /** @deprecated Read-only mirror of forcedPlaylist[0] (or null when empty), kept for older API consumers (e.g. the Companion module) that only ever forced one item at a time — always derived from forcedPlaylist, never set directly. */
   forcedContentId: string | null;
   /** This group's announcement forced on for every one of its screens, overriding schedules and each screen's own manual toggle, until cleared. */
   forcedAnnouncementId: string | null;
   /** Date+time windows during which an announcement is shown on every screen in this group, regardless of each screen's own manual toggle. */
   announcementSchedules: AnnouncementSchedule[];
-  /** Emergency override: every screen in this group goes to a plain black screen, above even forcedContentId — see activeContentIds' priority order. */
+  /** Emergency override: every screen in this group goes to a plain black screen, above even forcedPlaylist — see activeContentIds' priority order. */
   blackout: boolean;
 }
 
@@ -129,19 +132,21 @@ export interface Device {
   /** Captured once at pairing time from the Pi's own /identify response. Null for a screen paired before this existed, or one paired manually/offline that couldn't be reached to ask. */
   mac: string | null;
   status: DeviceStatus;
-  /** Null for a screen not assigned to any group yet ("standalone" screens, whether or not they're filed under a Location) — see forcedContentId/blackout below, which fill in for the group-level controls it doesn't have. */
+  /** Null for a screen not assigned to any group yet ("standalone" screens, whether or not they're filed under a Location) — see forcedPlaylist/blackout below, which fill in for the group-level controls it doesn't have. */
   groupId: string | null;
   /** Which Location this screen is filed under when it's standalone (groupId is null) — purely organizational, same as Group.locationId. Meaningless while groupId is set: a grouped screen's Location comes from its Group instead, not set directly here. */
   locationId: string | null;
   announcementId: string | null;
   announcementOn: boolean;
-  /** Only meaningful/settable while groupId is null — a grouped screen's content comes from its group instead. */
+  /** Only meaningful/settable while groupId is null — a grouped screen's content comes from its group instead. Mirrors Group.forcedPlaylist for a standalone screen. */
+  forcedPlaylist: string[];
+  /** @deprecated Read-only mirror of forcedPlaylist[0] (or null when empty) — see Group.forcedContentId's comment. */
   forcedContentId: string | null;
-  /** Same scope as forcedContentId — only meaningful while groupId is null. */
+  /** Same scope as forcedPlaylist — only meaningful while groupId is null. */
   blackout: boolean;
-  /** Same scope as forcedContentId — mirrors Group.defaultPlaylist for a standalone screen. */
+  /** Same scope as forcedPlaylist — mirrors Group.defaultPlaylist for a standalone screen. */
   defaultPlaylist: string[];
-  /** Same scope as forcedContentId — mirrors Group.events for a standalone screen. */
+  /** Same scope as forcedPlaylist — mirrors Group.events for a standalone screen. */
   events: ScheduleEvent[];
   /**
    * Which copy of a video this screen is served. 'auto' (default): the resolution-capped

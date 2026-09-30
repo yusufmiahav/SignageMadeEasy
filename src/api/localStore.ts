@@ -304,7 +304,8 @@ class LocalStoreClient implements SignageApiClient {
     for (const g of this.data.groups) {
       g.defaultPlaylist = g.defaultPlaylist.filter((libId) => libId !== id);
       g.events.forEach((e) => (e.libIds = e.libIds.filter((libId) => libId !== id)));
-      if (g.forcedContentId === id) g.forcedContentId = null;
+      g.forcedPlaylist = g.forcedPlaylist.filter((libId) => libId !== id);
+      g.forcedContentId = g.forcedPlaylist[0] ?? null;
       if (g.forcedAnnouncementId === id) g.forcedAnnouncementId = null;
       g.announcementSchedules = g.announcementSchedules.filter((s) => s.announcementId !== id);
     }
@@ -313,6 +314,8 @@ class LocalStoreClient implements SignageApiClient {
         d.announcementId = null;
         d.announcementOn = false;
       }
+      d.forcedPlaylist = d.forcedPlaylist.filter((libId) => libId !== id);
+      d.forcedContentId = d.forcedPlaylist[0] ?? null;
     }
     this.persist();
   }
@@ -360,7 +363,7 @@ class LocalStoreClient implements SignageApiClient {
   async addGroup(name: string, locationId: string | null = null): Promise<Group> {
     const group: Group = {
       id: uid('g'), name: name.trim() || 'New group', locationId, defaultPlaylist: [], events: [],
-      forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [], blackout: false,
+      forcedPlaylist: [], forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [], blackout: false,
     };
     this.data.groups.push(group);
     this.persist();
@@ -445,9 +448,37 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   async setForcedContent(groupId: string, libId: string | null): Promise<void> {
+    return this.setForcedPlaylist(groupId, libId ? [libId] : []);
+  }
+
+  async setForcedPlaylist(groupId: string, libIds: string[]): Promise<void> {
     const group = this.data.groups.find((g) => g.id === groupId);
-    if (group) group.forcedContentId = libId;
+    if (group) {
+      group.forcedPlaylist = libIds;
+      group.forcedContentId = libIds[0] ?? null;
+    }
     this.persist();
+  }
+
+  async addToForcedPlaylist(groupId: string, libIds: string[]): Promise<void> {
+    const group = this.data.groups.find((g) => g.id === groupId);
+    if (group) return this.setForcedPlaylist(groupId, [...group.forcedPlaylist, ...libIds.filter((id) => !group.forcedPlaylist.includes(id))]);
+  }
+
+  async removeFromForcedPlaylist(groupId: string, libId: string): Promise<void> {
+    const group = this.data.groups.find((g) => g.id === groupId);
+    if (group) return this.setForcedPlaylist(groupId, group.forcedPlaylist.filter((id) => id !== libId));
+  }
+
+  async reorderForcedPlaylist(groupId: string, libId: string, direction: 'up' | 'down'): Promise<void> {
+    const group = this.data.groups.find((g) => g.id === groupId);
+    if (!group) return;
+    const idx = group.forcedPlaylist.indexOf(libId);
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || swapWith < 0 || swapWith >= group.forcedPlaylist.length) return;
+    const list = [...group.forcedPlaylist];
+    [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
+    return this.setForcedPlaylist(groupId, list);
   }
 
   async setForcedAnnouncement(groupId: string, announcementId: string | null): Promise<void> {
@@ -493,6 +524,7 @@ class LocalStoreClient implements SignageApiClient {
       announcementId: null,
       announcementOn: false,
       videoQuality: 'auto',
+      forcedPlaylist: [],
       forcedContentId: null,
       blackout: false,
       defaultPlaylist: [],
@@ -535,9 +567,37 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   async setDeviceForcedContent(id: string, libId: string | null): Promise<void> {
-    const device = this.data.devices.find((d) => d.id === id);
-    if (device) device.forcedContentId = libId;
+    return this.setDeviceForcedPlaylist(id, libId ? [libId] : []);
+  }
+
+  async setDeviceForcedPlaylist(deviceId: string, libIds: string[]): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    if (device) {
+      device.forcedPlaylist = libIds;
+      device.forcedContentId = libIds[0] ?? null;
+    }
     this.persist();
+  }
+
+  async addToDeviceForcedPlaylist(deviceId: string, libIds: string[]): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    if (device) return this.setDeviceForcedPlaylist(deviceId, [...device.forcedPlaylist, ...libIds.filter((id) => !device.forcedPlaylist.includes(id))]);
+  }
+
+  async removeFromDeviceForcedPlaylist(deviceId: string, libId: string): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    if (device) return this.setDeviceForcedPlaylist(deviceId, device.forcedPlaylist.filter((id) => id !== libId));
+  }
+
+  async reorderDeviceForcedPlaylist(deviceId: string, libId: string, direction: 'up' | 'down'): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    if (!device) return;
+    const idx = device.forcedPlaylist.indexOf(libId);
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || swapWith < 0 || swapWith >= device.forcedPlaylist.length) return;
+    const list = [...device.forcedPlaylist];
+    [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
+    return this.setDeviceForcedPlaylist(deviceId, list);
   }
 
   async setDeviceBlackout(id: string, blackout: boolean): Promise<void> {
@@ -651,8 +711,13 @@ class LocalStoreClient implements SignageApiClient {
   async importBackup(backup: Backup): Promise<void> {
     // folders/locations are optional on Backup — a backup exported before those
     // features existed has no such array, treated as none rather than rejected.
+    // Same reasoning for forcedPlaylist — a backup exported before it existed only
+    // has the old single-item forcedContentId, synthesized into a one-element array
+    // (mirrors hub/src/store.ts's restoreBackup fallback).
+    const groups = backup.groups.map((g) => ({ ...g, forcedPlaylist: g.forcedPlaylist ?? (g.forcedContentId ? [g.forcedContentId] : []) }));
+    const devices = backup.devices.map((d) => ({ ...d, forcedPlaylist: d.forcedPlaylist ?? (d.forcedContentId ? [d.forcedContentId] : []) }));
     this.data = {
-      library: backup.library, groups: backup.groups, devices: backup.devices,
+      library: backup.library, groups, devices,
       folders: backup.folders ?? [], locations: backup.locations ?? [],
     };
     this.persist();

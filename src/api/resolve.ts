@@ -17,7 +17,8 @@ function toISODate(d: Date): string {
  * Resolution order (highest priority first):
  * 1. blackout, if set — every screen in this group goes plain black, above
  *    even forced content (an emergency override).
- * 2. forcedContentId, if set — that single item, shown until cleared.
+ * 2. forcedPlaylist, if non-empty — that fixed sequence, shown until cleared
+ *    (same per-item duration/looping behavior as defaultPlaylist).
  * 3. An event whose date range includes today — that event's item set,
  *    replacing the default playlist entirely for the range. If the event also has
  *    a startTime/endTime, it only applies during that daily window; outside it,
@@ -28,8 +29,8 @@ export function activeContentIds(group: Group, now: Date = new Date()): ActiveCo
   if (group.blackout) {
     return { ids: [], kind: 'blackout', label: 'Blackout' };
   }
-  if (group.forcedContentId) {
-    return { ids: [group.forcedContentId], kind: 'forced', label: 'Forced' };
+  if (group.forcedPlaylist.length > 0) {
+    return { ids: group.forcedPlaylist, kind: 'forced', label: 'Forced' };
   }
   const today = toISODate(now);
   const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -49,6 +50,14 @@ function firstResolvedItem(group: Group, libraryById: Map<string, LibraryItem>):
   return ids.map((id) => libraryById.get(id)).find((item): item is LibraryItem => !!item);
 }
 
+/** A short display label for a forced playlist — the one item's name, or "First item +2 more" once there's more than one, for anywhere space is too tight for the full PlaylistRow list (e.g. Home's group/device header tags). */
+export function forcedPlaylistLabel(ids: string[], libraryById: Map<string, LibraryItem>): string {
+  const items = ids.map((id) => libraryById.get(id)).filter((item): item is LibraryItem => !!item);
+  if (items.length === 0) return '—';
+  if (items.length === 1) return items[0].name;
+  return `${items[0].name} +${items.length - 1} more`;
+}
+
 export function nowPlayingName(group: Group, libraryById: Map<string, LibraryItem>): string {
   return firstResolvedItem(group, libraryById)?.name ?? '—';
 }
@@ -60,14 +69,14 @@ export function nowPlayingItem(group: Group, libraryById: Map<string, LibraryIte
 
 /**
  * A screen with no group has no group-level schedule to fall back on, but does have
- * its own — forcedContentId/blackout (the standalone-screen equivalents of a
+ * its own — forcedPlaylist/blackout (the standalone-screen equivalents of a
  * group's controls), then its own events/defaultPlaylist, same priority order
  * and time-window matching as activeContentIds above (mirrors
  * hub/src/store.ts's activeContentIdsForDevice).
  */
 export function activeContentIdsForDevice(device: Device, now: Date = new Date()): ActiveContent {
   if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
-  if (device.forcedContentId) return { ids: [device.forcedContentId], kind: 'forced', label: 'Forced' };
+  if (device.forcedPlaylist.length > 0) return { ids: device.forcedPlaylist, kind: 'forced', label: 'Forced' };
   const today = toISODate(now);
   const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const event = device.events.find((e) => {

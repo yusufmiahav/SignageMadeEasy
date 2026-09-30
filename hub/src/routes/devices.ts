@@ -219,11 +219,40 @@ devicesRouter.post('/:id/announcement/toggle', (req, res) => {
 });
 
 // Standalone-screen (no group) equivalents of a group's forced-content/blackout
-// controls — see Device.forcedContentId's comment in types.ts.
+// controls — see Device.forcedPlaylist's comment in types.ts.
+// @deprecated Single-item route, kept for the Companion module's existing action
+// — the control app itself uses /forced-playlist below.
 devicesRouter.put('/:id/forced', (req, res) => {
   const { libId } = req.body ?? {};
   if (libId !== null && typeof libId !== 'string') return res.status(400).json({ error: 'libId must be a string or null' });
   store.setDeviceForcedContent(req.params.id, libId);
+  res.status(204).end();
+});
+
+// Mirrors the /:id/playlist routes below exactly, scoped to the forced playlist.
+devicesRouter.put('/:id/forced-playlist', (req, res) => {
+  const { libIds } = req.body ?? {};
+  if (!Array.isArray(libIds)) return res.status(400).json({ error: 'libIds must be an array' });
+  store.setDeviceForcedPlaylist(req.params.id, libIds);
+  res.status(204).end();
+});
+
+devicesRouter.post('/:id/forced-playlist', (req, res) => {
+  const { libIds } = req.body ?? {};
+  if (!Array.isArray(libIds)) return res.status(400).json({ error: 'libIds must be an array' });
+  store.addToDeviceForcedPlaylist(req.params.id, libIds);
+  res.status(204).end();
+});
+
+devicesRouter.delete('/:id/forced-playlist/:libId', (req, res) => {
+  store.removeFromDeviceForcedPlaylist(req.params.id, req.params.libId);
+  res.status(204).end();
+});
+
+devicesRouter.post('/:id/forced-playlist/:libId/reorder', (req, res) => {
+  const { direction } = req.body ?? {};
+  if (direction !== 'up' && direction !== 'down') return res.status(400).json({ error: 'direction must be "up" or "down"' });
+  store.reorderDeviceForcedPlaylist(req.params.id, req.params.libId, direction);
   res.status(204).end();
 });
 

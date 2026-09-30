@@ -227,8 +227,8 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
           app={app}
           scopeLabel={dialog.groupId ? 'this group' : 'every screen'}
           isGlobal={dialog.groupId === null}
-          currentId={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.forcedContentId ?? null) : null}
-          onConfirm={(libId) => (dialog.groupId ? app.setForcedContent(dialog.groupId, libId) : app.forceContentAllScreens(libId))}
+          currentIds={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.forcedPlaylist ?? []) : []}
+          onConfirm={(libIds) => (dialog.groupId ? app.setForcedPlaylist(dialog.groupId, libIds) : app.forceContentAllScreens(libIds))}
           onClose={closeDialog}
         />
       )}
@@ -257,8 +257,8 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
           app={app}
           scopeLabel="this screen"
           isGlobal={false}
-          currentId={app.devices.find((d) => d.id === dialog.deviceId)?.forcedContentId ?? null}
-          onConfirm={(libId) => app.setDeviceForcedContent(dialog.deviceId, libId)}
+          currentIds={app.devices.find((d) => d.id === dialog.deviceId)?.forcedPlaylist ?? []}
+          onConfirm={(libIds) => app.setDeviceForcedPlaylist(dialog.deviceId, libIds)}
           onClose={closeDialog}
         />
       )}

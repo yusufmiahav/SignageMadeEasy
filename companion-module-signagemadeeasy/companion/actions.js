@@ -2,7 +2,7 @@
 // screen's force-content/force-announcement/blackout buttons, Settings' per-device
 // "Identify" flash button) — same hub endpoints, same "group OR standalone device"
 // targeting model (a device inside a group is controlled through its group, never
-// individually — see api/types.ts's Device.forcedContentId comment in the main repo).
+// individually — see api/types.ts's Device.forcedPlaylist comment in the main repo).
 
 // 'all' + every group + every standalone (no-group) device — the same set of things
 // the web app's own "force on every screen" buttons fan out over.
@@ -68,6 +68,10 @@ function getActionDefinitions(self) {
 	return {
 		force_content: {
 			name: 'Force content',
+			// Single item only — the web app's own Force content dialog now also supports
+			// forcing a whole multi-item playlist (see hub's setForcedPlaylist/
+			// setDeviceForcedPlaylist), which this Companion action doesn't expose. Use the
+			// web app directly for that; this stays single-item for a simple button press.
 			options: [
 				{ type: 'dropdown', id: 'target', label: 'Target', choices: buildTargetChoices(self), default: 'all' },
 				{ type: 'dropdown', id: 'content', label: 'Content', choices: buildContentChoices(self), default: buildContentChoices(self)[0]?.id ?? '' },
@@ -108,7 +112,7 @@ function getActionDefinitions(self) {
 					onGroup: (id) => self.hub.setForcedAnnouncement(id, announcementId),
 					// A standalone screen has no separate "forced" field — its own
 					// announcementId + announcementOn IS the forcing mechanism (see
-					// Device.forcedContentId's comment in the main repo's api/types.ts).
+					// Device.forcedPlaylist's comment in the main repo's api/types.ts).
 					onDevice: (id) => self.hub.setDeviceAnnouncement(id, announcementId),
 				})
 			},

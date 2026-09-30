@@ -88,9 +88,40 @@ groupsRouter.delete('/:id/events/:eventId', (req, res) => {
   res.status(204).end();
 });
 
+// @deprecated Single-item route, kept for the Companion module's existing action
+// (see store.ts's setForcedContent comment) — the control app itself uses
+// /forced-playlist below, which supports forcing more than one item at once.
 groupsRouter.put('/:id/forced', (req, res) => {
   const { libId } = req.body ?? {};
   store.setForcedContent(req.params.id, libId ?? null);
+  res.status(204).end();
+});
+
+// Mirrors the /:id/playlist routes above exactly, scoped to the forced playlist
+// instead of the rolling default one — see store.ts's setForcedPlaylist comment.
+groupsRouter.put('/:id/forced-playlist', (req, res) => {
+  const { libIds } = req.body ?? {};
+  if (!Array.isArray(libIds)) return res.status(400).json({ error: 'libIds must be an array' });
+  store.setForcedPlaylist(req.params.id, libIds);
+  res.status(204).end();
+});
+
+groupsRouter.post('/:id/forced-playlist', (req, res) => {
+  const { libIds } = req.body ?? {};
+  if (!Array.isArray(libIds)) return res.status(400).json({ error: 'libIds must be an array' });
+  store.addToForcedPlaylist(req.params.id, libIds);
+  res.status(204).end();
+});
+
+groupsRouter.delete('/:id/forced-playlist/:libId', (req, res) => {
+  store.removeFromForcedPlaylist(req.params.id, req.params.libId);
+  res.status(204).end();
+});
+
+groupsRouter.post('/:id/forced-playlist/:libId/reorder', (req, res) => {
+  const { direction } = req.body ?? {};
+  if (direction !== 'up' && direction !== 'down') return res.status(400).json({ error: 'direction must be "up" or "down"' });
+  store.reorderForcedPlaylist(req.params.id, req.params.libId, direction);
   res.status(204).end();
 });
 

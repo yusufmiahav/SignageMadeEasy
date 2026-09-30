@@ -338,23 +338,38 @@ export function useAppState() {
     showToast('Event duplicated');
   }, [groups, refreshGroups, showToast]);
 
-  const setForcedContent = useCallback(async (groupId: string, libId: string | null) => {
-    await api.setForcedContent(groupId, libId);
+  const setForcedPlaylist = useCallback(async (groupId: string, libIds: string[]) => {
+    await api.setForcedPlaylist(groupId, libIds);
     await refreshGroups();
   }, [refreshGroups]);
 
-  // Mirrors forceAnnouncementAllScreens below: same per-group forcedContentId,
+  const addToForcedPlaylist = useCallback(async (groupId: string, libIds: string[]) => {
+    await api.addToForcedPlaylist(groupId, libIds);
+    await refreshGroups();
+  }, [refreshGroups]);
+
+  const removeFromForcedPlaylist = useCallback(async (groupId: string, libId: string) => {
+    await api.removeFromForcedPlaylist(groupId, libId);
+    await refreshGroups();
+  }, [refreshGroups]);
+
+  const reorderForcedPlaylist = useCallback(async (groupId: string, libId: string, direction: 'up' | 'down') => {
+    await api.reorderForcedPlaylist(groupId, libId, direction);
+    await refreshGroups();
+  }, [refreshGroups]);
+
+  // Mirrors forceAnnouncementAllScreens below: same per-group forcedPlaylist,
   // just applied to every group at once via a client-side loop, no new endpoint.
-  // Also covers standalone screens (no group) via their own forcedContentId, so
+  // Also covers standalone screens (no group) via their own forcedPlaylist, so
   // "every screen" is actually every screen, not just ones assigned somewhere.
-  const forceContentAllScreens = useCallback(async (libId: string | null) => {
+  const forceContentAllScreens = useCallback(async (libIds: string[]) => {
     const misc = devices.filter((d) => !d.groupId);
     await Promise.all([
-      ...groups.map((g) => api.setForcedContent(g.id, libId)),
-      ...misc.map((d) => api.setDeviceForcedContent(d.id, libId)),
+      ...groups.map((g) => api.setForcedPlaylist(g.id, libIds)),
+      ...misc.map((d) => api.setDeviceForcedPlaylist(d.id, libIds)),
     ]);
     await Promise.all([refreshGroups(), refreshDevices()]);
-    showToast(libId ? 'Content forced on for every screen' : 'Forced content cleared on every screen');
+    showToast(libIds.length > 0 ? 'Content forced on for every screen' : 'Forced content cleared on every screen');
   }, [groups, devices, refreshGroups, refreshDevices, showToast]);
 
   const setForcedAnnouncement = useCallback(async (groupId: string, announcementId: string | null) => {
@@ -368,7 +383,7 @@ export function useAppState() {
   // this needs rather than a new bulk-specific API surface. Standalone screens (no
   // group) have no forcedAnnouncementId of their own — their manual
   // announcementId/announcementOn toggle already IS the forcing mechanism (see
-  // Device.forcedContentId's comment in api/types.ts), so this sets that directly.
+  // Device.forcedPlaylist's comment in api/types.ts), so this sets that directly.
   const forceAnnouncementAllScreens = useCallback(async (announcementId: string | null) => {
     const misc = devices.filter((d) => !d.groupId);
     await Promise.all([
@@ -436,8 +451,23 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
-  const setDeviceForcedContent = useCallback(async (id: string, libId: string | null) => {
-    await api.setDeviceForcedContent(id, libId);
+  const setDeviceForcedPlaylist = useCallback(async (deviceId: string, libIds: string[]) => {
+    await api.setDeviceForcedPlaylist(deviceId, libIds);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  const addToDeviceForcedPlaylist = useCallback(async (deviceId: string, libIds: string[]) => {
+    await api.addToDeviceForcedPlaylist(deviceId, libIds);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  const removeFromDeviceForcedPlaylist = useCallback(async (deviceId: string, libId: string) => {
+    await api.removeFromDeviceForcedPlaylist(deviceId, libId);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  const reorderDeviceForcedPlaylist = useCallback(async (deviceId: string, libId: string, direction: 'up' | 'down') => {
+    await api.reorderDeviceForcedPlaylist(deviceId, libId, direction);
     await refreshDevices();
   }, [refreshDevices]);
 
@@ -636,7 +666,10 @@ export function useAppState() {
     addEvent,
     removeEvent,
     duplicateEvent,
-    setForcedContent,
+    setForcedPlaylist,
+    addToForcedPlaylist,
+    removeFromForcedPlaylist,
+    reorderForcedPlaylist,
     forceContentAllScreens,
     setForcedAnnouncement,
     forceAnnouncementAllScreens,
@@ -659,7 +692,10 @@ export function useAppState() {
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,
-    setDeviceForcedContent,
+    setDeviceForcedPlaylist,
+    addToDeviceForcedPlaylist,
+    removeFromDeviceForcedPlaylist,
+    reorderDeviceForcedPlaylist,
     setDeviceBlackout,
     setDeviceDefaultPlaylist,
     addToDeviceDefaultPlaylist,

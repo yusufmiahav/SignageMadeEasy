@@ -86,7 +86,13 @@ export interface SignageApiClient {
   reorderDefaultPlaylist(groupId: string, libId: string, direction: 'up' | 'down'): Promise<void>;
   addEvent(groupId: string, event: Omit<ScheduleEvent, 'id'>): Promise<ScheduleEvent>;
   removeEvent(groupId: string, eventId: string): Promise<void>;
+  /** @deprecated Single-item convenience wrapper — sets the forced playlist to `[libId]`, or clears it when `null`. Prefer setForcedPlaylist/addToForcedPlaylist for a multi-item forced sequence. */
   setForcedContent(groupId: string, libId: string | null): Promise<void>;
+  /** Replaces the group's forced playlist wholesale — pass `[]` to go back to the rolling schedule. */
+  setForcedPlaylist(groupId: string, libIds: string[]): Promise<void>;
+  addToForcedPlaylist(groupId: string, libIds: string[]): Promise<void>;
+  removeFromForcedPlaylist(groupId: string, libId: string): Promise<void>;
+  reorderForcedPlaylist(groupId: string, libId: string, direction: 'up' | 'down'): Promise<void>;
   /** Forces an announcement on for every screen in this group, overriding schedules and each screen's own manual toggle, until cleared with `null`. */
   setForcedAnnouncement(groupId: string, announcementId: string | null): Promise<void>;
   addAnnouncementSchedule(groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>): Promise<AnnouncementSchedule>;
@@ -147,8 +153,13 @@ export interface SignageApiClient {
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
   setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;
-  /** Standalone-screen (no group) equivalent of setForcedContent — only meaningful while the device has no groupId. */
+  /** @deprecated Standalone-screen (no group) equivalent of setForcedContent — see its comment. Only meaningful while the device has no groupId. */
   setDeviceForcedContent(id: string, libId: string | null): Promise<void>;
+  /** Standalone-screen (no group) equivalents of the group-level forced-playlist methods above — only meaningful while the device has no groupId. */
+  setDeviceForcedPlaylist(deviceId: string, libIds: string[]): Promise<void>;
+  addToDeviceForcedPlaylist(deviceId: string, libIds: string[]): Promise<void>;
+  removeFromDeviceForcedPlaylist(deviceId: string, libId: string): Promise<void>;
+  reorderDeviceForcedPlaylist(deviceId: string, libId: string, direction: 'up' | 'down'): Promise<void>;
   /** Standalone-screen (no group) equivalent of setGroupBlackout — only meaningful while the device has no groupId. */
   setDeviceBlackout(id: string, blackout: boolean): Promise<void>;
   /** Standalone-screen (no group) equivalents of the group-level default-playlist/event methods above — only meaningful while the device has no groupId. */

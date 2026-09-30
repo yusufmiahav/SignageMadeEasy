@@ -110,14 +110,18 @@ export function setVideoTranscodeResult(id: string, status: 'done' | 'failed', c
 }
 
 export function removeLibraryItem(id: string): void {
-  const groups = db.prepare('SELECT id, defaultPlaylist, forcedContentId, forcedAnnouncementId FROM groups_').all() as { id: string; defaultPlaylist: string; forcedContentId: string | null; forcedAnnouncementId: string | null }[];
+  const groups = db.prepare('SELECT id, defaultPlaylist, forcedPlaylist, forcedContentId, forcedAnnouncementId FROM groups_').all() as { id: string; defaultPlaylist: string; forcedPlaylist: string | null; forcedContentId: string | null; forcedAnnouncementId: string | null }[];
   const updatePlaylist = db.prepare('UPDATE groups_ SET defaultPlaylist = ? WHERE id = ?');
-  const clearForced = db.prepare('UPDATE groups_ SET forcedContentId = NULL WHERE id = ?');
+  const updateForcedPlaylist = db.prepare('UPDATE groups_ SET forcedPlaylist = ?, forcedContentId = ? WHERE id = ?');
   const clearForcedAnnouncement = db.prepare('UPDATE groups_ SET forcedAnnouncementId = NULL WHERE id = ?');
   for (const g of groups) {
     const playlist: string[] = JSON.parse(g.defaultPlaylist);
     if (playlist.includes(id)) updatePlaylist.run(JSON.stringify(playlist.filter((x) => x !== id)), g.id);
-    if (g.forcedContentId === id) clearForced.run(g.id);
+    const forced = parseForcedPlaylist(g);
+    if (forced.includes(id)) {
+      const next = forced.filter((x) => x !== id);
+      updateForcedPlaylist.run(JSON.stringify(next), next[0] ?? null, g.id);
+    }
     if (g.forcedAnnouncementId === id) clearForcedAnnouncement.run(g.id);
   }
   const events = db.prepare('SELECT id, libIds FROM events').all() as { id: string; libIds: string }[];
@@ -128,12 +132,17 @@ export function removeLibraryItem(id: string): void {
   }
   db.prepare('DELETE FROM announcement_schedules WHERE announcementId = ?').run(id);
   db.prepare('UPDATE devices SET announcementId = NULL, announcementOn = 0 WHERE announcementId = ?').run(id);
-  db.prepare('UPDATE devices SET forcedContentId = NULL WHERE forcedContentId = ?').run(id);
-  const devicesWithPlaylist = db.prepare('SELECT id, defaultPlaylist FROM devices').all() as { id: string; defaultPlaylist: string }[];
+  const devicesWithPlaylist = db.prepare('SELECT id, defaultPlaylist, forcedPlaylist, forcedContentId FROM devices').all() as { id: string; defaultPlaylist: string; forcedPlaylist: string | null; forcedContentId: string | null }[];
   const updateDevicePlaylist = db.prepare('UPDATE devices SET defaultPlaylist = ? WHERE id = ?');
+  const updateDeviceForcedPlaylist = db.prepare('UPDATE devices SET forcedPlaylist = ?, forcedContentId = ? WHERE id = ?');
   for (const d of devicesWithPlaylist) {
     const playlist: string[] = JSON.parse(d.defaultPlaylist);
     if (playlist.includes(id)) updateDevicePlaylist.run(JSON.stringify(playlist.filter((x) => x !== id)), d.id);
+    const forced = parseForcedPlaylist(d);
+    if (forced.includes(id)) {
+      const next = forced.filter((x) => x !== id);
+      updateDeviceForcedPlaylist.run(JSON.stringify(next), next[0] ?? null, d.id);
+    }
   }
   db.prepare('DELETE FROM library WHERE id = ?').run(id);
 }
@@ -285,8 +294,16 @@ export const removeLocation = db.transaction((id: string): void => {
 
 // ---- Groups ----
 
-interface GroupRow { id: string; name: string; locationId: string | null; defaultPlaylist: string; forcedContentId: string | null; forcedAnnouncementId: string | null; blackout: number }
-const GROUP_COLUMNS = 'id, name, locationId, defaultPlaylist, forcedContentId, forcedAnnouncementId, blackout';
+interface GroupRow { id: string; name: string; locationId: string | null; defaultPlaylist: string; forcedPlaylist: string | null; forcedContentId: string | null; forcedAnnouncementId: string | null; blackout: number }
+const GROUP_COLUMNS = 'id, name, locationId, defaultPlaylist, forcedPlaylist, forcedContentId, forcedAnnouncementId, blackout';
+
+// A row saved before forcedPlaylist existed has it NULL — fall back to synthesizing
+// a one-element array from the old forcedContentId column (see db.ts's migration
+// comment). Once anything writes through setForcedPlaylist, forcedPlaylist is never
+// NULL again for that row.
+function parseForcedPlaylist(r: { forcedPlaylist: string | null; forcedContentId: string | null }): string[] {
+  return r.forcedPlaylist != null ? JSON.parse(r.forcedPlaylist) : r.forcedContentId ? [r.forcedContentId] : [];
+}
 interface EventRow { id: string; groupId: string | null; deviceId: string | null; name: string; start: string; end: string; libIds: string; startTime: string | null; endTime: string | null }
 interface AnnouncementScheduleRow { id: string; groupId: string; announcementId: string; startDate: string; endDate: string; startTime: string; endTime: string }
 
@@ -313,9 +330,11 @@ function announcementSchedulesForGroup(groupId: string): AnnouncementSchedule[] 
 }
 
 function rowToGroup(r: GroupRow): Group {
+  const forcedPlaylist = parseForcedPlaylist(r);
   return {
     id: r.id, name: r.name, locationId: r.locationId, defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForGroup(r.id),
-    forcedContentId: r.forcedContentId, forcedAnnouncementId: r.forcedAnnouncementId, announcementSchedules: announcementSchedulesForGroup(r.id),
+    forcedPlaylist, forcedContentId: forcedPlaylist[0] ?? null,
+    forcedAnnouncementId: r.forcedAnnouncementId, announcementSchedules: announcementSchedulesForGroup(r.id),
     blackout: !!r.blackout,
   };
 }
@@ -334,8 +353,8 @@ export function addGroup(name: string, locationId: string | null = null): Group 
   const id = uid('g');
   const cleanName = name.trim() || 'New group';
   const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM groups_').get() as { n: number }).n;
-  db.prepare('INSERT INTO groups_ (id, name, locationId, defaultPlaylist, forcedContentId, forcedAnnouncementId, sortOrder, blackout) VALUES (?,?,?,?,?,?,?,0)').run(id, cleanName, locationId, '[]', null, null, nextOrder);
-  return { id, name: cleanName, locationId, defaultPlaylist: [], events: [], forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [], blackout: false };
+  db.prepare('INSERT INTO groups_ (id, name, locationId, defaultPlaylist, forcedPlaylist, forcedContentId, forcedAnnouncementId, sortOrder, blackout) VALUES (?,?,?,?,?,?,?,?,0)').run(id, cleanName, locationId, '[]', '[]', null, null, nextOrder);
+  return { id, name: cleanName, locationId, defaultPlaylist: [], events: [], forcedPlaylist: [], forcedContentId: null, forcedAnnouncementId: null, announcementSchedules: [], blackout: false };
 }
 
 /** Files an existing group under a Location, or `null` to un-file it — purely organizational, has no effect on its content. */
@@ -407,8 +426,38 @@ export function removeEvent(groupId: string, eventId: string): void {
   db.prepare('DELETE FROM events WHERE id = ? AND groupId = ?').run(eventId, groupId);
 }
 
+/** Sets the group's full forced playlist, replacing whatever was there — pass `[]` to go back to the rolling schedule. Keeps the deprecated forcedContentId column in sync (its first item, or null when empty) for older API consumers — see types.ts's comment on it. */
+export function setForcedPlaylist(groupId: string, libIds: string[]): void {
+  db.prepare('UPDATE groups_ SET forcedPlaylist = ?, forcedContentId = ? WHERE id = ?').run(JSON.stringify(libIds), libIds[0] ?? null, groupId);
+}
+
+/** @deprecated Single-item convenience wrapper around setForcedPlaylist, kept for the Companion module's existing action — see types.ts's Group.forcedContentId comment. */
 export function setForcedContent(groupId: string, libId: string | null): void {
-  db.prepare('UPDATE groups_ SET forcedContentId = ? WHERE id = ?').run(libId, groupId);
+  setForcedPlaylist(groupId, libId ? [libId] : []);
+}
+
+export function addToForcedPlaylist(groupId: string, libIds: string[]): void {
+  const group = getGroup(groupId);
+  if (!group) return;
+  const merged = [...group.forcedPlaylist, ...libIds.filter((id) => !group.forcedPlaylist.includes(id))];
+  setForcedPlaylist(groupId, merged);
+}
+
+export function removeFromForcedPlaylist(groupId: string, libId: string): void {
+  const group = getGroup(groupId);
+  if (!group) return;
+  setForcedPlaylist(groupId, group.forcedPlaylist.filter((id) => id !== libId));
+}
+
+export function reorderForcedPlaylist(groupId: string, libId: string, direction: 'up' | 'down'): void {
+  const group = getGroup(groupId);
+  if (!group) return;
+  const idx = group.forcedPlaylist.indexOf(libId);
+  const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+  if (idx < 0 || swapWith < 0 || swapWith >= group.forcedPlaylist.length) return;
+  const list = [...group.forcedPlaylist];
+  [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
+  setForcedPlaylist(groupId, list);
 }
 
 export function setForcedAnnouncement(groupId: string, announcementId: string | null): void {
@@ -432,22 +481,23 @@ interface DeviceRow {
   id: string; name: string; ip: string; mac: string | null; groupId: string | null; locationId: string | null; announcementId: string | null; announcementOn: number;
   videoQuality: Device['videoQuality']; lastSeenAt: number | null;
   tempC: number | null; throttled: string | null; uptimeSec: number | null; diskFreeMb: number | null; diskTotalMb: number | null;
-  forcedContentId: string | null; blackout: number; defaultPlaylist: string;
+  forcedPlaylist: string | null; forcedContentId: string | null; blackout: number; defaultPlaylist: string;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, forcedContentId, blackout, defaultPlaylist';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
 }
 
 function rowToDevice(r: DeviceRow): Device {
+  const forcedPlaylist = parseForcedPlaylist(r);
   return {
     id: r.id, name: r.name, ip: r.ip, mac: r.mac, groupId: r.groupId, locationId: r.locationId,
     announcementId: r.announcementId, announcementOn: !!r.announcementOn, videoQuality: r.videoQuality,
     status: statusFor(r.lastSeenAt), lastSeenAt: r.lastSeenAt ?? undefined,
     tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
-    forcedContentId: r.forcedContentId, blackout: !!r.blackout,
+    forcedPlaylist, forcedContentId: forcedPlaylist[0] ?? null, blackout: !!r.blackout,
     defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForDevice(r.id),
   };
 }
@@ -475,13 +525,43 @@ export function pairDevice(input: { name: string; ip: string; mac?: string | nul
   db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, sortOrder) VALUES (?,?,?,?,?,?,?,0,?,?,?)').run(id, input.name, input.ip, mac, input.groupId, locationId, null, 'auto', lastSeenAt, nextOrder);
   return {
     id, name: input.name, ip: input.ip, mac, groupId: input.groupId, locationId, announcementId: null, announcementOn: false,
-    videoQuality: 'auto', status: statusFor(lastSeenAt), forcedContentId: null, blackout: false,
+    videoQuality: 'auto', status: statusFor(lastSeenAt), forcedPlaylist: [], forcedContentId: null, blackout: false,
     defaultPlaylist: [], events: [],
   };
 }
 
+/** Sets the device's full forced playlist, replacing whatever was there — mirrors setForcedPlaylist, see its comment. Only meaningful while the device has no group. */
+export function setDeviceForcedPlaylist(id: string, libIds: string[]): void {
+  db.prepare('UPDATE devices SET forcedPlaylist = ?, forcedContentId = ? WHERE id = ?').run(JSON.stringify(libIds), libIds[0] ?? null, id);
+}
+
+/** @deprecated Single-item convenience wrapper around setDeviceForcedPlaylist — see setForcedContent's comment. */
 export function setDeviceForcedContent(id: string, libId: string | null): void {
-  db.prepare('UPDATE devices SET forcedContentId = ? WHERE id = ?').run(libId, id);
+  setDeviceForcedPlaylist(id, libId ? [libId] : []);
+}
+
+export function addToDeviceForcedPlaylist(deviceId: string, libIds: string[]): void {
+  const device = getDevice(deviceId);
+  if (!device) return;
+  const merged = [...device.forcedPlaylist, ...libIds.filter((id) => !device.forcedPlaylist.includes(id))];
+  setDeviceForcedPlaylist(deviceId, merged);
+}
+
+export function removeFromDeviceForcedPlaylist(deviceId: string, libId: string): void {
+  const device = getDevice(deviceId);
+  if (!device) return;
+  setDeviceForcedPlaylist(deviceId, device.forcedPlaylist.filter((id) => id !== libId));
+}
+
+export function reorderDeviceForcedPlaylist(deviceId: string, libId: string, direction: 'up' | 'down'): void {
+  const device = getDevice(deviceId);
+  if (!device) return;
+  const idx = device.forcedPlaylist.indexOf(libId);
+  const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+  if (idx < 0 || swapWith < 0 || swapWith >= device.forcedPlaylist.length) return;
+  const list = [...device.forcedPlaylist];
+  [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
+  setDeviceForcedPlaylist(deviceId, list);
 }
 
 export function setDeviceBlackout(id: string, blackout: boolean): void {
@@ -655,7 +735,7 @@ export function activeContentIds(group: Group, now: Date = new Date()): { ids: s
   // Highest priority, above even forced content — an emergency override meant to
   // win regardless of anything else configured for this group.
   if (group.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
-  if (group.forcedContentId) return { ids: [group.forcedContentId], kind: 'forced', label: 'Forced' };
+  if (group.forcedPlaylist.length > 0) return { ids: group.forcedPlaylist, kind: 'forced', label: 'Forced' };
   const today = toISODate(now);
   const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   // An event with no startTime/endTime runs all day, every day in [start, end] (the
@@ -691,13 +771,13 @@ export function activeAnnouncementId(group: Group, now: Date = new Date()): stri
 }
 
 // A screen not assigned to any group has no group-level schedule to fall back on,
-// but does have its own — forcedContentId/blackout (the standalone-screen
-// equivalents of a group's controls, see Device.forcedContentId's comment in
+// but does have its own — forcedPlaylist/blackout (the standalone-screen
+// equivalents of a group's controls, see Device.forcedPlaylist's comment in
 // types.ts), then its own events/defaultPlaylist, same priority order and
 // time-window matching as activeContentIds above.
 function activeContentIdsForDevice(device: Device, now: Date = new Date()): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
   if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
-  if (device.forcedContentId) return { ids: [device.forcedContentId], kind: 'forced', label: 'Forced' };
+  if (device.forcedPlaylist.length > 0) return { ids: device.forcedPlaylist, kind: 'forced', label: 'Forced' };
   const today = toISODate(now);
   const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const event = device.events.find((e) => {
@@ -802,7 +882,7 @@ export function exportBackup(): Backup {
 /**
  * Wipes and replaces every table from a previously exported backup, preserving every
  * id exactly — library items, groups, events, announcement schedules, and devices
- * all cross-reference each other by id (a group's defaultPlaylist/forcedContentId
+ * all cross-reference each other by id (a group's defaultPlaylist/forcedPlaylist
  * point at library ids, a device's groupId points at a group), and a fresh uid() per
  * row the way addLibraryItem/addGroup/pairDevice normally generate one would
  * silently break every one of those references. Restored devices come back offline
@@ -856,7 +936,7 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   });
 
   const insertGroup = db.prepare(
-    'INSERT INTO groups_ (id, name, locationId, defaultPlaylist, forcedContentId, forcedAnnouncementId, sortOrder, blackout) VALUES (@id,@name,@locationId,@defaultPlaylist,@forcedContentId,@forcedAnnouncementId,@sortOrder,@blackout)',
+    'INSERT INTO groups_ (id, name, locationId, defaultPlaylist, forcedPlaylist, forcedContentId, forcedAnnouncementId, sortOrder, blackout) VALUES (@id,@name,@locationId,@defaultPlaylist,@forcedPlaylist,@forcedContentId,@forcedAnnouncementId,@sortOrder,@blackout)',
   );
   const insertEvent = db.prepare(
     'INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime) VALUES (@id,@groupId,@deviceId,@name,@start,@end,@libIds,@startTime,@endTime)',
@@ -865,9 +945,13 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
     'INSERT INTO announcement_schedules (id, groupId, announcementId, startDate, endDate, startTime, endTime) VALUES (@id,@groupId,@announcementId,@startDate,@endDate,@startTime,@endTime)',
   );
   backup.groups.forEach((group, i) => {
+    // A backup taken before forcedPlaylist existed only has the old single-item
+    // forcedContentId — synthesize a one-element array from it, same fallback
+    // rowToGroup applies when reading a pre-migration row (see parseForcedPlaylist).
+    const forcedPlaylist = group.forcedPlaylist ?? (group.forcedContentId ? [group.forcedContentId] : []);
     insertGroup.run({
       id: group.id, name: group.name, locationId: group.locationId ?? null, defaultPlaylist: JSON.stringify(group.defaultPlaylist),
-      forcedContentId: group.forcedContentId, forcedAnnouncementId: group.forcedAnnouncementId,
+      forcedPlaylist: JSON.stringify(forcedPlaylist), forcedContentId: forcedPlaylist[0] ?? null, forcedAnnouncementId: group.forcedAnnouncementId,
       sortOrder: i, blackout: group.blackout ? 1 : 0,
     });
     for (const event of group.events) {
@@ -885,14 +969,16 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   });
 
   const insertDevice = db.prepare(
-    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedContentId, blackout, defaultPlaylist, sortOrder) ' +
-    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedContentId,@blackout,@defaultPlaylist,@sortOrder)',
+    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, sortOrder) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedPlaylist,@forcedContentId,@blackout,@defaultPlaylist,@sortOrder)',
   );
   backup.devices.forEach((device, i) => {
+    // Same pre-migration fallback as the group loop above.
+    const forcedPlaylist = device.forcedPlaylist ?? (device.forcedContentId ? [device.forcedContentId] : []);
     insertDevice.run({
       id: device.id, name: device.name, ip: device.ip, mac: device.mac, groupId: device.groupId, locationId: device.locationId ?? null,
       announcementId: device.announcementId, announcementOn: device.announcementOn ? 1 : 0, videoQuality: device.videoQuality,
-      forcedContentId: device.forcedContentId ?? null, blackout: device.blackout ? 1 : 0,
+      forcedPlaylist: JSON.stringify(forcedPlaylist), forcedContentId: forcedPlaylist[0] ?? null, blackout: device.blackout ? 1 : 0,
       defaultPlaylist: JSON.stringify(device.defaultPlaylist ?? []), sortOrder: i,
     });
     for (const event of device.events ?? []) {

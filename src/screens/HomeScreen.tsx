@@ -1,7 +1,7 @@
 import { Icon } from '../components/icons/Icon';
 import { DeviceCard } from '../components/DeviceCard';
 import type { AppState } from '../hooks/useAppState';
-import { activeAnnouncementId, activeContentIds, nowPlayingItem, nowPlayingName, nowPlayingItemForDevice, nowPlayingNameForDevice } from '../api/resolve';
+import { activeAnnouncementId, activeContentIds, forcedPlaylistLabel, nowPlayingItem, nowPlayingName, nowPlayingItemForDevice, nowPlayingNameForDevice } from '../api/resolve';
 import type { Device, Group, LibraryItem } from '../api/types';
 
 interface HomeScreenProps {
@@ -49,7 +49,7 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const {
     groups, devices, locations, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality,
-    setForcedContent, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedContent, setDeviceBlackout,
+    setForcedPlaylist, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedPlaylist, setDeviceBlackout,
   } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
   // A locationId pointing at a Location that no longer exists (e.g. a hand-edited or
@@ -86,7 +86,7 @@ export function HomeScreen({
     const index = scopeGroups.findIndex((g) => g.id === group.id);
     const groupDevices = devices.filter((d) => d.groupId === group.id);
     const active = activeContentIds(group);
-    const forcedItem = group.forcedContentId ? libraryById.get(group.forcedContentId) : undefined;
+    const forcedLabel = forcedPlaylistLabel(group.forcedPlaylist, libraryById);
     const activeAnnId = activeAnnouncementId(group);
     const activeAnnouncement = activeAnnId ? libraryById.get(activeAnnId) : undefined;
     return (
@@ -137,8 +137,8 @@ export function HomeScreen({
             )}
             {active.kind === 'forced' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="tag tag-accent">Forced: {forcedItem?.name ?? '—'}</span>
-                <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => setForcedContent(group.id, null)}>
+                <span className="tag tag-accent">Forced: {forcedLabel}</span>
+                <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => setForcedPlaylist(group.id, [])}>
                   Stop
                 </button>
               </div>
@@ -186,7 +186,7 @@ export function HomeScreen({
                 onForceContent={onForceContentForDevice}
                 onForceAnnouncement={onForceAnnouncementForDevice}
                 onOpenBlackout={onOpenBlackoutForDevice}
-                onStopForcedContent={(id) => setDeviceForcedContent(id, null)}
+                onStopForcedContent={(id) => setDeviceForcedPlaylist(id, [])}
                 onStopBlackout={(id) => setDeviceBlackout(id, false)}
               />
             ))}
@@ -215,11 +215,11 @@ export function HomeScreen({
           onPreview={onPreviewContent}
           advancedInfo={advancedDeviceInfo}
           hideAnnouncementRow={hideAnnouncementRow}
-          forcedContentName={device.forcedContentId ? libraryById.get(device.forcedContentId)?.name : undefined}
+          forcedContentName={device.forcedPlaylist.length > 0 ? forcedPlaylistLabel(device.forcedPlaylist, libraryById) : undefined}
           onForceContent={onForceContentForDevice}
           onForceAnnouncement={onForceAnnouncementForDevice}
           onOpenBlackout={onOpenBlackoutForDevice}
-          onStopForcedContent={(id) => setDeviceForcedContent(id, null)}
+          onStopForcedContent={(id) => setDeviceForcedPlaylist(id, [])}
           onStopBlackout={(id) => setDeviceBlackout(id, false)}
         />
       ))}

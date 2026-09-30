@@ -320,6 +320,19 @@ if (!folderCols.includes('createdAt')) {
   db.prepare('UPDATE folders SET createdAt = ? WHERE createdAt IS NULL').run(Date.now());
 }
 
+// Same reasoning, for hubs deployed before forced content supported more than one
+// item — forcedContentId (still kept, see types.ts's deprecated comment on it) only
+// ever held a single library id; this new column holds the same idea as an ordered
+// JSON array, same encoding as defaultPlaylist. Left NULL rather than defaulted to
+// '[]' so store.ts's rowToGroup/rowToDevice can tell "never migrated, fall back to
+// reading the old column" apart from "explicitly set to empty" — the moment
+// anything writes through the new setForcedPlaylist/setDeviceForcedPlaylist, both
+// columns are updated together and stay in permanent sync from then on.
+const groupColsForced = (db.prepare("PRAGMA table_info(groups_)").all() as { name: string }[]).map((c) => c.name);
+if (!groupColsForced.includes('forcedPlaylist')) db.exec('ALTER TABLE groups_ ADD COLUMN forcedPlaylist TEXT');
+const deviceColsForced = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceColsForced.includes('forcedPlaylist')) db.exec('ALTER TABLE devices ADD COLUMN forcedPlaylist TEXT');
+
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's

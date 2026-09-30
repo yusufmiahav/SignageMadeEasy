@@ -118,6 +118,11 @@ export const httpClient: SignageApiClient = {
   addEvent: (groupId, event) => request<ScheduleEvent>(`/api/groups/${groupId}/events`, { method: 'POST', ...json(event) }),
   removeEvent: (groupId, eventId) => request<void>(`/api/groups/${groupId}/events/${eventId}`, { method: 'DELETE' }),
   setForcedContent: (groupId, libId) => request<void>(`/api/groups/${groupId}/forced`, { method: 'PUT', ...json({ libId }) }),
+  setForcedPlaylist: (groupId, libIds) => request<void>(`/api/groups/${groupId}/forced-playlist`, { method: 'PUT', ...json({ libIds }) }),
+  addToForcedPlaylist: (groupId, libIds) => request<void>(`/api/groups/${groupId}/forced-playlist`, { method: 'POST', ...json({ libIds }) }),
+  removeFromForcedPlaylist: (groupId, libId) => request<void>(`/api/groups/${groupId}/forced-playlist/${libId}`, { method: 'DELETE' }),
+  reorderForcedPlaylist: (groupId, libId, direction) =>
+    request<void>(`/api/groups/${groupId}/forced-playlist/${libId}/reorder`, { method: 'POST', ...json({ direction }) }),
   setForcedAnnouncement: (groupId, announcementId) => request<void>(`/api/groups/${groupId}/forced-announcement`, { method: 'PUT', ...json({ announcementId }) }),
   addAnnouncementSchedule: (groupId, schedule) =>
     request<AnnouncementSchedule>(`/api/groups/${groupId}/announcement-schedules`, { method: 'POST', ...json(schedule) }),
@@ -149,6 +154,11 @@ export const httpClient: SignageApiClient = {
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
   setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),
   setDeviceForcedContent: (id, libId) => request<void>(`/api/devices/${id}/forced`, { method: 'PUT', ...json({ libId }) }),
+  setDeviceForcedPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/forced-playlist`, { method: 'PUT', ...json({ libIds }) }),
+  addToDeviceForcedPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/forced-playlist`, { method: 'POST', ...json({ libIds }) }),
+  removeFromDeviceForcedPlaylist: (deviceId, libId) => request<void>(`/api/devices/${deviceId}/forced-playlist/${libId}`, { method: 'DELETE' }),
+  reorderDeviceForcedPlaylist: (deviceId, libId, direction) =>
+    request<void>(`/api/devices/${deviceId}/forced-playlist/${libId}/reorder`, { method: 'POST', ...json({ direction }) }),
   setDeviceBlackout: (id, blackout) => request<void>(`/api/devices/${id}/blackout`, { method: 'PUT', ...json({ blackout }) }),
   setDeviceDefaultPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/playlist`, { method: 'PUT', ...json({ libIds }) }),
   addToDeviceDefaultPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/playlist`, { method: 'POST', ...json({ libIds }) }),
