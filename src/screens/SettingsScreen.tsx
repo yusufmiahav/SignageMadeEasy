@@ -247,7 +247,20 @@ export function SettingsScreen({
           // that the device's own name wraps mid-word around the trailing controls.
           <div style={{ flex: '1 1 140px' }}>
             <div style={{ fontSize: 13 }}>{device.name}</div>
-            <div className="text-muted" style={{ fontSize: 11 }}>Screen</div>
+            {/* The Update/Re-provision buttons below used to leave no lasting sign
+                anything had happened once their initial toast faded — this is the
+                one place both buttons live, so it's the natural spot for a status
+                that sticks around until the hub confirms the screen actually
+                restarted (or gives up — see hub/src/store.ts's markUpdateTriggered). */}
+            {device.updateStatus === 'updating' ? (
+              <div style={{ fontSize: 11, color: 'var(--color-accent-800)' }} title="Pulling the latest code and restarting — can take up to a minute, longer for a re-provision/reboot">Updating…</div>
+            ) : device.updateStatus === 'done' ? (
+              <div className="text-muted" style={{ fontSize: 11 }}>Updated</div>
+            ) : device.updateStatus === 'failed' ? (
+              <div style={{ fontSize: 11, color: 'var(--color-danger, #c0392b)' }} title="This screen hasn't come back since an update/re-provision was triggered — check it over SSH">Update may have failed</div>
+            ) : (
+              <div className="text-muted" style={{ fontSize: 11 }}>Screen</div>
+            )}
           </div>
         )}
         {showLocationPicker && !selectMode && !isEditing && (

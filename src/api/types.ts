@@ -170,6 +170,8 @@ export interface Device {
   diskTotalMb?: number | null;
   /** True while this screen is showing content forced on by a USB stick plugged directly into it, overriding whatever this device/its group would otherwise show. Always false/undefined in standalone/localStorage mode (no real Pi/USB port to ask). */
   usbOverrideActive?: boolean;
+  /** Settings screen's Update/Re-provision buttons: undefined once nothing's in flight. 'updating' while a triggered update/re-provision hasn't yet been confirmed to have restarted the screen's player process, 'done'/'failed' briefly once it resolves one way or the other — see hub/src/store.ts's markUpdateTriggered. Always undefined in standalone/localStorage mode (no real Pi to update). */
+  updateStatus?: 'updating' | 'done' | 'failed';
 }
 
 /** One line serving a searched-for TfL station — see SignageApiClient.searchTflStations. */

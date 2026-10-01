@@ -40,6 +40,11 @@ export function useAppState() {
   // online by this tab) or one seen for the first time on this poll doesn't fire,
   // so pairing a new not-yet-heartbeated screen doesn't spam this on load.
   const prevDeviceStatus = useRef<Map<string, DeviceStatus>>(new Map());
+  // Same "skip the very first poll" reasoning as prevDeviceStatus above — otherwise
+  // a screen that happens to be mid-update (or stuck 'failed') the moment this tab
+  // loads would fire a stale "updated"/"update may have failed" toast immediately,
+  // for an update this tab never saw get triggered.
+  const prevUpdateStatus = useRef<Map<string, Device['updateStatus']>>(new Map());
   const isFirstDevicePoll = useRef(true);
 
   const refreshDevices = useCallback(async () => {
@@ -49,10 +54,17 @@ export function useAppState() {
         if (prevDeviceStatus.current.get(d.id) === 'online' && d.status === 'offline') {
           showToast(`${d.name} went offline`);
         }
+        const prevUpdate = prevUpdateStatus.current.get(d.id);
+        if (prevUpdate === 'updating' && d.updateStatus === 'done') {
+          showToast(`${d.name} updated successfully`);
+        } else if (prevUpdate === 'updating' && d.updateStatus === 'failed') {
+          showToast(`${d.name}'s update is taking far longer than expected — check it manually`);
+        }
       }
     }
     isFirstDevicePoll.current = false;
     prevDeviceStatus.current = new Map(next.map((d) => [d.id, d.status]));
+    prevUpdateStatus.current = new Map(next.map((d) => [d.id, d.updateStatus]));
     setDevices(next);
   }, [showToast]);
 
@@ -569,19 +581,24 @@ export function useAppState() {
     try {
       await api.updateDevice(device.id);
       showToast(`Updating ${device.name}… this can take up to a minute.`);
+      // Picks up updateStatus: 'updating' right away rather than waiting for the
+      // next 4s poll — the whole point of this call is to show a live status
+      // instead of just the toast above, which used to be the only feedback.
+      await refreshDevices();
     } catch (err) {
       showToast(err instanceof Error ? err.message : `Could not update ${device.name}`);
     }
-  }, [showToast]);
+  }, [showToast, refreshDevices]);
 
   const reprovisionDevice = useCallback(async (device: Device) => {
     try {
       await api.reprovisionDevice(device.id);
       showToast(`Re-provisioning ${device.name}… it will reboot shortly.`);
+      await refreshDevices();
     } catch (err) {
       showToast(err instanceof Error ? err.message : `Could not re-provision ${device.name}`);
     }
-  }, [showToast]);
+  }, [showToast, refreshDevices]);
 
   // Bulk fast-path update, skipping devices already known offline (no point
   // spending a round trip on a screen that can't answer). Deliberately calls
@@ -597,6 +614,9 @@ export function useAppState() {
       return null;
     }
     const settled = await Promise.allSettled(targets.map((d) => api.updateDevice(d.id)));
+    // Same reasoning as updateDevice's own refreshDevices call above — picks up
+    // every successfully-triggered screen's updateStatus: 'updating' right away.
+    await refreshDevices();
     return targets.map((device, i) => {
       const outcome = settled[i];
       return {
@@ -604,7 +624,7 @@ export function useAppState() {
         error: outcome.status === 'rejected' ? (outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)) : null,
       };
     });
-  }, [devices, showToast]);
+  }, [devices, showToast, refreshDevices]);
 
   const setDeviceAnnouncement = useCallback(async (id: string, announcementId: string | null) => {
     await api.setDeviceAnnouncement(id, announcementId);

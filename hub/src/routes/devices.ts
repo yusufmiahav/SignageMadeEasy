@@ -25,8 +25,8 @@ devicesRouter.post('/:id/heartbeat', (req, res) => {
   const device = store.getDevice(req.params.id);
   if (!device) return res.status(404).json({ error: 'not found' });
   const ip = (req.body?.ip as string | undefined) ?? req.ip ?? device.ip;
-  const { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, usbOverrideActive } = req.body ?? {};
-  store.recordHeartbeat(req.params.id, ip, { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, usbOverrideActive });
+  const { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, usbOverrideActive, playerStartedAt } = req.body ?? {};
+  store.recordHeartbeat(req.params.id, ip, { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, usbOverrideActive, playerStartedAt });
   res.status(204).end();
 });
 
@@ -188,6 +188,11 @@ devicesRouter.post('/:id/update', async (req, res) => {
   if (!device) return res.status(404).json({ error: 'not found' });
   try {
     await piAgent.update(device.ip);
+    // The agent has accepted the trigger (not necessarily finished — see
+    // store.ts's markUpdateTriggered) — from here the control app can show a live
+    // "Updating…" status instead of just the one-off toast that used to be the
+    // only feedback this ever gave.
+    store.markUpdateTriggered(device.id);
     res.status(204).end();
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : 'could not reach device' });
@@ -201,6 +206,7 @@ devicesRouter.post('/:id/reprovision', async (req, res) => {
   if (!device) return res.status(404).json({ error: 'not found' });
   try {
     await piAgent.reprovision(device.ip);
+    store.markUpdateTriggered(device.id);
     res.status(204).end();
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : 'could not reach device' });

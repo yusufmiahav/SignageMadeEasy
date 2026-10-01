@@ -482,9 +482,10 @@ interface DeviceRow {
   videoQuality: Device['videoQuality']; lastSeenAt: number | null;
   tempC: number | null; throttled: string | null; uptimeSec: number | null; baseUptimeSec: number; diskFreeMb: number | null; diskTotalMb: number | null;
   forcedPlaylist: string | null; forcedContentId: string | null; blackout: number; defaultPlaylist: string; usbOverrideActive: number;
+  playerStartedAt: number | null;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive, playerStartedAt';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -497,6 +498,44 @@ function totalUptimeFor(r: { uptimeSec: number | null; baseUptimeSec: number }):
   return r.uptimeSec == null && r.baseUptimeSec === 0 ? null : r.baseUptimeSec + (r.uptimeSec ?? 0);
 }
 
+// In-memory only (not persisted — losing track of an in-progress update across a
+// hub restart is an acceptable edge case for what's purely a UI progress
+// indicator, not a correctness-critical record). Keyed by device id.
+//
+// Settings screen's Update/Re-provision buttons previously left a user with no
+// way to tell whether anything was still happening, or whether it had finished —
+// just an initial toast that faded away (see routes/devices.ts's /update and
+// /reprovision, which call markUpdateTriggered on a successful trigger). This
+// resolves 'updating' -> 'done' the moment a heartbeat reports a playerStartedAt
+// newer than when the update was triggered — proof the player process actually
+// restarted — or -> 'failed' once UPDATE_TIMEOUT_MS passes with no such heartbeat
+// (self-update.sh/reprovision.sh failing partway through, e.g. a bad git pull or
+// npm install, never reaches the restart/reboot at the end). A resolved status
+// stays visible for UPDATE_RESOLVED_TTL_MS so the control app's polling (every 4s,
+// see useAppState.ts) has a real chance to show it before it disappears.
+interface UpdateTracker { status: 'updating' | 'done' | 'failed'; triggeredAt: number; resolvedAt?: number }
+const updateTrackers = new Map<string, UpdateTracker>();
+const UPDATE_TIMEOUT_MS = 5 * 60 * 1000;
+const UPDATE_RESOLVED_TTL_MS = 30 * 1000;
+
+export function markUpdateTriggered(id: string): void {
+  updateTrackers.set(id, { status: 'updating', triggeredAt: Date.now() });
+}
+
+function currentUpdateStatus(id: string): Device['updateStatus'] {
+  const t = updateTrackers.get(id);
+  if (!t) return undefined;
+  if (t.status === 'updating' && Date.now() - t.triggeredAt > UPDATE_TIMEOUT_MS) {
+    t.status = 'failed';
+    t.resolvedAt = Date.now();
+  }
+  if (t.resolvedAt != null && Date.now() - t.resolvedAt > UPDATE_RESOLVED_TTL_MS) {
+    updateTrackers.delete(id);
+    return undefined;
+  }
+  return t.status;
+}
+
 function rowToDevice(r: DeviceRow): Device {
   const forcedPlaylist = parseForcedPlaylist(r);
   return {
@@ -506,7 +545,7 @@ function rowToDevice(r: DeviceRow): Device {
     tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, totalUptimeSec: totalUptimeFor(r), diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
     forcedPlaylist, forcedContentId: forcedPlaylist[0] ?? null, blackout: !!r.blackout,
     defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForDevice(r.id),
-    usbOverrideActive: !!r.usbOverrideActive,
+    usbOverrideActive: !!r.usbOverrideActive, updateStatus: currentUpdateStatus(r.id),
   };
 }
 
@@ -684,6 +723,8 @@ export interface HeartbeatDiagnostics {
   diskTotalMb?: number | null;
   /** See pi-player/src/usbOverride.ts. */
   usbOverrideActive?: boolean;
+  /** See pi-player/src/diagnostics.ts's PROCESS_STARTED_AT and this file's markUpdateTriggered. */
+  playerStartedAt?: number;
 }
 
 export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnostics): void {
@@ -699,11 +740,19 @@ export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnost
       db.prepare('UPDATE devices SET baseUptimeSec = baseUptimeSec + ? WHERE id = ?').run(prev.uptimeSec, id);
     }
   }
-  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ?, usbOverrideActive = ? WHERE id = ?').run(
+  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ?, usbOverrideActive = ?, playerStartedAt = ? WHERE id = ?').run(
     Date.now(), ip,
-    diag?.tempC ?? null, diag?.throttled ?? null, newUptime, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null, diag?.usbOverrideActive ? 1 : 0,
+    diag?.tempC ?? null, diag?.throttled ?? null, newUptime, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null, diag?.usbOverrideActive ? 1 : 0, diag?.playerStartedAt ?? null,
     id,
   );
+  // Resolves an in-progress Update/Re-provision — see markUpdateTriggered's comment.
+  // A newer playerStartedAt than when it was triggered is proof the player process
+  // actually restarted, regardless of how long that took.
+  const tracker = updateTrackers.get(id);
+  if (tracker?.status === 'updating' && diag?.playerStartedAt != null && diag.playerStartedAt > tracker.triggeredAt) {
+    tracker.status = 'done';
+    tracker.resolvedAt = Date.now();
+  }
 }
 
 // ---- Settings (hub-wide, readable by both the control app and every Pi) ----

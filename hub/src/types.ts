@@ -169,6 +169,10 @@ export interface Device {
   diskTotalMb?: number | null;
   /** True while this screen is showing content forced on by a USB stick plugged directly into it, overriding whatever this device/its group would otherwise show — see pi-player/src/usbOverride.ts. Reported alongside every heartbeat; cleared either locally on the Pi or by routes/devices.ts's clear-usb-override (relayed to the Pi, then optimistically reflected here immediately rather than waiting for the next heartbeat). */
   usbOverrideActive?: boolean;
+  /** ms since epoch this screen's player process last started — see pi-player/src/diagnostics.ts. Used to resolve updateStatus below; not otherwise shown in the control app. */
+  playerStartedAt?: number | null;
+  /** Settings screen's Update/Re-provision buttons: undefined/omitted once nothing's in flight (the normal case). 'updating' from the moment the Pi's agent accepts the trigger until its player process is confirmed to have restarted (or store.ts's UPDATE_TIMEOUT_MS passes with no such confirmation, reported as 'failed' instead) — see store.ts's markUpdateTriggered. A resolved 'done'/'failed' stays visible for a short window then reverts to undefined on its own. */
+  updateStatus?: 'updating' | 'done' | 'failed';
 }
 
 export interface DiscoveredDevice {

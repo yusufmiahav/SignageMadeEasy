@@ -263,6 +263,19 @@ mov, mkv, webm, avi, m4v) — anything else in the `signage` folder is ignored.
 Inserting a different USB stick replaces whatever override was active before,
 rather than merging with it.
 
+**Needs Re-provision, not just Update, on a screen set up before this
+feature shipped.** The udev rule, the systemd unit, and the root-owned mount
+script are system-level installs — exactly the kind of change the Settings
+screen's fast **Update** button deliberately doesn't touch (see "Updating
+from the control app" above). If a USB stick does nothing on a screen,
+the most likely reason is that it was only ever `Update`d, not
+`Re-provision`ed, since this shipped. Re-provisioning installs them; a
+USB stick inserted after that should start working on its next insertion
+(no reboot needed for the rule itself to be live, though re-provisioning
+already includes one). To confirm: `systemctl list-unit-files | grep
+signage-usb-override` and `ls /etc/udev/rules.d/99-signage-usb-override.rules`
+over SSH — empty/missing means it needs re-provisioning.
+
 **Unverified on real hardware.** The copy/activate/serve logic (everything in
 `src/usbOverride.ts`) was exercised end-to-end in this sandbox against a
 loopback-mounted disk image standing in for a USB stick, including the real

@@ -352,6 +352,13 @@ if (!deviceColsUptime.includes('baseUptimeSec')) db.exec("ALTER TABLE devices AD
 const deviceColsUsb = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
 if (!deviceColsUsb.includes('usbOverrideActive')) db.exec('ALTER TABLE devices ADD COLUMN usbOverrideActive INTEGER NOT NULL DEFAULT 0');
 
+// Same reasoning, for hubs deployed before a screen's player process start time was
+// tracked — see store.ts's recordHeartbeat/markUpdateTriggered comments for how
+// this is used to tell whether a triggered Update/Re-provision has actually taken
+// effect yet. Null for every existing screen until its next heartbeat.
+const deviceColsPlayer = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceColsPlayer.includes('playerStartedAt')) db.exec('ALTER TABLE devices ADD COLUMN playerStartedAt INTEGER');
+
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's

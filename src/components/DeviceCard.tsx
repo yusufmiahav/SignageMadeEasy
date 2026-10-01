@@ -191,6 +191,13 @@ export function DeviceCard({
         </a>
         {advancedInfo && device.mac && <span className="tag tag-neutral">{device.mac}</span>}
         <span className="tag tag-neutral">{device.status === 'online' ? 'Online' : 'Offline'}</span>
+        {device.updateStatus === 'updating' && (
+          <span className="tag tag-accent" title="Pulling the latest code and restarting — can take up to a minute, longer for a re-provision/reboot">Updating…</span>
+        )}
+        {device.updateStatus === 'done' && <span className="tag tag-neutral">Updated</span>}
+        {device.updateStatus === 'failed' && (
+          <span className="tag tag-warning" title="This screen hasn't come back since an update/re-provision was triggered — check it over SSH">Update may have failed</span>
+        )}
       </div>
       {device.usbOverrideActive && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

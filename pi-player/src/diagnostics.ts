@@ -12,6 +12,14 @@ import * as usbOverride from './usbOverride.js';
 
 const execFileAsync = promisify(execFile);
 
+// Captured once, the moment this module is first loaded — effectively "when did
+// THIS running player process start." Lets the hub tell whether a restart it
+// triggered (Update/Re-provision, see selfUpdate.ts) has actually happened yet:
+// an update that only touched app code restarts just this process (systemctl
+// restart signage-player), so this timestamp jumping forward is a reliable signal
+// distinct from os.uptime() above, which only resets on a full reboot.
+const PROCESS_STARTED_AT = Date.now();
+
 export interface Diagnostics {
   tempC: number | null;
   /** Raw hex string from `vcgencmd get_throttled`, e.g. "0x50000" — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot" versions of the same. */
@@ -21,6 +29,8 @@ export interface Diagnostics {
   diskTotalMb: number | null;
   /** See usbOverride.ts — surfaced to the hub so the control app can show a badge and offer a remote "Clear" when a screen stops obeying it because of a local USB override. */
   usbOverrideActive: boolean;
+  /** ms since epoch this player process started — see PROCESS_STARTED_AT above. */
+  playerStartedAt: number;
 }
 
 async function measureTemp(): Promise<number | null> {
@@ -59,6 +69,6 @@ export async function collect(): Promise<Diagnostics> {
   const [tempC, throttled, disk] = await Promise.all([measureTemp(), getThrottled(), diskUsage()]);
   return {
     tempC, throttled, uptimeSec: Math.round(os.uptime()), diskFreeMb: disk.freeMb, diskTotalMb: disk.totalMb,
-    usbOverrideActive: usbOverride.isActive(),
+    usbOverrideActive: usbOverride.isActive(), playerStartedAt: PROCESS_STARTED_AT,
   };
 }
