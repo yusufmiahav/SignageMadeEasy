@@ -606,6 +606,10 @@ class LocalStoreClient implements SignageApiClient {
     this.persist();
   }
 
+  async clearUsbOverride(): Promise<void> {
+    // No real Pi/USB port in standalone mode — usbOverrideActive is never true here.
+  }
+
   async setDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void> {
     const device = this.data.devices.find((d) => d.id === deviceId);
     if (device) device.defaultPlaylist = libIds;

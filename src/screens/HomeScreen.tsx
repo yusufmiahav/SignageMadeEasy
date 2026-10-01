@@ -49,7 +49,7 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const {
     groups, devices, locations, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality,
-    setForcedPlaylist, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedPlaylist, setDeviceBlackout,
+    setForcedPlaylist, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedPlaylist, setDeviceBlackout, clearUsbOverride,
   } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
   // A locationId pointing at a Location that no longer exists (e.g. a hand-edited or
@@ -188,6 +188,7 @@ export function HomeScreen({
                 onOpenBlackout={onOpenBlackoutForDevice}
                 onStopForcedContent={(id) => setDeviceForcedPlaylist(id, [])}
                 onStopBlackout={(id) => setDeviceBlackout(id, false)}
+                onClearUsbOverride={clearUsbOverride}
               />
             ))}
           </div>
@@ -221,6 +222,7 @@ export function HomeScreen({
           onOpenBlackout={onOpenBlackoutForDevice}
           onStopForcedContent={(id) => setDeviceForcedPlaylist(id, [])}
           onStopBlackout={(id) => setDeviceBlackout(id, false)}
+          onClearUsbOverride={clearUsbOverride}
         />
       ))}
     </div>

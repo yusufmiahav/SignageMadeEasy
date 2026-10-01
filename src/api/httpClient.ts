@@ -160,6 +160,7 @@ export const httpClient: SignageApiClient = {
   reorderDeviceForcedPlaylist: (deviceId, libId, direction) =>
     request<void>(`/api/devices/${deviceId}/forced-playlist/${libId}/reorder`, { method: 'POST', ...json({ direction }) }),
   setDeviceBlackout: (id, blackout) => request<void>(`/api/devices/${id}/blackout`, { method: 'PUT', ...json({ blackout }) }),
+  clearUsbOverride: (id) => request<void>(`/api/devices/${id}/clear-usb-override`, { method: 'POST' }),
   setDeviceDefaultPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/playlist`, { method: 'PUT', ...json({ libIds }) }),
   addToDeviceDefaultPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/playlist`, { method: 'POST', ...json({ libIds }) }),
   removeFromDeviceDefaultPlaylist: (deviceId, libId) => request<void>(`/api/devices/${deviceId}/playlist/${libId}`, { method: 'DELETE' }),

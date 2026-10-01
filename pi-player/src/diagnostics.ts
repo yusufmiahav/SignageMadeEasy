@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import os from 'node:os';
+import * as usbOverride from './usbOverride.js';
 
 // Piggybacks on the existing ~5s heartbeat (poller.ts) rather than a separate
 // endpoint/poll loop — the hub already has a place to receive this on every tick.
@@ -18,6 +19,8 @@ export interface Diagnostics {
   uptimeSec: number;
   diskFreeMb: number | null;
   diskTotalMb: number | null;
+  /** See usbOverride.ts — surfaced to the hub so the control app can show a badge and offer a remote "Clear" when a screen stops obeying it because of a local USB override. */
+  usbOverrideActive: boolean;
 }
 
 async function measureTemp(): Promise<number | null> {
@@ -54,5 +57,8 @@ async function diskUsage(): Promise<{ freeMb: number | null; totalMb: number | n
 
 export async function collect(): Promise<Diagnostics> {
   const [tempC, throttled, disk] = await Promise.all([measureTemp(), getThrottled(), diskUsage()]);
-  return { tempC, throttled, uptimeSec: Math.round(os.uptime()), diskFreeMb: disk.freeMb, diskTotalMb: disk.totalMb };
+  return {
+    tempC, throttled, uptimeSec: Math.round(os.uptime()), diskFreeMb: disk.freeMb, diskTotalMb: disk.totalMb,
+    usbOverrideActive: usbOverride.isActive(),
+  };
 }

@@ -50,6 +50,8 @@ interface DeviceCardProps {
   onOpenBlackout: (deviceId: string) => void;
   onStopForcedContent: (deviceId: string) => void;
   onStopBlackout: (deviceId: string) => void;
+  /** Shown regardless of groupId — unlike force-content/announcement/blackout above, a USB override is a property of the physical screen, not something a group can set. */
+  onClearUsbOverride: (device: Device) => void;
 }
 
 export function DeviceCard({
@@ -73,6 +75,7 @@ export function DeviceCard({
   onOpenBlackout,
   onStopForcedContent,
   onStopBlackout,
+  onClearUsbOverride,
 }: DeviceCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(device.name);
@@ -189,6 +192,12 @@ export function DeviceCard({
         {advancedInfo && device.mac && <span className="tag tag-neutral">{device.mac}</span>}
         <span className="tag tag-neutral">{device.status === 'online' ? 'Online' : 'Offline'}</span>
       </div>
+      {device.usbOverrideActive && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="tag tag-accent" title="A USB stick plugged into this screen is forcing content on, overriding the hub">USB override active</span>
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onClearUsbOverride(device)}>Clear</button>
+        </div>
+      )}
       {advancedInfo && (device.tempC != null || device.uptimeSec != null || device.totalUptimeSec != null || device.diskFreeMb != null) && (
         <div className="text-muted" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
           {device.tempC != null && (

@@ -10,6 +10,7 @@ import { loadConfig } from './config.js';
 import * as mediaCache from './mediaCache.js';
 import * as wifiManager from './wifiManager.js';
 import * as localContent from './localContent.js';
+import * as usbOverride from './usbOverride.js';
 import * as underclock from './underclock.js';
 import * as staticIp from './staticIp.js';
 import * as ndiPlayer from './ndiPlayer.js';
@@ -54,6 +55,9 @@ export function createApp() {
       : null;
     res.json({
       paired: config != null, ip: getLocalIp(), state: resolved, error, networkSetup, localContent: localContent.get(),
+      // Checked ahead of everything else above in player.js's pollOnce — a manual
+      // override wins even over a live, working hub connection. See usbOverride.ts.
+      usbOverride: usbOverride.get(),
       // Settings screen's "Identify" button — see identifyFlash.ts. player.js triggers
       // its blink overlay whenever this changes from the previous poll's value.
       flashToken: identifyFlash.getToken(),
@@ -82,6 +86,30 @@ export function createApp() {
 
   app.get('/local-content/file', (_req, res) => {
     const file = localContent.filePath();
+    if (!file) return res.status(404).end();
+    res.sendFile(file);
+  });
+
+  // Called by bin/usb-override-mount.sh (as root, via a udev-triggered systemd
+  // unit) right after it finishes copying files from an inserted USB stick onto
+  // this Pi's own disk — see usbOverride.ts's header comment for the full
+  // mechanism. Loopback-only in practice (the mount script calls 127.0.0.1), but
+  // not restricted to it here, same "no auth, LAN-trusted" model as agent.ts.
+  app.post('/usb-override/activate', (_req, res) => {
+    usbOverride.activate();
+    res.status(204).end();
+  });
+
+  // Clears the override — from this Pi's own local setup page, or relayed from the
+  // hub once it's reachable again (see hub/src/piAgent.ts's clearUsbOverride); both
+  // call this exact route, there's no separate hub-only endpoint for it.
+  app.delete('/usb-override', (_req, res) => {
+    usbOverride.clear();
+    res.status(204).end();
+  });
+
+  app.get('/usb-override/file/:name', (req, res) => {
+    const file = usbOverride.filePath(req.params.name);
     if (!file) return res.status(404).end();
     res.sendFile(file);
   });

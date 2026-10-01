@@ -162,6 +162,8 @@ export interface SignageApiClient {
   reorderDeviceForcedPlaylist(deviceId: string, libId: string, direction: 'up' | 'down'): Promise<void>;
   /** Standalone-screen (no group) equivalent of setGroupBlackout — only meaningful while the device has no groupId. */
   setDeviceBlackout(id: string, blackout: boolean): Promise<void>;
+  /** Clears a USB-stick-forced override on this screen (see Device.usbOverrideActive) — meaningful regardless of groupId, since it's a property of the physical screen, not its group. No-op if nothing's active. */
+  clearUsbOverride(id: string): Promise<void>;
   /** Standalone-screen (no group) equivalents of the group-level default-playlist/event methods above — only meaningful while the device has no groupId. */
   setDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void>;
   addToDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void>;

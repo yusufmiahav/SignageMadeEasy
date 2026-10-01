@@ -167,6 +167,8 @@ export interface Device {
   totalUptimeSec?: number | null;
   diskFreeMb?: number | null;
   diskTotalMb?: number | null;
+  /** True while this screen is showing content forced on by a USB stick plugged directly into it, overriding whatever this device/its group would otherwise show — see pi-player/src/usbOverride.ts. Reported alongside every heartbeat; cleared either locally on the Pi or by routes/devices.ts's clear-usb-override (relayed to the Pi, then optimistically reflected here immediately rather than waiting for the next heartbeat). */
+  usbOverrideActive?: boolean;
 }
 
 export interface DiscoveredDevice {

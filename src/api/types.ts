@@ -168,6 +168,8 @@ export interface Device {
   totalUptimeSec?: number | null;
   diskFreeMb?: number | null;
   diskTotalMb?: number | null;
+  /** True while this screen is showing content forced on by a USB stick plugged directly into it, overriding whatever this device/its group would otherwise show. Always false/undefined in standalone/localStorage mode (no real Pi/USB port to ask). */
+  usbOverrideActive?: boolean;
 }
 
 /** One line serving a searched-for TfL station — see SignageApiClient.searchTflStations. */

@@ -345,6 +345,13 @@ if (!deviceColsForced.includes('forcedPlaylist')) db.exec('ALTER TABLE devices A
 const deviceColsUptime = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
 if (!deviceColsUptime.includes('baseUptimeSec')) db.exec("ALTER TABLE devices ADD COLUMN baseUptimeSec INTEGER NOT NULL DEFAULT 0");
 
+// Same reasoning, for hubs deployed before a USB stick plugged into the screen
+// itself could force content on — reported alongside every heartbeat (see
+// pi-player/src/usbOverride.ts), off for every existing screen until one actually
+// has a USB override active.
+const deviceColsUsb = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceColsUsb.includes('usbOverrideActive')) db.exec('ALTER TABLE devices ADD COLUMN usbOverrideActive INTEGER NOT NULL DEFAULT 0');
+
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's

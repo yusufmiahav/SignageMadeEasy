@@ -33,7 +33,7 @@ function showScreen(name) {
 // instead of restarting it from scratch on every tick.
 let playlistKey = null;
 let activeItems = [];
-let activeKind = 'default'; // 'blackout' | 'forced' | 'event' | 'default' — see playItem's !item branch
+let activeKind = 'default'; // 'blackout' | 'forced' | 'event' | 'default' | 'usb-override' — see playItem's !item branch
 let currentIndex = 0;
 let advanceTimer = null;
 let clockTimer = null; // the 'clock' item's setInterval — not a <video>/<canvas>, so teardownStage's generic child.remove() wouldn't stop it on its own.
@@ -687,6 +687,15 @@ function localContentState(item) {
   return { kind: 'default', items: [item], announcement: { on: false, text: null } };
 }
 
+// Wraps the USB override's copied files (see usbOverride.ts) as a player state the
+// same way localContentState wraps the single-file fallback above — multi-item here,
+// since a USB override can be a whole playlist, but otherwise reusing the exact same
+// playItem/renderPlayerState rotation logic the hub's own default/forced playlists
+// already use (nothing special needed for a multi-item list to loop).
+function usbOverrideState(usbOverride) {
+  return { kind: 'usb-override', items: usbOverride.items, announcement: { on: false, text: null } };
+}
+
 async function pollOnce() {
   try {
     const res = await fetch('/state');
@@ -710,6 +719,14 @@ async function pollOnce() {
       networkPasswordEl.textContent = data.networkSetup.password ?? '—';
       networkUrlEl.textContent = data.networkSetup.url ?? '—';
       showScreen('networkSetup');
+    } else if (data.usbOverride) {
+      // Wins even over a live, working hub connection — a deliberate manual
+      // override (see usbOverride.ts's header comment), not merely a fallback for
+      // when the hub can't be reached the way localContent below is. Stays active
+      // regardless of whether the USB stick itself is still plugged in; only loses
+      // out to the network-setup screen above (still mid-provisioning takes
+      // priority over anything this screen would otherwise show).
+      renderPlayerState(usbOverrideState(data.usbOverride));
     } else if (!data.paired && data.localContent) {
       renderPlayerState(localContentState(data.localContent));
     } else if (!data.paired) {

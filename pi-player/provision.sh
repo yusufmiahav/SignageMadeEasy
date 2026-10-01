@@ -272,6 +272,24 @@ fi
 rm -f "$SUDOERS_TMP"
 
 # ---------------------------------------------------------------------------
+log "Installing USB-override detection (plug in a USB stick with a top-level 'signage' folder of images/videos to force content onto this screen — see pi-player/src/usbOverride.ts)"
+# Unconditional on both platforms — plain udev/systemd, no Pi-specific hardware
+# involved. Same "deliberately NOT under $APP_DIR" reasoning as the other root-run
+# scripts above: this one is invoked by udev/systemd directly (as root), never via
+# a sudoers grant from $SIGNAGE_USER, but the principle is the same — a script that
+# runs as root must not live somewhere the unprivileged app user can edit.
+install -m 755 -o root -g root "$INSTALL_DIR/src/pi-player/bin/usb-override-mount.sh" /opt/signage/bin/usb-override-mount.sh
+cp "$APP_DIR/systemd/signage-usb-override@.service" /etc/systemd/system/
+cp "$APP_DIR/udev/99-signage-usb-override.rules" /etc/udev/rules.d/
+systemctl daemon-reload
+udevadm control --reload-rules
+# No udevadm trigger here on purpose — re-triggering "add" for every already-present
+# block device on an already-running kiosk would re-run this against the Pi's own
+# root filesystem partitions too (ID_BUS=="usb" in the rule excludes them, but
+# there's no reason to exercise that on every re-provision when the rule only
+# needs to be live for the *next* USB insertion anyway).
+
+# ---------------------------------------------------------------------------
 log "Installing the SignageMadeEasy boot splash (Plymouth)"
 # Replaces the raw kernel/systemd boot text with a plain black screen, wordmark, and
 # small corner spinner — see assets/plymouth/signagemadeeasy.script. Its syntax was

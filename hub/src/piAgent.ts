@@ -114,3 +114,12 @@ export async function reprovision(ip: string): Promise<void> {
   const res = await postToAgent(ip, '/reprovision');
   if (!res.ok) throw new Error(await agentErrorMessage(res));
 }
+
+// Home screen's "Clear USB override" button — the same DELETE /usb-override route
+// the Pi's own local setup page calls (see pi-player/src/app.ts), just relayed
+// through the hub for when the hub is reachable but walking up to the physical
+// screen isn't convenient. See pi-player/src/usbOverride.ts for the feature itself.
+export async function clearUsbOverride(ip: string): Promise<void> {
+  const res = await agentFetch(ip, '/usb-override', { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Pi agent at ${ip} rejected clear-usb-override: ${res.status}`);
+}

@@ -481,10 +481,10 @@ interface DeviceRow {
   id: string; name: string; ip: string; mac: string | null; groupId: string | null; locationId: string | null; announcementId: string | null; announcementOn: number;
   videoQuality: Device['videoQuality']; lastSeenAt: number | null;
   tempC: number | null; throttled: string | null; uptimeSec: number | null; baseUptimeSec: number; diskFreeMb: number | null; diskTotalMb: number | null;
-  forcedPlaylist: string | null; forcedContentId: string | null; blackout: number; defaultPlaylist: string;
+  forcedPlaylist: string | null; forcedContentId: string | null; blackout: number; defaultPlaylist: string; usbOverrideActive: number;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -506,6 +506,7 @@ function rowToDevice(r: DeviceRow): Device {
     tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, totalUptimeSec: totalUptimeFor(r), diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
     forcedPlaylist, forcedContentId: forcedPlaylist[0] ?? null, blackout: !!r.blackout,
     defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForDevice(r.id),
+    usbOverrideActive: !!r.usbOverrideActive,
   };
 }
 
@@ -573,6 +574,15 @@ export function reorderDeviceForcedPlaylist(deviceId: string, libId: string, dir
 
 export function setDeviceBlackout(id: string, blackout: boolean): void {
   db.prepare('UPDATE devices SET blackout = ? WHERE id = ?').run(blackout ? 1 : 0, id);
+}
+
+// Normally set purely by recordHeartbeat above, straight from what the Pi reports.
+// This direct setter exists only for routes/devices.ts's clear-usb-override, so a
+// hub-initiated clear shows as cleared immediately rather than waiting up to one
+// heartbeat interval for the Pi to report it — the next heartbeat will confirm (or
+// correct) it either way.
+export function setDeviceUsbOverrideActive(id: string, active: boolean): void {
+  db.prepare('UPDATE devices SET usbOverrideActive = ? WHERE id = ?').run(active ? 1 : 0, id);
 }
 
 export function setDeviceDefaultPlaylist(deviceId: string, libIds: string[]): void {
@@ -672,6 +682,8 @@ export interface HeartbeatDiagnostics {
   uptimeSec?: number | null;
   diskFreeMb?: number | null;
   diskTotalMb?: number | null;
+  /** See pi-player/src/usbOverride.ts. */
+  usbOverrideActive?: boolean;
 }
 
 export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnostics): void {
@@ -687,9 +699,9 @@ export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnost
       db.prepare('UPDATE devices SET baseUptimeSec = baseUptimeSec + ? WHERE id = ?').run(prev.uptimeSec, id);
     }
   }
-  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ? WHERE id = ?').run(
+  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ?, usbOverrideActive = ? WHERE id = ?').run(
     Date.now(), ip,
-    diag?.tempC ?? null, diag?.throttled ?? null, newUptime, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null,
+    diag?.tempC ?? null, diag?.throttled ?? null, newUptime, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null, diag?.usbOverrideActive ? 1 : 0,
     id,
   );
 }

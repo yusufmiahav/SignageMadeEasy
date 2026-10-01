@@ -476,6 +476,21 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
+  // Catches and toasts its own failure rather than leaving an unhandled rejection
+  // (same reasoning as updateDevice below): the badge this button lives on only
+  // shows up because the screen is already ignoring the hub, so the clear attempt
+  // itself failing to reach it is a real, not-rare case worth surfacing rather
+  // than a silent no-op.
+  const clearUsbOverride = useCallback(async (device: Device) => {
+    try {
+      await api.clearUsbOverride(device.id);
+      await refreshDevices();
+      showToast(`USB override cleared on ${device.name}`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : `Could not clear the USB override on ${device.name}`);
+    }
+  }, [refreshDevices, showToast]);
+
   const setDeviceDefaultPlaylist = useCallback(async (deviceId: string, libIds: string[]) => {
     await api.setDeviceDefaultPlaylist(deviceId, libIds);
     await refreshDevices();
@@ -697,6 +712,7 @@ export function useAppState() {
     removeFromDeviceForcedPlaylist,
     reorderDeviceForcedPlaylist,
     setDeviceBlackout,
+    clearUsbOverride,
     setDeviceDefaultPlaylist,
     addToDeviceDefaultPlaylist,
     removeFromDeviceDefaultPlaylist,

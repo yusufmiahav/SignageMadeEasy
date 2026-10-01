@@ -25,8 +25,8 @@ devicesRouter.post('/:id/heartbeat', (req, res) => {
   const device = store.getDevice(req.params.id);
   if (!device) return res.status(404).json({ error: 'not found' });
   const ip = (req.body?.ip as string | undefined) ?? req.ip ?? device.ip;
-  const { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb } = req.body ?? {};
-  store.recordHeartbeat(req.params.id, ip, { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb });
+  const { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, usbOverrideActive } = req.body ?? {};
+  store.recordHeartbeat(req.params.id, ip, { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, usbOverrideActive });
   res.status(204).end();
 });
 
@@ -204,6 +204,23 @@ devicesRouter.post('/:id/reprovision', async (req, res) => {
     res.status(204).end();
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : 'could not reach device' });
+  }
+});
+
+// Home screen's "Clear USB override" button — see pi-player/src/usbOverride.ts and
+// piAgent.ts's clearUsbOverride. Optimistically flips the hub's own copy of the flag
+// on success so the badge disappears immediately rather than waiting for the next
+// heartbeat to confirm it (which still happens regardless, and is the only thing
+// that sets it back to true again if something re-activates the override).
+devicesRouter.post('/:id/clear-usb-override', async (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  try {
+    await piAgent.clearUsbOverride(device.ip);
+    store.setDeviceUsbOverrideActive(device.id, false);
+    res.status(204).end();
+  } catch {
+    res.status(502).json({ error: 'could not reach device' });
   }
 });
 

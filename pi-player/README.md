@@ -232,6 +232,51 @@ whatever was there before, and "Clear local content" removes it. The instant
 the hub has real content to serve again, the player switches back to it
 automatically; local content never needs to be manually turned off.
 
+## USB override (manual force, no network needed)
+
+Plug a USB stick into the screen itself with a folder named **`signage`** at
+its top level, containing images/videos, and this player forces them on —
+in order by filename (prefix with `1-`, `2-`, etc. to control playback order),
+looping. Unlike the local-content fail-safe above, this wins even while the
+hub is reachable and has its own valid content: it's a deliberate manual
+override for "show this, right now, regardless of what the network says,"
+not a disconnection fallback.
+
+A udev rule (`udev/99-signage-usb-override.rules`) and a root-owned script
+(`bin/usb-override-mount.sh`, installed by `provision.sh`) detect the stick,
+mount it read-only, copy the matching files onto this Pi's own disk, and
+unmount immediately — the USB stick itself can be pulled straight back out
+the moment the copy finishes, the override keeps playing either way. Only a
+top-level `signage` folder is recognized specifically so a technician's
+personal USB stick (backup photos, an unrelated job's files) plugged in for
+any other reason doesn't silently take over the screen.
+
+It stays forced until explicitly cleared — pulling the USB stick out does
+**not** undo it — either from this Pi's own local setup page (same
+`http://<pi-ip>:8088/network-setup.html`, a "USB override" section below
+Local content) or from the control app's Home screen, which shows a "USB
+override active" badge with its own "Clear" button on any screen currently
+overridden this way (relayed to the Pi the same way Restart/Update are).
+
+Supported files: images (jpg, jpeg, png, gif, webp, bmp) and videos (mp4,
+mov, mkv, webm, avi, m4v) — anything else in the `signage` folder is ignored.
+Inserting a different USB stick replaces whatever override was active before,
+rather than merging with it.
+
+**Unverified on real hardware.** The copy/activate/serve logic (everything in
+`src/usbOverride.ts`) was exercised end-to-end in this sandbox against a
+loopback-mounted disk image standing in for a USB stick, including the real
+`bin/usb-override-mount.sh` script — mount, folder/extension filtering,
+copy, unmount, and activating the override over HTTP all worked exactly as
+designed. What couldn't be tested here is the actual trigger path: a real USB
+insertion firing the udev rule, which hands off to the
+`signage-usb-override@.service` systemd template unit. That hand-off pattern
+(`TAG+="systemd"`, `ENV{SYSTEMD_WANTS}=`) is standard and well-established,
+but hasn't been confirmed on real Raspberry Pi OS/Debian hardware yet — worth
+testing on one spare screen before relying on it in the field. If a USB stick
+doesn't seem to trigger anything, `journalctl -u signage-usb-override@*` and
+`udevadm monitor` (while inserting the stick) are the first things to check.
+
 ## Static IP or DHCP
 
 Same setup page, an "IP address" section: DHCP (the default) or a static
