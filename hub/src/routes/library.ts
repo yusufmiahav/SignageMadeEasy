@@ -8,6 +8,7 @@ import * as store from '../store.js';
 import { countPdfPages } from '../pdfPages.js';
 import { getVideoDuration } from '../videoDuration.js';
 import { needsCapping, transcodeToCapped } from '../videoTranscode.js';
+import * as tflArrivals from '../tflArrivals.js';
 
 export const libraryRouter = Router();
 
@@ -172,6 +173,10 @@ libraryRouter.post('/tfl-arrivals', (req, res) => {
     type: 'tfl-arrivals',
     tflStations: stations,
   });
+  // A head start on the next poll cycle (see tflArrivals.ts's pollNow) — without
+  // this, a freshly added station's board sits empty until whatever's left of the
+  // current up-to-30s cycle runs out.
+  tflArrivals.pollNow(stations.map((s) => s.stopPointId));
   res.status(201).json(item);
 });
 
@@ -222,7 +227,11 @@ libraryRouter.patch('/:id', (req, res) => {
     if (!isValidTflStations(tflStations)) {
       return res.status(400).json({ error: 'tflStations must be a non-empty array of { stopPointId, stopPointName?, lines? }' });
     }
-    store.setLibraryItemTflStations(req.params.id, tflStations.map((s) => ({ stopPointId: s.stopPointId, stopPointName: s.stopPointName || s.stopPointId, ...(s.lines && s.lines.length > 0 && { lines: s.lines }) })));
+    const resolvedStations = tflStations.map((s) => ({ stopPointId: s.stopPointId, stopPointName: s.stopPointName || s.stopPointId, ...(s.lines && s.lines.length > 0 && { lines: s.lines }) }));
+    store.setLibraryItemTflStations(req.params.id, resolvedStations);
+    // Same head start as the POST /tfl-arrivals route above — covers a newly
+    // added station on an existing board, not just a brand-new one.
+    tflArrivals.pollNow(resolvedStations.map((s) => s.stopPointId));
   }
   res.status(204).end();
 });

@@ -84,17 +84,6 @@ export async function searchStations(query: string): Promise<StationResult[]> {
   const matches = (data.matches ?? []).slice(0, SEARCH_RESULT_CAP);
 
   const resolved = await Promise.all(matches.map(async (m): Promise<StationResult[]> => {
-    // TfL's own `modes` search param is a bias, not a hard filter — confirmed by
-    // this exact bug report: searching "St James's Park" (also a well-known royal
-    // park, with its own bus stops/pier under the same name) surfaced a non-rail
-    // match alongside the real Underground station. That decoy has no children
-    // (so it took the "leaf station" branch below) and got returned as a
-    // selectable result indistinguishable from the real station — once added,
-    // /StopPoint/<id>/Arrivals legitimately returns [] forever for it, since it
-    // was never a rail stop to begin with. The hub-children branch below already
-    // filters children by rail mode; a plain leaf match needs the exact same
-    // check on its own `modes`, or a same-named non-rail decoy slips through.
-    if (!(m.modes ?? []).some((mode) => RAIL_MODES.includes(mode))) return [];
     const detail = await stationDetail(m.id);
     const children = (detail?.children ?? []).filter((c) => (c.modes ?? []).some((mode) => RAIL_MODES.includes(mode)));
     if (children.length === 0) {
@@ -103,6 +92,20 @@ export async function searchStations(query: string): Promise<StationResult[]> {
       // populate the filter checkboxes; otherwise falls back to an empty list,
       // meaning "show every line reported at playback time" (see getBoardForStop).
       const lines = (detail?.lines ?? []).filter((l) => isRailLineId(l.id));
+      // Decoy protection: TfL's own `modes` search param is a bias, not a hard
+      // filter, so a same-named non-rail StopPoint (e.g. searching "St James's
+      // Park" — also a well-known royal park, with its own bus stops/pier under
+      // the same name) can surface as a selectable match alongside the real
+      // Underground station. A genuine decoy has no rail lines at all once its
+      // detail is actually fetched, so that's the signal used here — NOT the
+      // match's own top-level `modes` field (tried first, but that field turned
+      // out to be sparse/unreliable for plenty of perfectly real stations, e.g.
+      // Bromley-by-Bow — filtering on it directly broke search for almost every
+      // station except the one hand-tested while fixing the original decoy bug).
+      // Only filtered when detail lookup actually succeeded and came back empty —
+      // a failed lookup (network hiccup) falls back to trusting the search match
+      // rather than discarding a possibly-good result over an API hiccup.
+      if (detail && lines.length === 0) return [];
       return [{ id: m.id, name: m.name, modes: m.modes ?? [], lines }];
     }
     // A hub — expand into its actual queryable rail-mode children (each fetched
@@ -190,6 +193,21 @@ export function startPolling(getNeeded: () => string[]): void {
   getNeededStopIds = getNeeded;
   void pollAll();
   setInterval(() => void pollAll(), POLL_INTERVAL_MS);
+}
+
+/**
+ * Fetches arrivals for the given stations right away instead of waiting for the
+ * next up-to-30s pollAll() tick — called right after a 'tfl-arrivals' item is
+ * created or has stations added (see routes/library.ts), so a newly added
+ * station's board doesn't sit empty for however long is left on the current
+ * poll cycle. A no-op before startPolling() has run (nothing to add a station to
+ * yet) or for an id not actually reached by getNeededStopIds (removed again
+ * before this resolves, or the hub restarted mid-request) — pollAll's own next
+ * tick is the source of truth either way, this is purely a head start.
+ */
+export function pollNow(stopPointIds: string[]): void {
+  if (!started) return;
+  void Promise.all(stopPointIds.map((id) => pollStop(id)));
 }
 
 /**
