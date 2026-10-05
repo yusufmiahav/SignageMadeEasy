@@ -28,8 +28,8 @@
      inline style="display:flex" on the element itself would beat [hidden]'s
      display:none outright regardless of specificity rules, silently keeping it
      visible even while "hidden" is set. */
-  #ip-manual-fields, #underclock-reboot-prompt, #boot-rotation-reboot-prompt { display: flex; flex-direction: column; gap: 10px; }
-  #ip-manual-fields[hidden], #underclock-reboot-prompt[hidden], #boot-rotation-reboot-prompt[hidden] { display: none; }
+  #ip-manual-fields, #underclock-reboot-prompt, #boot-rotation-reboot-prompt, #resolution-reboot-prompt { display: flex; flex-direction: column; gap: 10px; }
+  #ip-manual-fields[hidden], #underclock-reboot-prompt[hidden], #boot-rotation-reboot-prompt[hidden], #resolution-reboot-prompt[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -130,6 +130,27 @@
     <div id="boot-rotation-reboot-prompt" hidden>
       <p style="color: #ffcf6e;">The boot splash (shown briefly before this screen starts) needs a reboot to catch up to this rotation.</p>
       <button type="button" id="boot-rotation-reboot">Reboot now</button>
+    </div>
+
+    <hr />
+
+    <h2>Display resolution</h2>
+    <p>If this screen renders into a small box with black bars all the way around
+      instead of filling the panel, the TV negotiated the wrong mode on its own —
+      forcing 1080p here fixes it on every TV we've seen this happen on. Leave on
+      Auto unless you're actually seeing that. Takes effect on the next reboot
+      (you'll be prompted below).</p>
+    <div>
+      <label for="resolution-select">Resolution</label>
+      <select id="resolution-select">
+        <option value="auto">Auto (let the TV negotiate)</option>
+        <option value="1920x1080">Force 1920x1080</option>
+      </select>
+    </div>
+    <p id="resolution-status"></p>
+    <div id="resolution-reboot-prompt" hidden>
+      <p style="color: #ffcf6e;">Reboot required for this to take effect.</p>
+      <button type="button" id="resolution-reboot">Reboot now</button>
     </div>
 
     <hr />
@@ -334,6 +355,66 @@
       bootRotationReboot.disabled = true;
       orientationStatus.textContent = 'Rebooting…';
       orientationStatus.className = '';
+      try {
+        await fetch('/system/reboot', { method: 'POST' });
+      } catch {
+        // Expected — the Pi is going down.
+      }
+    });
+
+    // --- Display resolution ---------------------------------------------------
+    const resolutionSelect = document.getElementById('resolution-select');
+    const resolutionStatus = document.getElementById('resolution-status');
+    const resolutionRebootPrompt = document.getElementById('resolution-reboot-prompt');
+    const resolutionReboot = document.getElementById('resolution-reboot');
+
+    async function loadResolution() {
+      try {
+        const res = await fetch('/display-resolution');
+        const data = await res.json();
+        resolutionSelect.value = data.configured;
+        resolutionRebootPrompt.hidden = true;
+      } catch {
+        resolutionStatus.textContent = "Couldn't check the current setting.";
+        resolutionStatus.className = 'err';
+      }
+    }
+    void loadResolution();
+
+    resolutionSelect.addEventListener('change', async () => {
+      resolutionSelect.disabled = true;
+      resolutionStatus.textContent = 'Applying…';
+      resolutionStatus.className = '';
+      resolutionRebootPrompt.hidden = true;
+      try {
+        const res = await fetch('/display-resolution', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: resolutionSelect.value }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          resolutionStatus.textContent = data.supported
+            ? 'Saved — reboot to apply.'
+            : "Saved, but no connected display was found to apply this to right now (nothing plugged in yet?) — it'll apply the next time this Pi boots with one connected.";
+          resolutionStatus.className = 'ok';
+          resolutionRebootPrompt.hidden = !data.rebootRequired;
+        } else {
+          resolutionStatus.textContent = `Couldn't apply: ${data.error ?? 'unknown error'}.`;
+          resolutionStatus.className = 'err';
+        }
+      } catch {
+        resolutionStatus.textContent = 'Lost connection to the display — try again.';
+        resolutionStatus.className = 'err';
+      } finally {
+        resolutionSelect.disabled = false;
+      }
+    });
+
+    resolutionReboot.addEventListener('click', async () => {
+      resolutionReboot.disabled = true;
+      resolutionStatus.textContent = 'Rebooting…';
+      resolutionStatus.className = '';
       try {
         await fetch('/system/reboot', { method: 'POST' });
       } catch {

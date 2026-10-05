@@ -8,20 +8,25 @@
 # orientation" section for why the boot-time picture needs this second,
 # kernel-level mechanism, and why it was left unimplemented until now.
 #
-# Uses the modern KMS `video=<connector>:d,rotate=<degrees>` kernel command-line
-# parameter (the `d` means "keep the driver's own default mode," so this never
-# forces a resolution) rather than the legacy firmware `display_rotate=` setting
-# in config.txt: an unmatched/wrong connector name here is a harmless no-op — the
-# kernel just doesn't find that output to apply it to, and boot proceeds
-# completely normally, just unrotated. config.txt's own display_rotate= has no
-# such safety net and can leave a Pi with no display output at all if it's wrong,
-# which is exactly the risk that made this a "real hardware follow-up" rather
-# than something guessed at blind.
+# Uses the modern KMS `video=<connector>:<mode>,rotate=<degrees>` kernel
+# command-line parameter rather than the legacy firmware `display_rotate=`
+# setting in config.txt: an unmatched/wrong connector name here is a harmless
+# no-op — the kernel just doesn't find that output to apply it to, and boot
+# proceeds completely normally, just unrotated. config.txt's own display_rotate=
+# has no such safety net and can leave a Pi with no display output at all if
+# it's wrong, which is exactly the risk that made this a "real hardware
+# follow-up" rather than something guessed at blind.
+#
+# <mode> is normally "d" (the driver's own default/preferred mode) unless
+# set-display-resolution.sh has separately forced an explicit one for this same
+# connector — this script preserves whatever that's currently set to rather than
+# clobbering it back to "d", since both scripts share one `video=` cmdline token
+# but are independently invoked (see displayResolution.ts).
 #
 # usage: set-boot-rotation.sh <connector> <0|90|180|270>
-#   Always strips any existing video= rotation param first (idempotent — safe to
-#   call repeatedly, never accumulates duplicate tokens), then re-adds one only
-#   if degrees isn't 0.
+#   Always strips any existing video= token first (idempotent — safe to call
+#   repeatedly, never accumulates duplicate tokens), then re-adds one carrying
+#   forward the existing mode, with rotate= set only if degrees isn't 0.
 
 set -euo pipefail
 
@@ -37,10 +42,18 @@ if [[ -z "$CONNECTOR" ]] || [[ ! "$DEGREES" =~ ^(0|90|180|270)$ ]]; then
   exit 1
 fi
 
-# Single line, space-separated tokens — cmdline.txt must never contain a newline,
-# same constraint provision.sh's own edits to this file already respect.
+CONTENT="$(cat "$CMDLINE_FILE")"
+EXISTING_MODE="d"
+if [[ "$CONTENT" =~ video=${CONNECTOR}:([^,[:space:]]+) ]]; then
+  EXISTING_MODE="${BASH_REMATCH[1]}"
+fi
+
+# Strips any existing video= token (for any connector — this project only ever
+# targets the single connected output, see drmConnector.ts) before re-adding.
 sed -i -E 's/ ?video=[^ ]*//g; s/[[:space:]]+/ /g; s/[[:space:]]+$//' "$CMDLINE_FILE"
 
-if [[ "$DEGREES" != "0" ]]; then
-  sed -i "s/\$/ video=${CONNECTOR}:d,rotate=${DEGREES}/" "$CMDLINE_FILE"
+if [[ "$DEGREES" != "0" || "$EXISTING_MODE" != "d" ]]; then
+  TOKEN="video=${CONNECTOR}:${EXISTING_MODE}"
+  [[ "$DEGREES" != "0" ]] && TOKEN="${TOKEN},rotate=${DEGREES}"
+  sed -i "s/\$/ ${TOKEN}/" "$CMDLINE_FILE"
 fi

@@ -9,46 +9,20 @@
 import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { detectConnector } from './drmConnector.js';
 import type { Orientation } from './orientationConfig.js';
 
 const execFileAsync = promisify(execFile);
 const SCRIPT_PATH = process.env.SIGNAGE_BOOT_ROTATION_SCRIPT ?? '/opt/signage/bin/set-boot-rotation.sh';
-const CMDLINE_CANDIDATES = ['/boot/firmware/cmdline.txt', '/boot/cmdline.txt'];
-const DRM_CLASS_PATH = process.env.SIGNAGE_DRM_CLASS_PATH ?? '/sys/class/drm';
+// Overridable for testing — this project's sandbox has no real /boot to point
+// at, same reasoning as SIGNAGE_DRM_CLASS_PATH in drmConnector.ts.
+const CMDLINE_CANDIDATES = process.env.SIGNAGE_CMDLINE_PATH
+  ? [process.env.SIGNAGE_CMDLINE_PATH]
+  : ['/boot/firmware/cmdline.txt', '/boot/cmdline.txt'];
 
 function cmdlineFile(): string | null {
   for (const p of CMDLINE_CANDIDATES) {
     if (fs.existsSync(p)) return p;
-  }
-  return null;
-}
-
-// Finds the one connected DRM output's connector name (e.g. "HDMI-A-1") by reading
-// /sys/class/drm/*/status — the sysfs interface vc4-kms-v3d (the default KMS
-// driver on current Raspberry Pi OS) exposes for every enumerated connector. Picks
-// the first entry reporting "connected" rather than hardcoding a port name, since a
-// kiosk might be wired to either HDMI port (or, on some panels, DSI) and guessing
-// wrong would just make the rotation param a silent no-op instead of applying to
-// the real output.
-function detectConnector(): string | null {
-  let entries: string[];
-  try {
-    entries = fs.readdirSync(DRM_CLASS_PATH);
-  } catch {
-    return null;
-  }
-  for (const entry of entries) {
-    // Real entries look like "card1-HDMI-A-1" — strip the "cardN-" prefix to get
-    // the bare connector name the `video=` kernel parameter expects.
-    const match = entry.match(/^card\d+-(.+)$/);
-    if (!match) continue;
-    try {
-      const status = fs.readFileSync(`${DRM_CLASS_PATH}/${entry}/status`, 'utf8').trim();
-      if (status === 'connected') return match[1];
-    } catch {
-      // Not every entry under /sys/class/drm is a connector with a status file
-      // (e.g. a render node) — skip it and keep looking.
-    }
   }
   return null;
 }
@@ -82,6 +56,9 @@ export function getStatus(): BootRotationStatus {
  * pattern as underclock.ts's own reboot-required toggle). A no-op when nothing's
  * connected to detect a connector from (see getStatus().supported) — there is
  * nothing here safe to guess at, so this just leaves cmdline.txt untouched.
+ * set-boot-rotation.sh preserves whatever resolution mode displayResolution.ts
+ * may have separately configured for this same connector — the two settings
+ * share one `video=` cmdline token but are independently owned.
  */
 export async function setOrientation(orientation: Orientation): Promise<void> {
   const connector = detectConnector();

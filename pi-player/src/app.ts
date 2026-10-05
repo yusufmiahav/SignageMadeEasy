@@ -18,6 +18,7 @@ import * as identifyFlash from './identifyFlash.js';
 import * as orientationConfig from './orientationConfig.js';
 import * as displayOrientation from './displayOrientation.js';
 import * as bootRotation from './bootRotation.js';
+import * as displayResolution from './displayResolution.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -215,6 +216,29 @@ export function createApp() {
     // apply on reboot" shape as underclock.ts's own rebootRequired.
     const bootRotationRebootRequired = value !== '0' && status.supported;
     res.json({ ok: true, value, applied, bootRotation: status, bootRotationRebootRequired });
+  });
+
+  // Forces a specific HDMI output mode instead of trusting the connected
+  // display's own EDID negotiation — see displayResolution.ts's header comment
+  // for why. Pi-local only, same reasoning as /orientation above; only takes
+  // effect on reboot, same "write now, reboot later" shape too.
+  app.get('/display-resolution', (_req, res) => {
+    res.json(displayResolution.getStatus());
+  });
+
+  app.post('/display-resolution', async (req, res) => {
+    const { value } = req.body ?? {};
+    if (value !== 'auto' && value !== '1920x1080') {
+      return res.status(400).json({ error: "value must be 'auto' or '1920x1080'" });
+    }
+    await displayResolution.setResolution(value).catch(() => {});
+    const status = displayResolution.getStatus();
+    // Unlike orientation (which also live-applies via sway's own transform, so
+    // only a non-'0' value needs the boot splash to separately catch up),
+    // nothing here applies live at all — every change, including back to
+    // 'auto', needs a reboot to take effect.
+    const rebootRequired = status.supported;
+    res.json({ ok: true, ...status, rebootRequired });
   });
 
   // Native NDI playback (Pi 4/5 or an x86 device only — see ndiPlayer.ts). Mirrors the mpv-branch's own

@@ -203,6 +203,49 @@ behavior, but the exact `swaymsg` invocation and the socket-discovery approach
 (finding sway's IPC socket file, since the player agent isn't a child process of
 sway and has no `SWAYSOCK` env var to inherit) need a real confirm-or-fix pass.
 
+## Display resolution (fixes a TV showing the wrong aspect ratio)
+
+**Pi-local setting** — same setup page, a "Display resolution" section below
+orientation. Reported symptom this fixes: on some consumer TVs, the whole
+picture renders into a small box with black bars on **all four sides** instead
+of filling the panel — not the two-sided letterboxing you'd expect from
+content whose own aspect ratio doesn't match 16:9 (that's `player.css`'s
+`object-fit: contain`, working as intended), but the *entire* Chromium output
+shrunk and centered. Root cause: `vc4-kms-v3d`'s own "use whatever mode the
+display reports as its default/preferred" EDID negotiation (the `d` mode
+`set-boot-rotation.sh` already relies on for orientation) isn't reliable on
+every TV — some report a mode the TV then treats as a PC/DMT signal rather
+than a normal TV/CEA one, which some TVs display without the scaling they'd
+apply to a standard HDMI-TV signal. Every content item this project serves is
+already sized for 1920x1080 (see the control app's own "1920×1080" labels) —
+forcing that exact mode removes the ambiguity instead of hoping each TV's EDID
+negotiates correctly.
+
+Options: **Auto (default)** — unchanged behavior, lets the display negotiate
+its own mode — and **Force 1920x1080**, which appends a
+`video=<connector>:1920x1080@60` kernel command-line parameter
+(`src/displayResolution.ts`/`bin/set-display-resolution.sh`), using the same
+connector auto-detection and same fail-safe "unmatched connector is a harmless
+no-op" reasoning as orientation's boot-rotation mechanism above. Shares that
+same `cmdline.txt` token (`video=<connector>:<mode>,rotate=<degrees>`) —
+changing one preserves whatever the other is currently set to, so forcing a
+resolution doesn't undo a configured rotation and vice versa. Unlike
+orientation, nothing here applies live: both the initial negotiation and any
+change to it only take effect on the next boot, so the setup page always
+prompts for a reboot after a change, never just on a non-default value.
+
+**UNVERIFIED on real hardware as of writing** — the write/idempotency/merge
+mechanics (preserving the other setting's token, never introducing a newline,
+removing the parameter entirely once both settings are back at their
+defaults) were thoroughly tested against simulated `cmdline.txt` content run
+through the real scripts, including a full set-resolution/set-rotation/
+set-resolution-back cross-sequence — but whether a real consumer TV actually
+renders correctly, full-screen, once this mode is forced has not been
+confirmed against physical hardware. If a screen is showing the small-box
+symptom described above, re-provision it (this needs re-provisioning, not
+just the fast Update path — a new root script and sudoers grant), set
+"Force 1920x1080", reboot, and let us know whether it fixed it either way.
+
 ## Configuring Wi-Fi in the field (no SSH needed)
 
 If a Pi loses its Wi-Fi connection for about a minute, its screen switches to
