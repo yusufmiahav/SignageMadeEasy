@@ -17,7 +17,7 @@ interface SettingsScreenProps {
   onSetHideAnnouncementRow: (value: boolean) => void;
   onOpenDevicePreview: (device: Device) => void;
   onOpenDeviceUpdate: (device: Device) => void;
-  onOpenUpdateResults: (results: UpdateResult[]) => void;
+  onOpenUpdateResults: (results: UpdateResult[], kind: 'update' | 'reprovision' | 'restart') => void;
 }
 
 function isBackup(value: unknown): value is Backup {
@@ -42,8 +42,9 @@ export function SettingsScreen({
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation, setDeviceIp,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
-    safetyHold, setSafetyHold, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, hubVersion, updateLog,
+    safetyHold, setSafetyHold, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, reprovisionAllDevices, restartAllDevices, hubVersion, updateLog,
   } = app;
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [hubNetworkDrafts, setHubNetworkDrafts] = useState<SavedHubNetwork[]>(savedHubNetworks);
   useEffect(() => setHubNetworkDrafts(savedHubNetworks), [savedHubNetworks]);
   const [newNetworkName, setNewNetworkName] = useState('');
@@ -608,7 +609,7 @@ export function SettingsScreen({
                 title="Pulls the latest player code and restarts every online screen (~10-30s each)"
                 onClick={async () => {
                   const results = await updateAllDevices();
-                  if (results) onOpenUpdateResults(results);
+                  if (results) onOpenUpdateResults(results, 'update');
                 }}
               >
                 <Icon name="download" size={12} />
@@ -736,107 +737,175 @@ export function SettingsScreen({
       </div>
 
       <div className="card" style={{ gap: 8 }}>
-        <div className="card-kicker">Network</div>
-        <div className="card-title">Saved hub networks</div>
-        <p className="card-body">
-          Named hub addresses for pairing screens across more than one network — a hub with more
-          than one fixed IP, or pairing remotely. Screens must be on the same network as the
-          address they're paired with to appear here. Once you save one or more below, "Add a
-          screen" offers them as a dropdown (with a "custom address" option) instead of a plain
-          text box that only defaults to whatever network you're currently on.
-        </p>
-        {hubNetworkDrafts.map((network) => (
-          <div key={network.id} style={{ display: 'flex', gap: 8 }}>
-            <input
-              className="input"
-              style={{ width: 140 }}
-              placeholder="Name"
-              value={network.name}
-              onChange={(e) => updateNetworkDraft(network.id, 'name', e.target.value)}
-              onBlur={commitNetworkDrafts}
-            />
-            <input
-              className="input"
-              style={{ flex: 1 }}
-              placeholder="http://192.168.1.47:4000"
-              value={network.url}
-              onChange={(e) => updateNetworkDraft(network.id, 'url', e.target.value)}
-              onBlur={commitNetworkDrafts}
-            />
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeNetwork(network.id)}>
-              <Icon name="trash" size={13} />
-            </button>
-          </div>
-        ))}
-        <div style={{ display: 'flex', gap: 8, paddingTop: hubNetworkDrafts.length > 0 ? 4 : 0 }}>
-          <input
-            className="input"
-            style={{ width: 140 }}
-            placeholder="e.g. Main office"
-            value={newNetworkName}
-            onChange={(e) => setNewNetworkName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addNetwork()}
-          />
-          <input
-            className="input"
-            style={{ flex: 1 }}
-            placeholder="http://192.168.1.47:4000"
-            value={newNetworkUrl}
-            onChange={(e) => setNewNetworkUrl(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addNetwork()}
-          />
-          <button type="button" className="btn btn-secondary" disabled={!newNetworkName.trim() || !newNetworkUrl.trim()} onClick={addNetwork}>
-            Add network
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="card-kicker">Advanced</div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon"
+            aria-label={advancedOpen ? 'Collapse' : 'Expand'}
+            onClick={() => setAdvancedOpen((v) => !v)}
+          >
+            <Icon name={advancedOpen ? 'chevronUp' : 'chevronDown'} size={14} />
           </button>
         </div>
-      </div>
+        {!advancedOpen && (
+          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
+            Fleet-wide restart/re-provision, the update log, device inventory, and saved hub networks.
+          </p>
+        )}
+        {advancedOpen && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <div className="card-title">Restart all</div>
+              <p className="card-body">
+                Reboots every online screen at once — same as each row's own
+                Restart button, just all of them together. Each screen goes
+                black for a minute or so while it comes back up.
+              </p>
+              <button
+                type="button"
+                className="btn btn-warning"
+                style={{ alignSelf: 'flex-start' }}
+                disabled={devices.length === 0}
+                onClick={async () => {
+                  if (!window.confirm('Restart every online screen? Each one goes black for a minute or so while it reboots — this affects your whole fleet at once.')) return;
+                  const results = await restartAllDevices();
+                  if (results) onOpenUpdateResults(results, 'restart');
+                }}
+              >
+                <Icon name="restart" size={14} />
+                Restart all
+              </button>
+            </div>
 
-      <div className="card" style={{ gap: 8 }}>
-        <div className="card-kicker">IT</div>
-        <div className="card-title">Device inventory</div>
-        <p className="card-body">
-          Copies every paired screen's name, IP, and MAC address as{' '}
-          <code>(Screen Name: "" - IP: "" - MAC: "")</code>, one per screen — for network
-          whitelisting, asset tracking, or handing off to IT.
-        </p>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          style={{ alignSelf: 'flex-start' }}
-          disabled={devicesWithMac.length === 0}
-          onClick={() => void copyMacAddresses()}
-        >
-          <Icon name="copy" size={14} />
-          Copy all MAC addresses{devicesWithMac.length > 0 ? ` (${devicesWithMac.length})` : ''}
-        </button>
-      </div>
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Re-provision all</div>
+              <p className="card-body">
+                Re-runs the entire provisioning script on every online screen at
+                once — system packages, boot config, and systemd units, not just
+                the app (see "Update all" above for that). Each screen reboots
+                and is briefly blank; only needed when a system-level change
+                (e.g. the display-resolution or USB-override features) has to
+                reach the whole fleet at once instead of one screen at a time.
+              </p>
+              <button
+                type="button"
+                className="btn btn-warning"
+                style={{ alignSelf: 'flex-start' }}
+                disabled={devices.length === 0}
+                onClick={async () => {
+                  if (!window.confirm('Re-provision every online screen? Each one reboots and goes blank for a minute or two — this affects your whole fleet at once.')) return;
+                  const results = await reprovisionAllDevices();
+                  if (results) onOpenUpdateResults(results, 'reprovision');
+                }}
+              >
+                <Icon name="restart" size={14} />
+                Re-provision all
+              </button>
+            </div>
 
-      <div className="card" style={{ gap: 8 }}>
-        <div className="card-kicker">IT</div>
-        <div className="card-title">Update log</div>
-        <p className="card-body">
-          Every Update/Re-provision triggered from a screen's Settings row, newest
-          first — so you can tell at a glance which screens are on the same version
-          without checking each one.
-        </p>
-        {updateLog.length === 0 ? (
-          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>Nothing triggered yet.</p>
-        ) : (
-          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-            {updateLog.map((e) => (
-              <div key={e.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)', fontSize: 12 }}>
-                <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <strong>{e.deviceName}</strong> — {e.action === 'reprovision' ? 'Re-provision' : 'Update'}
-                </span>
-                <span
-                  style={{ color: e.outcome === 'failed' ? 'var(--color-danger, #c0392b)' : e.outcome === 'updating' ? 'var(--color-accent-800)' : undefined }}
-                  className={e.outcome === 'done' ? 'text-muted' : undefined}
-                >
-                  {e.outcome === 'updating' ? 'In progress' : e.outcome === 'failed' ? 'Failed' : 'Done'}
-                </span>
-                <span className="text-muted" style={{ flexShrink: 0 }}>{new Date(e.triggeredAt).toLocaleString()}</span>
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Update log</div>
+              <p className="card-body">
+                Every Update/Re-provision triggered from a screen's Settings row, newest
+                first — so you can tell at a glance which screens are on the same version
+                without checking each one.
+              </p>
+              {updateLog.length === 0 ? (
+                <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>Nothing triggered yet.</p>
+              ) : (
+                <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+                  {updateLog.map((e) => (
+                    <div key={e.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)', fontSize: 12 }}>
+                      <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <strong>{e.deviceName}</strong> — {e.action === 'reprovision' ? 'Re-provision' : 'Update'}
+                      </span>
+                      <span
+                        style={{ color: e.outcome === 'failed' ? 'var(--color-danger, #c0392b)' : e.outcome === 'updating' ? 'var(--color-accent-800)' : undefined }}
+                        className={e.outcome === 'done' ? 'text-muted' : undefined}
+                      >
+                        {e.outcome === 'updating' ? 'In progress' : e.outcome === 'failed' ? 'Failed' : 'Done'}
+                      </span>
+                      <span className="text-muted" style={{ flexShrink: 0 }}>{new Date(e.triggeredAt).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Device inventory</div>
+              <p className="card-body">
+                Copies every paired screen's name, IP, and MAC address as{' '}
+                <code>(Screen Name: "" - IP: "" - MAC: "")</code>, one per screen — for network
+                whitelisting, asset tracking, or handing off to IT.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ alignSelf: 'flex-start' }}
+                disabled={devicesWithMac.length === 0}
+                onClick={() => void copyMacAddresses()}
+              >
+                <Icon name="copy" size={14} />
+                Copy all MAC addresses{devicesWithMac.length > 0 ? ` (${devicesWithMac.length})` : ''}
+              </button>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Saved hub networks</div>
+              <p className="card-body">
+                Named hub addresses for pairing screens across more than one network — a hub with more
+                than one fixed IP, or pairing remotely. Screens must be on the same network as the
+                address they're paired with to appear here. Once you save one or more below, "Add a
+                screen" offers them as a dropdown (with a "custom address" option) instead of a plain
+                text box that only defaults to whatever network you're currently on.
+              </p>
+              {hubNetworkDrafts.map((network) => (
+                <div key={network.id} style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="input"
+                    style={{ width: 140 }}
+                    placeholder="Name"
+                    value={network.name}
+                    onChange={(e) => updateNetworkDraft(network.id, 'name', e.target.value)}
+                    onBlur={commitNetworkDrafts}
+                  />
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    placeholder="http://192.168.1.47:4000"
+                    value={network.url}
+                    onChange={(e) => updateNetworkDraft(network.id, 'url', e.target.value)}
+                    onBlur={commitNetworkDrafts}
+                  />
+                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeNetwork(network.id)}>
+                    <Icon name="trash" size={13} />
+                  </button>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8, paddingTop: hubNetworkDrafts.length > 0 ? 4 : 0 }}>
+                <input
+                  className="input"
+                  style={{ width: 140 }}
+                  placeholder="e.g. Main office"
+                  value={newNetworkName}
+                  onChange={(e) => setNewNetworkName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addNetwork()}
+                />
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  placeholder="http://192.168.1.47:4000"
+                  value={newNetworkUrl}
+                  onChange={(e) => setNewNetworkUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addNetwork()}
+                />
+                <button type="button" className="btn btn-secondary" disabled={!newNetworkName.trim() || !newNetworkUrl.trim()} onClick={addNetwork}>
+                  Add network
+                </button>
               </div>
-            ))}
+            </div>
           </div>
         )}
       </div>

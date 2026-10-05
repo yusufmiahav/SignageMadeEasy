@@ -68,8 +68,8 @@ type DialogState =
   | { type: 'previewDevice'; device: Device }
   /** Settings screen's "Update" button (download icon) — see UpdateDeviceDialog.tsx. */
   | { type: 'updateDevice'; device: Device }
-  /** Settings screen's "Update all" button — see UpdateResultsDialog.tsx. */
-  | { type: 'updateResults'; results: UpdateResult[] }
+  /** Settings screen's "Update all"/"Advanced > Re-provision all"/"Advanced > Restart all" buttons — see UpdateResultsDialog.tsx. */
+  | { type: 'updateResults'; results: UpdateResult[]; kind: 'update' | 'reprovision' | 'restart' }
   | null;
 
 export default function App() {
@@ -167,7 +167,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onSetHideAnnouncementRow={uiSettings.setHideAnnouncementRow}
             onOpenDevicePreview={(device) => setDialog({ type: 'previewDevice', device })}
             onOpenDeviceUpdate={(device) => setDialog({ type: 'updateDevice', device })}
-            onOpenUpdateResults={(results) => setDialog({ type: 'updateResults', results })}
+            onOpenUpdateResults={(results, kind) => setDialog({ type: 'updateResults', results, kind })}
           />
         )}
       </AppShell>
@@ -284,7 +284,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       {dialog?.type === 'preview' && <ContentPreviewDialog item={dialog.item} onClose={closeDialog} />}
       {dialog?.type === 'previewDevice' && <DevicePreviewDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'updateDevice' && <UpdateDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
-      {dialog?.type === 'updateResults' && <UpdateResultsDialog results={dialog.results} onClose={closeDialog} />}
+      {dialog?.type === 'updateResults' && <UpdateResultsDialog results={dialog.results} kind={dialog.kind} onClose={closeDialog} />}
 
       <Toast message={app.toast} />
     </>

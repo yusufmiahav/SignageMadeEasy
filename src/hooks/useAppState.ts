@@ -655,6 +655,51 @@ export function useAppState() {
     });
   }, [devices, showToast, refreshDevices, refreshUpdateLog]);
 
+  // Settings screen's "Advanced" section — same bulk shape as updateAllDevices
+  // above, just the full re-provision path (system packages, boot config, a
+  // reboot) instead of the fast app-only update. Kept separate rather than a
+  // shared helper since the two already don't share an api call, and tucking
+  // this one behind "Advanced" (plus its own confirm prompt) is deliberate: every
+  // targeted screen reboots, which is far more disruptive to do by accident
+  // across a whole fleet than the fast update path above.
+  const reprovisionAllDevices = useCallback(async (): Promise<UpdateResult[] | null> => {
+    const targets = devices.filter((d) => d.status === 'online');
+    if (targets.length === 0) {
+      showToast('No online screens to re-provision.');
+      return null;
+    }
+    const settled = await Promise.allSettled(targets.map((d) => api.reprovisionDevice(d.id)));
+    await Promise.all([refreshDevices(), refreshUpdateLog()]);
+    return targets.map((device, i) => {
+      const outcome = settled[i];
+      return {
+        device,
+        error: outcome.status === 'rejected' ? (outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)) : null,
+      };
+    });
+  }, [devices, showToast, refreshDevices, refreshUpdateLog]);
+
+  // Same "Advanced" section, same bulk shape again — a plain reboot (see
+  // restartDevice above) across every online screen at once, with no update_events
+  // logging of its own (a restart isn't an Update/Re-provision, just a reboot) so
+  // this skips refreshUpdateLog unlike the two bulk actions above.
+  const restartAllDevices = useCallback(async (): Promise<UpdateResult[] | null> => {
+    const targets = devices.filter((d) => d.status === 'online');
+    if (targets.length === 0) {
+      showToast('No online screens to restart.');
+      return null;
+    }
+    const settled = await Promise.allSettled(targets.map((d) => api.restartDevice(d.id)));
+    await refreshDevices();
+    return targets.map((device, i) => {
+      const outcome = settled[i];
+      return {
+        device,
+        error: outcome.status === 'rejected' ? (outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)) : null,
+      };
+    });
+  }, [devices, showToast, refreshDevices]);
+
   const setDeviceAnnouncement = useCallback(async (id: string, announcementId: string | null) => {
     await api.setDeviceAnnouncement(id, announcementId);
     await refreshDevices();
@@ -756,6 +801,8 @@ export function useAppState() {
     updateDevice,
     reprovisionDevice,
     updateAllDevices,
+    reprovisionAllDevices,
+    restartAllDevices,
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,
