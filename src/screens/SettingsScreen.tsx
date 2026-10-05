@@ -42,7 +42,7 @@ export function SettingsScreen({
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation, setDeviceIp,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
-    safetyHold, setSafetyHold, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices,
+    safetyHold, setSafetyHold, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, hubVersion, updateLog,
   } = app;
   const [hubNetworkDrafts, setHubNetworkDrafts] = useState<SavedHubNetwork[]>(savedHubNetworks);
   useEffect(() => setHubNetworkDrafts(savedHubNetworks), [savedHubNetworks]);
@@ -275,16 +275,32 @@ export function SettingsScreen({
                 anything had happened once their initial toast faded — this is the
                 one place both buttons live, so it's the natural spot for a status
                 that sticks around until the hub confirms the screen actually
-                restarted (or gives up — see hub/src/store.ts's markUpdateTriggered). */}
+                restarted (or gives up — see hub/src/store.ts's markUpdateTriggered).
+                Falls back to plain Online/Offline the rest of the time — e.g. right
+                after editing a screen's IP (see startEdit's own comment above), this
+                is the only place that shows whether it actually came back. */}
             {device.updateStatus === 'updating' ? (
               <div style={{ fontSize: 11, color: 'var(--color-accent-800)' }} title="Pulling the latest code and restarting — can take up to a minute, longer for a re-provision/reboot">Updating…</div>
             ) : device.updateStatus === 'done' ? (
               <div className="text-muted" style={{ fontSize: 11 }}>Updated</div>
             ) : device.updateStatus === 'failed' ? (
               <div style={{ fontSize: 11, color: 'var(--color-danger, #c0392b)' }} title="This screen hasn't come back since an update/re-provision was triggered — check it over SSH">Update may have failed</div>
+            ) : device.status === 'online' ? (
+              <div className="text-muted" style={{ fontSize: 11 }}>Online</div>
             ) : (
-              <div className="text-muted" style={{ fontSize: 11 }}>Screen</div>
+              <div style={{ fontSize: 11, color: 'var(--color-danger, #c0392b)' }} title={device.lastSeenAt ? `Last heard from ${new Date(device.lastSeenAt).toLocaleString()}` : "Hasn't sent a heartbeat yet"}>Offline</div>
             )}
+            {/* Compares this screen's last-reported version against the hub's own
+                running commit (see app/client.ts's getHubVersion comment) — lets you
+                spot screens that haven't picked up the latest code without having to
+                update every screen "just in case." Omitted entirely for a screen
+                that's never reported a version (not updated since this shipped) or
+                when the hub itself can't tell its own version. */}
+            {device.version && hubVersion && device.version !== hubVersion ? (
+              <div style={{ fontSize: 11, color: 'var(--color-accent-800)' }} title={`This screen is on ${device.version}; the hub is on ${hubVersion}`}>Update available ({device.version})</div>
+            ) : device.version ? (
+              <div className="text-muted" style={{ fontSize: 11 }}>v{device.version}</div>
+            ) : null}
           </div>
         )}
         {showLocationPicker && !selectMode && !isEditing && (
@@ -793,6 +809,36 @@ export function SettingsScreen({
           <Icon name="copy" size={14} />
           Copy all MAC addresses{devicesWithMac.length > 0 ? ` (${devicesWithMac.length})` : ''}
         </button>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">IT</div>
+        <div className="card-title">Update log</div>
+        <p className="card-body">
+          Every Update/Re-provision triggered from a screen's Settings row, newest
+          first — so you can tell at a glance which screens are on the same version
+          without checking each one.
+        </p>
+        {updateLog.length === 0 ? (
+          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>Nothing triggered yet.</p>
+        ) : (
+          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {updateLog.map((e) => (
+              <div key={e.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)', fontSize: 12 }}>
+                <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <strong>{e.deviceName}</strong> — {e.action === 'reprovision' ? 'Re-provision' : 'Update'}
+                </span>
+                <span
+                  style={{ color: e.outcome === 'failed' ? 'var(--color-danger, #c0392b)' : e.outcome === 'updating' ? 'var(--color-accent-800)' : undefined }}
+                  className={e.outcome === 'done' ? 'text-muted' : undefined}
+                >
+                  {e.outcome === 'updating' ? 'In progress' : e.outcome === 'failed' ? 'Failed' : 'Done'}
+                </span>
+                <span className="text-muted" style={{ flexShrink: 0 }}>{new Date(e.triggeredAt).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ gap: 8 }}>

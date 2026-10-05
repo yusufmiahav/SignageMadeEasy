@@ -21,6 +21,16 @@ RUN npm install
 COPY hub/tsconfig.json ./
 COPY hub/src ./src
 RUN npm run build
+# Bakes the commit this image was built from into the image itself, so a running
+# container can report "what version am I" (see hub/src/version.ts) without
+# needing a .git directory at runtime — the final stage below only copies
+# /hub/version.txt out of this stage, never .git itself. node:20-slim has no git
+# preinstalled; this is the only stage that needs it. Falls back to "unknown"
+# for a build run from something other than a real git checkout (e.g. a source
+# tarball) rather than failing the build over a version string.
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+COPY .git ./.git
+RUN (git rev-parse --short HEAD || echo unknown) > /hub/version.txt
 
 FROM node:20-slim
 # ffmpeg provides ffprobe, used to read real video durations on upload. gosu lets
@@ -37,6 +47,7 @@ WORKDIR /app
 COPY hub/package.json hub/package-lock.json* ./
 RUN npm install --omit=dev
 COPY --from=hub-build --chown=node:node /hub/dist ./dist
+COPY --from=hub-build --chown=node:node /hub/version.txt ./version.txt
 COPY --from=web-build --chown=node:node /web/dist ./web-dist
 COPY hub/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

@@ -77,6 +77,20 @@ db.exec(`
     name TEXT NOT NULL,
     sortOrder INTEGER
   );
+
+  -- deviceName is a snapshot taken at trigger time, not a join against devices.id —
+  -- this history should still read sensibly after a device is renamed or deleted,
+  -- same "application code manages the relationship, no FK" reasoning as
+  -- folders.parentId/library.folderId above.
+  CREATE TABLE IF NOT EXISTS update_events (
+    id TEXT PRIMARY KEY,
+    deviceId TEXT NOT NULL,
+    deviceName TEXT NOT NULL,
+    action TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    triggeredAt INTEGER NOT NULL,
+    resolvedAt INTEGER
+  );
 `);
 
 // Migration for hubs deployed before durationSec existed: CREATE TABLE IF NOT EXISTS
@@ -358,6 +372,16 @@ if (!deviceColsUsb.includes('usbOverrideActive')) db.exec('ALTER TABLE devices A
 // effect yet. Null for every existing screen until its next heartbeat.
 const deviceColsPlayer = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
 if (!deviceColsPlayer.includes('playerStartedAt')) db.exec('ALTER TABLE devices ADD COLUMN playerStartedAt INTEGER');
+
+// Same reasoning, for hubs deployed before a screen reported its own running
+// version — the short git commit hash of the pi-player checkout it last
+// updated/re-provisioned from (see pi-player/src/diagnostics.ts), reported
+// alongside every heartbeat. Null for a device that's never sent one yet (old
+// firmware, never updated since this shipped, or offline since before this
+// shipped) — see store.ts's rowToDevice/recordHeartbeat and routes/version.ts
+// for how this is compared against the hub's own running commit.
+const deviceColsVersion = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceColsVersion.includes('version')) db.exec('ALTER TABLE devices ADD COLUMN version TEXT');
 
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi

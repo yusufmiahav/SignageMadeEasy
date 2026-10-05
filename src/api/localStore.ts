@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
+import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -696,6 +696,16 @@ class LocalStoreClient implements SignageApiClient {
 
   async reprovisionDevice(): Promise<void> {
     // No real Pi to re-provision in standalone mode.
+  }
+
+  async getUpdateLog(): Promise<UpdateEvent[]> {
+    // Nothing is ever triggered in standalone mode, so there's nothing to log.
+    return [];
+  }
+
+  async getHubVersion(): Promise<{ hubVersion: string | null }> {
+    // No real hub in standalone mode — nothing to compare a screen's version against.
+    return { hubVersion: null };
   }
 
   async setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void> {

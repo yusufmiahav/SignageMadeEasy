@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
 import * as tflStatus from './tflStatus.js';
 import * as tflArrivals from './tflArrivals.js';
-import type { AnnouncementSchedule, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PlayerState, ScheduleEvent, TflStationConfig } from './types.js';
+import type { AnnouncementSchedule, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PlayerState, ScheduleEvent, TflStationConfig, UpdateEvent } from './types.js';
 
 // The Pi heartbeats every 5s (pi-player/src/poller.ts's POLL_INTERVAL_MS) — this
 // window needs to be a few multiples of that so one dropped heartbeat (WiFi jitter)
@@ -482,10 +482,10 @@ interface DeviceRow {
   videoQuality: Device['videoQuality']; lastSeenAt: number | null;
   tempC: number | null; throttled: string | null; uptimeSec: number | null; baseUptimeSec: number; diskFreeMb: number | null; diskTotalMb: number | null;
   forcedPlaylist: string | null; forcedContentId: string | null; blackout: number; defaultPlaylist: string; usbOverrideActive: number;
-  playerStartedAt: number | null;
+  playerStartedAt: number | null; version: string | null;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive, playerStartedAt';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive, playerStartedAt, version';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -498,9 +498,14 @@ function totalUptimeFor(r: { uptimeSec: number | null; baseUptimeSec: number }):
   return r.uptimeSec == null && r.baseUptimeSec === 0 ? null : r.baseUptimeSec + (r.uptimeSec ?? 0);
 }
 
-// In-memory only (not persisted — losing track of an in-progress update across a
-// hub restart is an acceptable edge case for what's purely a UI progress
-// indicator, not a correctness-critical record). Keyed by device id.
+// The live "Updating…"/"Done"/"Failed" badge tracked here is in-memory only (not
+// persisted — losing track of an in-progress update across a hub restart is an
+// acceptable edge case for what's purely a UI progress indicator, not a
+// correctness-critical record) and keyed by device id, so there's only ever one
+// live badge per device. The *history* of every trigger is separately persisted to
+// the update_events table below (see listUpdateEvents) so "what was updated when"
+// survives a hub restart and isn't limited to one in-flight entry per device —
+// eventId here just ties this tracker to the row it should resolve.
 //
 // Settings screen's Update/Re-provision buttons previously left a user with no
 // way to tell whether anything was still happening, or whether it had finished —
@@ -513,13 +518,22 @@ function totalUptimeFor(r: { uptimeSec: number | null; baseUptimeSec: number }):
 // npm install, never reaches the restart/reboot at the end). A resolved status
 // stays visible for UPDATE_RESOLVED_TTL_MS so the control app's polling (every 4s,
 // see useAppState.ts) has a real chance to show it before it disappears.
-interface UpdateTracker { status: 'updating' | 'done' | 'failed'; triggeredAt: number; resolvedAt?: number }
+interface UpdateTracker { status: 'updating' | 'done' | 'failed'; triggeredAt: number; resolvedAt?: number; eventId: string }
 const updateTrackers = new Map<string, UpdateTracker>();
 const UPDATE_TIMEOUT_MS = 5 * 60 * 1000;
 const UPDATE_RESOLVED_TTL_MS = 30 * 1000;
 
-export function markUpdateTriggered(id: string): void {
-  updateTrackers.set(id, { status: 'updating', triggeredAt: Date.now() });
+export function markUpdateTriggered(id: string, deviceName: string, action: 'update' | 'reprovision'): void {
+  const eventId = uid('ue');
+  const triggeredAt = Date.now();
+  db.prepare('INSERT INTO update_events (id, deviceId, deviceName, action, outcome, triggeredAt) VALUES (?,?,?,?,?,?)').run(
+    eventId, id, deviceName, action, 'updating', triggeredAt,
+  );
+  updateTrackers.set(id, { status: 'updating', triggeredAt, eventId });
+}
+
+function resolveUpdateEvent(eventId: string, outcome: 'done' | 'failed'): void {
+  db.prepare('UPDATE update_events SET outcome = ?, resolvedAt = ? WHERE id = ?').run(outcome, Date.now(), eventId);
 }
 
 function currentUpdateStatus(id: string): Device['updateStatus'] {
@@ -528,12 +542,19 @@ function currentUpdateStatus(id: string): Device['updateStatus'] {
   if (t.status === 'updating' && Date.now() - t.triggeredAt > UPDATE_TIMEOUT_MS) {
     t.status = 'failed';
     t.resolvedAt = Date.now();
+    resolveUpdateEvent(t.eventId, 'failed');
   }
   if (t.resolvedAt != null && Date.now() - t.resolvedAt > UPDATE_RESOLVED_TTL_MS) {
     updateTrackers.delete(id);
     return undefined;
   }
   return t.status;
+}
+
+/** Settings screen's "Update log" section — every trigger ever recorded, newest first, capped since this can grow without bound otherwise. Device names are a snapshot from trigger time (see db.ts's update_events comment), so this stays readable even for a since-renamed or since-removed device. */
+export function listUpdateEvents(limit = 200): UpdateEvent[] {
+  const rows = db.prepare('SELECT id, deviceId, deviceName, action, outcome, triggeredAt, resolvedAt FROM update_events ORDER BY triggeredAt DESC LIMIT ?').all(limit) as UpdateEvent[];
+  return rows;
 }
 
 function rowToDevice(r: DeviceRow): Device {
@@ -545,7 +566,7 @@ function rowToDevice(r: DeviceRow): Device {
     tempC: r.tempC, throttled: r.throttled, uptimeSec: r.uptimeSec, totalUptimeSec: totalUptimeFor(r), diskFreeMb: r.diskFreeMb, diskTotalMb: r.diskTotalMb,
     forcedPlaylist, forcedContentId: forcedPlaylist[0] ?? null, blackout: !!r.blackout,
     defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForDevice(r.id),
-    usbOverrideActive: !!r.usbOverrideActive, updateStatus: currentUpdateStatus(r.id),
+    usbOverrideActive: !!r.usbOverrideActive, updateStatus: currentUpdateStatus(r.id), version: r.version,
   };
 }
 
@@ -731,6 +752,8 @@ export interface HeartbeatDiagnostics {
   usbOverrideActive?: boolean;
   /** See pi-player/src/diagnostics.ts's PROCESS_STARTED_AT and this file's markUpdateTriggered. */
   playerStartedAt?: number;
+  /** See pi-player/src/diagnostics.ts's GIT_VERSION and version.ts's HUB_VERSION. */
+  version?: string | null;
 }
 
 export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnostics): void {
@@ -746,9 +769,9 @@ export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnost
       db.prepare('UPDATE devices SET baseUptimeSec = baseUptimeSec + ? WHERE id = ?').run(prev.uptimeSec, id);
     }
   }
-  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ?, usbOverrideActive = ?, playerStartedAt = ? WHERE id = ?').run(
+  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ?, usbOverrideActive = ?, playerStartedAt = ?, version = ? WHERE id = ?').run(
     Date.now(), ip,
-    diag?.tempC ?? null, diag?.throttled ?? null, newUptime, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null, diag?.usbOverrideActive ? 1 : 0, diag?.playerStartedAt ?? null,
+    diag?.tempC ?? null, diag?.throttled ?? null, newUptime, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null, diag?.usbOverrideActive ? 1 : 0, diag?.playerStartedAt ?? null, diag?.version ?? null,
     id,
   );
   // Resolves an in-progress Update/Re-provision — see markUpdateTriggered's comment.
@@ -758,6 +781,7 @@ export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnost
   if (tracker?.status === 'updating' && diag?.playerStartedAt != null && diag.playerStartedAt > tracker.triggeredAt) {
     tracker.status = 'done';
     tracker.resolvedAt = Date.now();
+    resolveUpdateEvent(tracker.eventId, 'done');
   }
 }
 

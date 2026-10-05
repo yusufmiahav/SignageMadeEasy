@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -163,6 +163,22 @@ export interface SignageApiClient {
    * requirement and no-op-in-standalone-mode behavior as updateDevice above.
    */
   reprovisionDevice(id: string): Promise<void>;
+  /**
+   * Every Update/Re-provision ever triggered, newest first — Settings screen's
+   * "Update log" section, so you can tell at a glance which screens were last
+   * touched when, not just whichever one you happen to be looking at right now.
+   * Always empty in standalone/localStorage mode (no real Pi to update).
+   */
+  getUpdateLog(): Promise<UpdateEvent[]>;
+  /**
+   * The hub's own running commit — compared against each Device.version to flag a
+   * screen that hasn't picked up the hub's current code yet (see Device.version's
+   * comment). `hubVersion: null` in standalone/localStorage mode (no real hub), or
+   * if a real hub can't tell what commit it's running (see hub/src/version.ts) —
+   * either way, nothing to compare against, so the Settings screen just shows each
+   * screen's raw version with no "needs updating" flag.
+   */
+  getHubVersion(): Promise<{ hubVersion: string | null }>;
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;
   toggleDeviceAnnouncement(id: string): Promise<void>;
   setDeviceVideoQuality(id: string, videoQuality: 'auto' | 'full'): Promise<void>;

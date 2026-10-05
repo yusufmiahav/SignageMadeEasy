@@ -158,6 +158,8 @@ export interface Device {
    * display where the cap buys nothing.
    */
   videoQuality: 'auto' | 'full';
+  /** ms since epoch of the last heartbeat received — shown as "last seen" when a screen is offline. Undefined for a device that's never sent one yet, or any device in standalone/localStorage mode (no real Pi to ask). */
+  lastSeenAt?: number;
   /** Reported by the Pi's own poller alongside every heartbeat — undefined for a device that's never sent one yet, or any device in standalone/localStorage mode (no real Pi to ask). */
   tempC?: number | null;
   /** Raw hex string from `vcgencmd get_throttled` — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot." */
@@ -172,6 +174,21 @@ export interface Device {
   usbOverrideActive?: boolean;
   /** Settings screen's Update/Re-provision buttons: undefined once nothing's in flight. 'updating' while a triggered update/re-provision hasn't yet been confirmed to have restarted the screen's player process, 'done'/'failed' briefly once it resolves one way or the other — see hub/src/store.ts's markUpdateTriggered. Always undefined in standalone/localStorage mode (no real Pi to update). */
   updateStatus?: 'updating' | 'done' | 'failed';
+  /** Short git commit hash this screen last updated/re-provisioned from — reported by its own agent alongside every heartbeat. Null/undefined for a screen never updated since this shipped, or any device in standalone/localStorage mode (no real Pi to ask). Compare against SignageApiClient.getHubVersion() to tell whether a screen needs updating. */
+  version?: string | null;
+}
+
+/** One entry in the Settings screen's update log — see SignageApiClient.getUpdateLog. */
+export interface UpdateEvent {
+  id: string;
+  deviceId: string;
+  /** Snapshot of the device's name at the time this event was logged — stays readable even if the device is later renamed or removed. */
+  deviceName: string;
+  action: 'update' | 'reprovision';
+  /** 'updating' if this is still in flight (the hub hasn't yet seen proof the screen restarted, or given up and marked it failed). */
+  outcome: 'updating' | 'done' | 'failed';
+  triggeredAt: number;
+  resolvedAt?: number | null;
 }
 
 /** One line serving a searched-for TfL station — see SignageApiClient.searchTflStations. */

@@ -22,6 +22,10 @@ SIGNAGE_USER=signage
 
 git -C "$INSTALL_DIR/src" pull --ff-only
 
+# Same reasoning and destination as provision.sh's own version-stamping step —
+# keeps this in sync even on the fast update path, not just a full re-provision.
+git -C "$INSTALL_DIR/src" rev-parse --short HEAD > "$INSTALL_DIR/version" 2>/dev/null || echo unknown > "$INSTALL_DIR/version"
+
 rsync -a --delete \
   --exclude node_modules --exclude dist \
   "$INSTALL_DIR/src/pi-player/" "$APP_DIR/"

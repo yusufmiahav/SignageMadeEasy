@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import os from 'node:os';
 import * as usbOverride from './usbOverride.js';
 
@@ -20,6 +21,21 @@ const execFileAsync = promisify(execFile);
 // distinct from os.uptime() above, which only resets on a full reboot.
 const PROCESS_STARTED_AT = Date.now();
 
+// Written by provision.sh/self-update.sh right after they pull/clone the repo —
+// see those scripts' own comments. Overridable for testing, same pattern as this
+// project's other env-overridden paths. Read once at module load (same reasoning
+// as PROCESS_STARTED_AT above): it can't change without a restart anyway, since
+// an update that changes it always restarts this process on completion.
+const VERSION_FILE = process.env.SIGNAGE_VERSION_PATH ?? '/opt/signage/version';
+const GIT_VERSION: string | null = (() => {
+  try {
+    const content = fsSync.readFileSync(VERSION_FILE, 'utf8').trim();
+    return content && content !== 'unknown' ? content : null;
+  } catch {
+    return null;
+  }
+})();
+
 export interface Diagnostics {
   tempC: number | null;
   /** Raw hex string from `vcgencmd get_throttled`, e.g. "0x50000" — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot" versions of the same. */
@@ -31,6 +47,8 @@ export interface Diagnostics {
   usbOverrideActive: boolean;
   /** ms since epoch this player process started — see PROCESS_STARTED_AT above. */
   playerStartedAt: number;
+  /** Short git commit hash this screen last updated/re-provisioned from — see GIT_VERSION above. Null for a screen never updated since this shipped, or not provisioned from a real git checkout. */
+  version: string | null;
 }
 
 async function measureTemp(): Promise<number | null> {
@@ -69,6 +87,6 @@ export async function collect(): Promise<Diagnostics> {
   const [tempC, throttled, disk] = await Promise.all([measureTemp(), getThrottled(), diskUsage()]);
   return {
     tempC, throttled, uptimeSec: Math.round(os.uptime()), diskFreeMb: disk.freeMb, diskTotalMb: disk.totalMb,
-    usbOverrideActive: usbOverride.isActive(), playerStartedAt: PROCESS_STARTED_AT,
+    usbOverrideActive: usbOverride.isActive(), playerStartedAt: PROCESS_STARTED_AT, version: GIT_VERSION,
   };
 }

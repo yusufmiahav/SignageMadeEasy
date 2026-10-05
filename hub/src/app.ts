@@ -15,6 +15,7 @@ import { tflRouter } from './routes/tfl.js';
 import { foldersRouter } from './routes/folders.js';
 import { locationsRouter } from './routes/locations.js';
 import { requireAuth } from './auth.js';
+import { HUB_VERSION } from './version.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,6 +50,13 @@ export function createApp() {
   app.use('/api/locations', requireAuth, locationsRouter);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+  // The control app's Settings screen compares this against each device's own
+  // reported version (see store.ts's Device.version) to flag screens that haven't
+  // picked up the hub's current code yet. Null when the hub itself can't tell what
+  // commit it's running (see version.ts) — in that case the control app just shows
+  // each screen's raw version with nothing to compare it to.
+  app.get('/api/version', requireAuth, (_req, res) => res.json({ hubVersion: HUB_VERSION }));
 
   // Serve the control app's production build (apps/web `npm run build` output copied
   // in at Docker build time — see hub/Dockerfile) as the single deployed artifact.

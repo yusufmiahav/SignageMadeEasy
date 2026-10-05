@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DiscoveredDevice } from '../api/client';
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig } from '../api/types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, UpdateEvent } from '../api/types';
 
 // One row of updateAllDevices' result breakdown — see UpdateResultsDialog.tsx.
 export interface UpdateResult {
@@ -19,6 +19,17 @@ export function useAppState() {
   // hub's real value.
   const [safetyHold, setSafetyHoldState] = useState(true);
   const [savedHubNetworks, setSavedHubNetworksState] = useState<SavedHubNetwork[]>([]);
+  // Null in standalone/localStorage mode, or if the hub itself can't tell what
+  // commit it's running (see hub/src/version.ts) — either way, Settings just shows
+  // each screen's raw version with nothing to compare it to. Fetched once, not
+  // polled: a running hub's own commit can't change without a restart.
+  const [hubVersion, setHubVersion] = useState<string | null>(null);
+  // Settings screen's "Update log" — fetched on load and refreshed after every
+  // update/reprovision trigger (see updateDevice/reprovisionDevice/updateAllDevices
+  // below), not on the fast 4s device poll: this changes far less often than device
+  // status, and refreshing it there would mean every tab re-fetching it 15x/minute
+  // for a list that's realistically appended to a few times a day at most.
+  const [updateLog, setUpdateLog] = useState<UpdateEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -33,6 +44,7 @@ export function useAppState() {
   const refreshGroups = useCallback(async () => setGroups(await api.listGroups()), []);
   const refreshFolders = useCallback(async () => setFolders(await api.listFolders()), []);
   const refreshLocations = useCallback(async () => setLocations(await api.listLocations()), []);
+  const refreshUpdateLog = useCallback(async () => setUpdateLog(await api.getUpdateLog()), []);
 
   // Tracks each device's last-known status across polls (not React state — this
   // must never itself trigger a render) purely to detect an online->offline
@@ -87,10 +99,11 @@ export function useAppState() {
 
   useEffect(() => {
     (async () => {
-      await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices(), refreshSettings(), refreshFolders(), refreshLocations()]);
+      await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices(), refreshSettings(), refreshFolders(), refreshLocations(), refreshUpdateLog()]);
+      api.getHubVersion().then((r) => setHubVersion(r.hubVersion)).catch(() => setHubVersion(null));
       setLoaded(true);
     })();
-  }, [refreshLibrary, refreshGroups, refreshDevices, refreshSettings, refreshFolders, refreshLocations]);
+  }, [refreshLibrary, refreshGroups, refreshDevices, refreshSettings, refreshFolders, refreshLocations, refreshUpdateLog]);
 
   // Device online/offline status (and group-level forced/scheduled announcement
   // state) can change on their own with nobody touching the control app - a screen
@@ -600,21 +613,21 @@ export function useAppState() {
       // Picks up updateStatus: 'updating' right away rather than waiting for the
       // next 4s poll — the whole point of this call is to show a live status
       // instead of just the toast above, which used to be the only feedback.
-      await refreshDevices();
+      await Promise.all([refreshDevices(), refreshUpdateLog()]);
     } catch (err) {
       showToast(err instanceof Error ? err.message : `Could not update ${device.name}`);
     }
-  }, [showToast, refreshDevices]);
+  }, [showToast, refreshDevices, refreshUpdateLog]);
 
   const reprovisionDevice = useCallback(async (device: Device) => {
     try {
       await api.reprovisionDevice(device.id);
       showToast(`Re-provisioning ${device.name}… it will reboot shortly.`);
-      await refreshDevices();
+      await Promise.all([refreshDevices(), refreshUpdateLog()]);
     } catch (err) {
       showToast(err instanceof Error ? err.message : `Could not re-provision ${device.name}`);
     }
-  }, [showToast, refreshDevices]);
+  }, [showToast, refreshDevices, refreshUpdateLog]);
 
   // Bulk fast-path update, skipping devices already known offline (no point
   // spending a round trip on a screen that can't answer). Deliberately calls
@@ -632,7 +645,7 @@ export function useAppState() {
     const settled = await Promise.allSettled(targets.map((d) => api.updateDevice(d.id)));
     // Same reasoning as updateDevice's own refreshDevices call above — picks up
     // every successfully-triggered screen's updateStatus: 'updating' right away.
-    await refreshDevices();
+    await Promise.all([refreshDevices(), refreshUpdateLog()]);
     return targets.map((device, i) => {
       const outcome = settled[i];
       return {
@@ -640,7 +653,7 @@ export function useAppState() {
         error: outcome.status === 'rejected' ? (outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)) : null,
       };
     });
-  }, [devices, showToast, refreshDevices]);
+  }, [devices, showToast, refreshDevices, refreshUpdateLog]);
 
   const setDeviceAnnouncement = useCallback(async (id: string, announcementId: string | null) => {
     await api.setDeviceAnnouncement(id, announcementId);
@@ -672,6 +685,8 @@ export function useAppState() {
     devices,
     folders,
     locations,
+    hubVersion,
+    updateLog,
     safetyHold,
     setSafetyHold,
     savedHubNetworks,

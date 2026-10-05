@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationResult } from './types';
+import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationResult, UpdateEvent } from './types';
 import type { DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -151,6 +151,8 @@ export const httpClient: SignageApiClient = {
   },
   updateDevice: (id) => request<void>(`/api/devices/${id}/update`, { method: 'POST' }),
   reprovisionDevice: (id) => request<void>(`/api/devices/${id}/reprovision`, { method: 'POST' }),
+  getUpdateLog: () => request<UpdateEvent[]>('/api/devices/update-log'),
+  getHubVersion: () => request<{ hubVersion: string | null }>('/api/version'),
   setDeviceAnnouncement: (id, announcementId) => request<void>(`/api/devices/${id}/announcement`, { method: 'PUT', ...json({ announcementId }) }),
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
   setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),
