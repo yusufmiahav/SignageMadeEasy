@@ -23,14 +23,15 @@ COPY hub/src ./src
 RUN npm run build
 # Bakes the commit this image was built from into the image itself, so a running
 # container can report "what version am I" (see hub/src/version.ts) without
-# needing a .git directory at runtime — the final stage below only copies
-# /hub/version.txt out of this stage, never .git itself. node:20-slim has no git
-# preinstalled; this is the only stage that needs it. Falls back to "unknown"
-# for a build run from something other than a real git checkout (e.g. a source
-# tarball) rather than failing the build over a version string.
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
-COPY .git ./.git
-RUN (git rev-parse --short HEAD || echo unknown) > /hub/version.txt
+# needing a .git directory at runtime. Computed on the HOST and passed in as a
+# build arg (see docker-compose.yml's build.args and hub/README.md's deploy
+# commands) rather than read from a .git copied into this stage — .dockerignore
+# deliberately excludes .git from the build context entirely (keeps context
+# transfer small/fast), so COPY .git here would always fail with "not found."
+# Defaults to "unknown" for a build that doesn't pass the arg (e.g. a plain
+# `docker build` without the wrapper command) rather than failing over it.
+ARG GIT_COMMIT=unknown
+RUN echo "$GIT_COMMIT" > /hub/version.txt
 
 FROM node:20-slim
 # ffmpeg provides ffprobe, used to read real video durations on upload. gosu lets

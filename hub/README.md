@@ -10,8 +10,14 @@ app (`../src`) talks to over the network. One container serves both the REST API
 git clone https://github.com/yusufmiahav/SignageMadeEasy.git
 cd SignageMadeEasy
 git checkout claude/signage-made-easy-dev-r00fl6
-docker compose -f hub/docker-compose.yml up -d --build
+GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f hub/docker-compose.yml up -d --build
 ```
+
+The `GIT_COMMIT=...` prefix lets the running hub report its own version in the
+Settings screen (compared against each screen's own, to flag ones that need
+updating — see "Update log and screen versions" below). It's optional — a
+plain `docker compose ... up -d --build` still builds and runs fine, the hub
+just won't be able to tell the control app what commit it's on.
 
 **That branch checkout matters**: this repo's `main` branch does not yet have
 everything described in this README (or in the code) — active work happens on
@@ -27,7 +33,7 @@ the control app, now talking to a real hub instead of `localStorage`.
 ```bash
 cd SignageMadeEasy
 git pull
-docker compose -f hub/docker-compose.yml up -d --build
+GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f hub/docker-compose.yml up -d --build
 ```
 
 `git pull` updates whichever branch you're currently on — since the initial
@@ -42,6 +48,23 @@ If `git pull` ever refuses because of local changes it doesn't want to
 overwrite (rare — nothing in this repo expects to be hand-edited on the NAS),
 check `git status` before doing anything destructive; `git stash` is usually
 the safe way to get `pull` moving again without losing whatever changed.
+
+## Update log and screen versions
+
+Settings shows two things for keeping a fleet of screens in sync:
+
+- **Update log** — every Update/Re-provision ever triggered from a screen's
+  Settings row, newest first, with its outcome (in progress/done/failed) and
+  when. Lets you see what's been touched across every screen at a glance,
+  not just whichever one you're currently looking at.
+- **Per-screen version** — each screen reports the short git commit it last
+  updated/re-provisioned from. If it differs from the hub's own commit (set
+  via `GIT_COMMIT=...` above), the screen is flagged "Update available."
+  Until the hub itself knows its own commit (built without `GIT_COMMIT`,
+  or an older image predating this feature), this comparison just doesn't
+  run — screens still show their own version with no flag either way. A
+  screen built before this feature shipped shows no version at all until
+  its next Update/Re-provision.
 
 **Networking is not optional here**: the compose file runs the container with
 `network_mode: host` on purpose. The hub needs to reach Pi IPs directly (to finish

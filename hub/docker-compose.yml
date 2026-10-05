@@ -1,9 +1,15 @@
-# Run from the repo root: docker compose -f hub/docker-compose.yml up -d --build
+# Run from the repo root: GIT_COMMIT=$(git rev-parse --short HEAD) docker compose
+# -f hub/docker-compose.yml up -d --build — see hub/README.md's deploy/update
+# commands, which include this. GIT_COMMIT is what lets the running hub report
+# its own version (see hub/src/version.ts); omitting it still builds and runs
+# fine, it just can't tell the control app what commit it's on.
 services:
   hub:
     build:
       context: ..
       dockerfile: hub/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     container_name: signagemadeeasy-hub
     restart: unless-stopped
     # Without this, Docker's default json-file driver keeps every line the hub has
