@@ -48,7 +48,7 @@ export function HomeScreen({
   hideAnnouncementRow,
 }: HomeScreenProps) {
   const {
-    groups, devices, locations, library, renameDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality,
+    groups, devices, locations, library, renameDevice, flashDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality,
     setForcedPlaylist, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedPlaylist, setDeviceBlackout, clearUsbOverride,
   } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
@@ -174,6 +174,7 @@ export function HomeScreen({
                 nowPlayingItem={nowPlayingItem(group, libraryById)}
                 announcement={device.announcementId ? libraryById.get(device.announcementId) : undefined}
                 onRename={renameDevice}
+                onFlash={flashDevice}
                 onRestart={restartDevice}
                 onMove={onMoveDevice}
                 onRemove={removeDevice}
@@ -207,6 +208,7 @@ export function HomeScreen({
           nowPlayingItem={nowPlayingItemForDevice(device, libraryById)}
           announcement={device.announcementId ? libraryById.get(device.announcementId) : undefined}
           onRename={renameDevice}
+          onFlash={flashDevice}
           onRestart={restartDevice}
           onMove={onMoveDevice}
           onRemove={removeDevice}

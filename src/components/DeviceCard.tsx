@@ -27,6 +27,8 @@ interface DeviceCardProps {
   nowPlayingItem: LibraryItem | undefined;
   announcement: LibraryItem | undefined;
   onRename: (id: string, name: string) => void;
+  /** Blinks this screen's physical display white/black twice — helps identify which real screen a card here corresponds to. Same action as Settings' own "Identify" button. */
+  onFlash: (device: Device) => void;
   onRestart: (device: Device) => void;
   onMove: (device: Device) => void;
   onRemove: (id: string) => void;
@@ -60,6 +62,7 @@ export function DeviceCard({
   nowPlayingItem,
   announcement,
   onRename,
+  onFlash,
   onRestart,
   onMove,
   onRemove,
@@ -164,6 +167,9 @@ export function DeviceCard({
       </div>
       {!editing && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Identify" title="Blink this screen's display" onClick={() => onFlash(device)}>
+            <Icon name="lightbulb" size={14} />
+          </button>
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" title="Reboot this screen" onClick={() => onRestart(device)}>
             <Icon name="restart" size={14} />
           </button>
