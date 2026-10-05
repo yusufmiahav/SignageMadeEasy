@@ -350,19 +350,20 @@ already includes one). To confirm: `systemctl list-unit-files | grep
 signage-usb-override` and `ls /etc/udev/rules.d/99-signage-usb-override.rules`
 over SSH — empty/missing means it needs re-provisioning.
 
-**Unverified on real hardware.** The copy/activate/serve logic (everything in
-`src/usbOverride.ts`) was exercised end-to-end in this sandbox against a
-loopback-mounted disk image standing in for a USB stick, including the real
-`bin/usb-override-mount.sh` script — mount, folder/extension filtering,
-copy, unmount, and activating the override over HTTP all worked exactly as
-designed. What couldn't be tested here is the actual trigger path: a real USB
-insertion firing the udev rule, which hands off to the
-`signage-usb-override@.service` systemd template unit. That hand-off pattern
-(`TAG+="systemd"`, `ENV{SYSTEMD_WANTS}=`) is standard and well-established,
-but hasn't been confirmed on real Raspberry Pi OS/Debian hardware yet — worth
-testing on one spare screen before relying on it in the field. If a USB stick
-doesn't seem to trigger anything, `journalctl -u signage-usb-override@*` and
-`udevadm monitor` (while inserting the stick) are the first things to check.
+**Confirmed working on real hardware**, trigger path included: a real USB
+stick with a top-level `signage` folder, inserted into an already
+re-provisioned Pi, fires the udev rule and forces the content as designed.
+(The copy/activate/serve logic in `src/usbOverride.ts` was also exercised
+end-to-end in this project's own sandbox against a loopback-mounted disk
+image standing in for a USB stick — mount, folder/extension filtering, copy,
+unmount, and activating the override over HTTP all matched what the real
+hardware test then confirmed.) If a stick still doesn't seem to trigger
+anything, double check it has a folder literally named `signage` at its top
+level (anything else is deliberately ignored — see above) and that the
+screen has been Re-provisioned, not just Updated, since this feature
+shipped (see the Re-provision note above); `journalctl -u
+signage-usb-override@*` and `udevadm monitor` (while inserting the stick)
+are the first things to check beyond that.
 
 ## Static IP or DHCP
 
