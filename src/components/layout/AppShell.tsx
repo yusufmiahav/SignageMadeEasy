@@ -2,13 +2,14 @@ import { useState, type ReactNode } from 'react';
 import { Icon, type IconName } from '../icons/Icon';
 import { HelpDialog } from '../dialogs/HelpDialog';
 
-export type Tab = 'home' | 'library' | 'schedule' | 'announcements' | 'settings';
+export type Tab = 'home' | 'library' | 'schedule' | 'announcements' | 'search' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'library', label: 'Library', icon: 'image' },
   { id: 'schedule', label: 'Schedule', icon: 'calendar' },
   { id: 'announcements', label: 'Announcements', icon: 'messageCircle' },
+  { id: 'search', label: 'Search', icon: 'search' },
   { id: 'settings', label: 'Settings', icon: 'sliders' },
 ];
 
@@ -16,11 +17,13 @@ interface AppShellProps {
   tab: Tab;
   onTabChange: (tab: Tab) => void;
   deviceCount: number;
+  /** Devices currently reporting status === 'online' — shown alongside deviceCount in the top bar on every tab, not just Home, since it's a glance-worthy fleet stat regardless of what else you're doing. */
+  onlineCount: number;
   onAddScreen: () => void;
   children: ReactNode;
 }
 
-export function AppShell({ tab, onTabChange, deviceCount, onAddScreen, children }: AppShellProps) {
+export function AppShell({ tab, onTabChange, deviceCount, onlineCount, onAddScreen, children }: AppShellProps) {
   // Self-contained — a static reference with no app data to show, so it doesn't need
   // to live in App.tsx's own dialog state alongside every data-driven dialog.
   const [showHelp, setShowHelp] = useState(false);
@@ -37,6 +40,7 @@ export function AppShell({ tab, onTabChange, deviceCount, onAddScreen, children 
       <div className="app-desktop-nav nav">
         <span className="nav-brand">SignageMadeEasy</span>
         <span className="tag tag-neutral">{deviceCount} screen{deviceCount === 1 ? '' : 's'}</span>
+        {deviceCount > 0 && <span className="tag tag-accent">{onlineCount} online</span>}
         <button type="button" className="btn btn-ghost btn-icon" aria-label="Help" onClick={() => setShowHelp(true)}>
           <Icon name="helpCircle" size={16} />
         </button>

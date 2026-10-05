@@ -4,6 +4,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { ScheduleScreen } from './screens/ScheduleScreen';
 import { AnnouncementsScreen } from './screens/AnnouncementsScreen';
+import { SearchScreen } from './screens/SearchScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { Toast } from './components/Toast';
 import { PairDeviceDialog } from './components/dialogs/PairDeviceDialog';
@@ -104,7 +105,13 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
 
   return (
     <>
-      <AppShell tab={tab} onTabChange={setTab} deviceCount={app.devices.length} onAddScreen={() => setDialog({ type: 'addChooser' })}>
+      <AppShell
+        tab={tab}
+        onTabChange={setTab}
+        deviceCount={app.devices.length}
+        onlineCount={app.devices.filter((d) => d.status === 'online').length}
+        onAddScreen={() => setDialog({ type: 'addChooser' })}
+      >
         {tab === 'home' && (
           <HomeScreen
             app={app}
@@ -153,6 +160,12 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             app={app}
             onOpenForceAnnouncement={(groupId) => setDialog({ type: 'forceAnnouncement', groupId })}
             onOpenAddSchedule={(groupId) => setDialog({ type: 'addAnnouncementSchedule', groupId })}
+          />
+        )}
+        {tab === 'search' && (
+          <SearchScreen
+            app={app}
+            onOpenDevicePreview={(device) => setDialog({ type: 'previewDevice', device })}
           />
         )}
         {tab === 'settings' && (
