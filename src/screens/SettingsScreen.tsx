@@ -601,21 +601,6 @@ export function SettingsScreen({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="card-kicker">Groups & Screens</div>
           <div style={{ display: 'flex', gap: 6 }}>
-            {devices.length > 0 && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ fontSize: 12, padding: '4px 8px' }}
-                title="Pulls the latest player code and restarts every online screen (~10-30s each)"
-                onClick={async () => {
-                  const results = await updateAllDevices();
-                  if (results) onOpenUpdateResults(results, 'update');
-                }}
-              >
-                <Icon name="download" size={12} />
-                Update all
-              </button>
-            )}
             {devices.length > 1 && (
               <button
                 type="button"
@@ -750,12 +735,37 @@ export function SettingsScreen({
         </div>
         {!advancedOpen && (
           <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
-            Fleet-wide restart/re-provision, the update log, device inventory, and saved hub networks.
+            Fleet-wide update/restart/re-provision, the update log, device inventory, and saved hub networks.
           </p>
         )}
         {advancedOpen && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div>
+              <div className="card-title">Update all</div>
+              <p className="card-body">
+                Pulls the latest player code and restarts every online screen
+                (~10-30s each) — app code only, not system packages or boot
+                config (see "Re-provision all" below for that).
+              </p>
+              {devices.length === 0 ? (
+                <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>No screens paired yet.</p>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ alignSelf: 'flex-start' }}
+                  onClick={async () => {
+                    const results = await updateAllDevices();
+                    if (results) onOpenUpdateResults(results, 'update');
+                  }}
+                >
+                  <Icon name="download" size={14} />
+                  Update all
+                </button>
+              )}
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
               <div className="card-title">Restart all</div>
               <p className="card-body">
                 Reboots every online screen at once — same as each row's own
