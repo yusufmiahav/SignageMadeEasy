@@ -40,7 +40,15 @@ export function AppShell({ tab, onTabChange, deviceCount, onlineCount, onAddScre
       <div className="app-desktop-nav nav">
         <span className="nav-brand">SignageMadeEasy</span>
         <span className="tag tag-neutral">{deviceCount} screen{deviceCount === 1 ? '' : 's'}</span>
-        {deviceCount > 0 && <span className="tag tag-accent">{onlineCount} online</span>}
+        {deviceCount > 0 && (
+          <>
+            <span className="tag tag-accent">{onlineCount} online</span>
+            {/* Warning styling (not plain neutral) once any screen is actually offline —
+                matches how device rows elsewhere flag an offline/failed state, rather
+                than reading as just another neutral count next to the two above it. */}
+            <span className={`tag ${deviceCount - onlineCount > 0 ? 'tag-warning' : 'tag-neutral'}`}>{deviceCount - onlineCount} offline</span>
+          </>
+        )}
         <button type="button" className="btn btn-ghost btn-icon" aria-label="Help" onClick={() => setShowHelp(true)}>
           <Icon name="helpCircle" size={16} />
         </button>
