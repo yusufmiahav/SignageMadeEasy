@@ -687,6 +687,12 @@ export function renameDevice(id: string, name: string): void {
   db.prepare('UPDATE devices SET name = ? WHERE id = ?').run(name.trim(), id);
 }
 
+/** Repoints an existing device record at a different IP — see routes/devices.ts's PATCH /:id, which also pushes a /configure call to whatever Pi is actually at the new address so it adopts this device's identity. Purely the DB update; the push is the caller's job (needs piAgent, which store.ts doesn't import — same circular-import avoidance as tflArrivals.ts's callback pattern). */
+export function setDeviceIp(id: string, ip: string): void {
+  if (!ip.trim()) return;
+  db.prepare('UPDATE devices SET ip = ? WHERE id = ?').run(ip.trim(), id);
+}
+
 export function moveDevice(id: string, groupId: string | null): void {
   // Lands last in the target group's (or standalone list's) own order, same
   // reasoning as pairDevice's nextOrder — its old sortOrder value is meaningless

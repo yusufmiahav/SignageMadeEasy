@@ -40,7 +40,7 @@ export function SettingsScreen({
   onOpenUpdateResults,
 }: SettingsScreenProps) {
   const {
-    groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation,
+    groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation, setDeviceIp,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
     safetyHold, setSafetyHold, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices,
   } = app;
@@ -66,6 +66,11 @@ export function SettingsScreen({
   };
   const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' | 'location' } | null>(null);
   const [editingName, setEditingName] = useState('');
+  // Device-only — a group/location has no IP of its own. Lets a screen whose IP
+  // drifted (no DHCP reservation) or was re-flashed/factory-reset be pointed
+  // back at its existing configuration instead of needing a fresh re-pair —
+  // see app/useAppState.ts's setDeviceIp comment.
+  const [editingIp, setEditingIp] = useState('');
   // Groups/screens filed under a Location render inside that Location's own section
   // below instead of at the top level — same split as HomeScreen.tsx. A locationId
   // pointing at a since-deleted Location (e.g. a hand-edited backup import) is
@@ -186,15 +191,21 @@ export function SettingsScreen({
     }
   };
 
-  const startEdit = (id: string, name: string, kind: 'group' | 'device' | 'location') => {
+  const startEdit = (id: string, name: string, kind: 'group' | 'device' | 'location', ip?: string) => {
     setEditing({ id, kind });
     setEditingName(name);
+    setEditingIp(ip ?? '');
   };
   const save = () => {
     if (editing) {
       if (editing.kind === 'group') renameGroup(editing.id, editingName);
       else if (editing.kind === 'location') void renameLocation(editing.id, editingName);
-      else renameDevice(editing.id, editingName);
+      else {
+        renameDevice(editing.id, editingName);
+        const device = devices.find((d) => d.id === editing.id);
+        const trimmedIp = editingIp.trim();
+        if (device && trimmedIp && trimmedIp !== device.ip) void setDeviceIp(device, trimmedIp);
+      }
     }
     setEditing(null);
   };
@@ -233,14 +244,27 @@ export function SettingsScreen({
           />
         )}
         {isEditing ? (
-          <input
-            className="input"
-            style={{ flex: '1 1 140px' }}
-            value={editingName}
-            onChange={(e) => setEditingName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && save()}
-            autoFocus
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 140px' }}>
+            <input
+              className="input"
+              value={editingName}
+              onChange={(e) => setEditingName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              autoFocus
+            />
+            {/* No DHCP reservation, or the Pi was re-flashed/factory-reset and got a
+                fresh lease — saving a new IP here re-links this existing device's
+                config to whatever's at that address instead of needing a re-pair.
+                See api/client.ts's setDeviceIp comment for the full story. */}
+            <input
+              className="input"
+              placeholder="IP address"
+              value={editingIp}
+              onChange={(e) => setEditingIp(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              style={{ fontSize: 11 }}
+            />
+          </div>
         ) : (
           // A fixed flex-basis (rather than plain flex: 1) so a narrow row wraps this
           // whole name block onto its own line instead of squeezing it thin enough
@@ -313,7 +337,7 @@ export function SettingsScreen({
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Update" title="Update or re-provision this screen" onClick={() => onOpenDeviceUpdate(device)}>
               <Icon name="download" size={13} />
             </button>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(device.id, device.name, 'device')}>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Edit name or IP" title="Rename, or change this screen's saved IP address" onClick={() => startEdit(device.id, device.name, 'device', device.ip)}>
               <Icon name="pencil" size={13} />
             </button>
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeDevice(device.id)}>

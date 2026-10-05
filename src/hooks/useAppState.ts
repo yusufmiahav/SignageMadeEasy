@@ -458,6 +458,22 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
+  // Catches and toasts its own failure (same reasoning as updateDevice/
+  // clearUsbOverride above) — a duplicate-IP conflict is a real, expected
+  // failure mode here (see api/client.ts's setDeviceIp comment), not a rare
+  // edge case worth leaving as a silent unhandled rejection.
+  const setDeviceIp = useCallback(async (device: Device, ip: string, hubUrl?: string) => {
+    try {
+      const { reconfigured } = await api.setDeviceIp(device.id, ip, hubUrl);
+      await refreshDevices();
+      showToast(reconfigured
+        ? `${device.name} is now at ${ip} — reconfigured and ready`
+        : `Saved ${ip} for ${device.name} — nothing answered there yet, but it'll pick this up once it's reachable`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : `Could not update ${device.name}'s IP`);
+    }
+  }, [refreshDevices, showToast]);
+
   const reorderDevices = useCallback(async (ids: string[]) => {
     await api.reorderDevices(ids);
     await refreshDevices();
@@ -716,6 +732,7 @@ export function useAppState() {
     renameDevice,
     moveDevice,
     setDeviceLocation,
+    setDeviceIp,
     reorderDevices,
     removeDevice,
     restartDevice,

@@ -553,6 +553,22 @@ class LocalStoreClient implements SignageApiClient {
     this.persist();
   }
 
+  // No real Pi to push a /configure call to in standalone mode — just updates
+  // the saved record. Always reports reconfigured: false, same "not an error"
+  // meaning as the real hub's own degraded case.
+  async setDeviceIp(id: string, ip: string): Promise<{ reconfigured: boolean }> {
+    const device = this.data.devices.find((d) => d.id === id);
+    const trimmed = ip.trim();
+    if (!device || !trimmed) return { reconfigured: false };
+    // Same uniqueness check as pairDevice's own.
+    if (this.data.devices.some((d) => d.id !== id && d.ip === trimmed)) {
+      throw new Error(`A screen is already paired at ${trimmed}`);
+    }
+    device.ip = trimmed;
+    this.persist();
+    return { reconfigured: false };
+  }
+
   // `ids` is expected to be the complete set of devices in one scope (one group, or
   // the standalone/no-group list) — same contract as the hub's store.reorderDevices.
   // Slot each id from the reorder into that device's old array position so devices

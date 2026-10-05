@@ -137,6 +137,7 @@ export const httpClient: SignageApiClient = {
   reorderDevices: (ids) => request<void>('/api/devices/reorder', { method: 'PUT', ...json({ ids }) }),
   moveDevice: (id, groupId) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ groupId }) }),
   setDeviceLocation: (id, locationId) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ locationId }) }),
+  setDeviceIp: (id, ip, hubUrl) => request<{ reconfigured: boolean }>(`/api/devices/${id}`, { method: 'PATCH', ...json({ ip, hubUrl }) }),
   removeDevice: (id) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
   flashDevice: (id) => request<void>(`/api/devices/${id}/identify-flash`, { method: 'POST' }),

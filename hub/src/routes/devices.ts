@@ -98,8 +98,8 @@ devicesRouter.post('/pair', async (req, res) => {
   res.status(201).json(device);
 });
 
-devicesRouter.patch('/:id', (req, res) => {
-  const { name, groupId, locationId, videoQuality } = req.body ?? {};
+devicesRouter.patch('/:id', async (req, res) => {
+  const { name, groupId, locationId, videoQuality, ip, hubUrl } = req.body ?? {};
   if (typeof name === 'string') store.renameDevice(req.params.id, name);
   // groupId: null moves the device to "standalone, no group" — distinct from
   // omitting the key entirely, which leaves its current group untouched.
@@ -112,6 +112,38 @@ devicesRouter.patch('/:id', (req, res) => {
     store.setDeviceLocation(req.params.id, locationId);
   }
   if (videoQuality === 'auto' || videoQuality === 'full') store.setDeviceVideoQuality(req.params.id, videoQuality);
+
+  // Repoints this device at a different IP — e.g. its DHCP lease changed (no
+  // reservation), or its SD card was re-flashed/factory-reset and would
+  // otherwise re-pair as a brand new device. Pushes the exact same /configure
+  // call the initial pairing flow above uses, just targeting this EXISTING
+  // device's id instead of a freshly minted one, so whatever Pi is actually at
+  // the new address adopts this device's identity and inherits its full
+  // existing configuration (group, schedule, forced content, name, etc.)
+  // instead of starting over. Non-fatal if nothing answers there right now —
+  // same "still save it, the Pi can catch up later" reasoning as pairing's own
+  // handshake, and matters here in particular: the IP might be edited based on
+  // what the router's DHCP table says *before* that Pi has even booted yet.
+  if (typeof ip === 'string' && ip.trim()) {
+    const device = store.getDevice(req.params.id);
+    if (!device) return res.status(404).json({ error: 'not found' });
+    const trimmedIp = ip.trim();
+    if (trimmedIp !== device.ip) {
+      if (store.listDevices().some((d) => d.id !== device.id && d.ip === trimmedIp)) {
+        return res.status(409).json({ error: `A screen is already paired at ${trimmedIp}` });
+      }
+      store.setDeviceIp(device.id, trimmedIp);
+      let reconfigured = false;
+      try {
+        await piAgent.configure(trimmedIp, device.id, (typeof hubUrl === 'string' && hubUrl) || publicHubUrl(req));
+        reconfigured = true;
+      } catch {
+        // Non-fatal — see this block's own comment above.
+      }
+      return res.json({ ok: true, reconfigured });
+    }
+  }
+
   res.status(204).end();
 });
 

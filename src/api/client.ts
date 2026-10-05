@@ -120,6 +120,19 @@ export interface SignageApiClient {
   moveDevice(id: string, groupId: string | null): Promise<void>;
   /** Files a standalone screen under a Location, or `null` to un-file it — meaningless while the screen belongs to a group (its Location comes from the group instead). */
   setDeviceLocation(id: string, locationId: string | null): Promise<void>;
+  /**
+   * Repoints an existing device at a different IP — e.g. its DHCP lease changed
+   * (no reservation), or its SD card was re-flashed/factory-reset and would
+   * otherwise re-pair as a brand new device. Pushes a /configure call to
+   * whatever Pi is actually at the new address so it adopts THIS device's
+   * identity and inherits its full existing configuration (group, schedule,
+   * forced content, name, etc.) instead of starting over — same handshake
+   * pairDevice's own hubUrl override uses. `reconfigured: false` isn't an
+   * error: the IP is still saved, the Pi just didn't answer there right now
+   * (not booted yet, mid-DHCP-renewal, etc.) and will pick this up once it is
+   * reachable, the same way initial pairing already degrades gracefully.
+   */
+  setDeviceIp(id: string, ip: string, hubUrl?: string): Promise<{ reconfigured: boolean }>;
   removeDevice(id: string): Promise<void>;
   restartDevice(id: string): Promise<void>;
   /** Makes this screen's physical display blink white/black twice — helps identify which real screen an entry in Settings corresponds to. No-op in standalone/localStorage mode (no real Pi to ask). */
