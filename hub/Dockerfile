@@ -21,17 +21,6 @@ RUN npm install
 COPY hub/tsconfig.json ./
 COPY hub/src ./src
 RUN npm run build
-# Bakes the commit this image was built from into the image itself, so a running
-# container can report "what version am I" (see hub/src/version.ts) without
-# needing a .git directory at runtime. Computed on the HOST and passed in as a
-# build arg (see docker-compose.yml's build.args and hub/README.md's deploy
-# commands) rather than read from a .git copied into this stage — .dockerignore
-# deliberately excludes .git from the build context entirely (keeps context
-# transfer small/fast), so COPY .git here would always fail with "not found."
-# Defaults to "unknown" for a build that doesn't pass the arg (e.g. a plain
-# `docker build` without the wrapper command) rather than failing over it.
-ARG GIT_COMMIT=unknown
-RUN echo "$GIT_COMMIT" > /hub/version.txt
 
 FROM node:20-slim
 # ffmpeg provides ffprobe, used to read real video durations on upload. gosu lets
@@ -48,7 +37,11 @@ WORKDIR /app
 COPY hub/package.json hub/package-lock.json* ./
 RUN npm install --omit=dev
 COPY --from=hub-build --chown=node:node /hub/dist ./dist
-COPY --from=hub-build --chown=node:node /hub/version.txt ./version.txt
+# A plain version number (see /VERSION's own comment), not a git commit — this is
+# an ordinary file in the repo, not excluded by .dockerignore, so it's just a
+# normal COPY like everything else here. hub/src/version.ts reads this to report
+# the running hub's own version, compared against each screen's own.
+COPY --chown=node:node VERSION ./version.txt
 COPY --from=web-build --chown=node:node /web/dist ./web-dist
 COPY hub/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

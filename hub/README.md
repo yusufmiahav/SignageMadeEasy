@@ -10,14 +10,8 @@ app (`../src`) talks to over the network. One container serves both the REST API
 git clone https://github.com/yusufmiahav/SignageMadeEasy.git
 cd SignageMadeEasy
 git checkout claude/signage-made-easy-dev-r00fl6
-GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f hub/docker-compose.yml up -d --build
+docker compose -f hub/docker-compose.yml up -d --build
 ```
-
-The `GIT_COMMIT=...` prefix lets the running hub report its own version in the
-Settings screen (compared against each screen's own, to flag ones that need
-updating — see "Update log and screen versions" below). It's optional — a
-plain `docker compose ... up -d --build` still builds and runs fine, the hub
-just won't be able to tell the control app what commit it's on.
 
 **That branch checkout matters**: this repo's `main` branch does not yet have
 everything described in this README (or in the code) — active work happens on
@@ -33,7 +27,7 @@ the control app, now talking to a real hub instead of `localStorage`.
 ```bash
 cd SignageMadeEasy
 git pull
-GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f hub/docker-compose.yml up -d --build
+docker compose -f hub/docker-compose.yml up -d --build
 ```
 
 `git pull` updates whichever branch you're currently on — since the initial
@@ -57,14 +51,20 @@ Settings shows two things for keeping a fleet of screens in sync:
   Settings row, newest first, with its outcome (in progress/done/failed) and
   when. Lets you see what's been touched across every screen at a glance,
   not just whichever one you're currently looking at.
-- **Per-screen version** — each screen reports the short git commit it last
-  updated/re-provisioned from. If it differs from the hub's own commit (set
-  via `GIT_COMMIT=...` above), the screen is flagged "Update available."
-  Until the hub itself knows its own commit (built without `GIT_COMMIT`,
-  or an older image predating this feature), this comparison just doesn't
-  run — screens still show their own version with no flag either way. A
-  screen built before this feature shipped shows no version at all until
-  its next Update/Re-provision.
+- **Per-screen version** — each screen reports the plain version number
+  (`v1.0.1`, not a git commit hash) it last updated/re-provisioned from, read
+  from the repo's own `/VERSION` file at that time. If it differs from the
+  hub's own version — baked into its Docker image from that same file at
+  build time — the screen is flagged "Update available." A screen built
+  before this feature shipped shows no version at all until its next
+  Update/Re-provision.
+
+`/VERSION` is a single plain-text file at the repo root (just a number, e.g.
+`1.0.1`) — the one source of truth both the hub and every Pi read their
+version from, bumped by hand with each meaningful change shipped to this
+branch. It's unrelated to the individual `package.json` `"version"` fields
+under `hub/`/`pi-player/`/the repo root, which track each npm package on its
+own and aren't surfaced anywhere in the control app.
 
 **Networking is not optional here**: the compose file runs the container with
 `network_mode: host` on purpose. The hub needs to reach Pi IPs directly (to finish

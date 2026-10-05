@@ -53,8 +53,8 @@ export function createApp() {
 
   // The control app's Settings screen compares this against each device's own
   // reported version (see store.ts's Device.version) to flag screens that haven't
-  // picked up the hub's current code yet. Null when the hub itself can't tell what
-  // commit it's running (see version.ts) — in that case the control app just shows
+  // picked up the hub's current code yet. Null when the hub's own /VERSION file
+  // couldn't be read (see version.ts) — in that case the control app just shows
   // each screen's raw version with nothing to compare it to.
   app.get('/api/version', requireAuth, (_req, res) => res.json({ hubVersion: HUB_VERSION }));
 

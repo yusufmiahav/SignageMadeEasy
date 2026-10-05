@@ -171,12 +171,13 @@ export interface SignageApiClient {
    */
   getUpdateLog(): Promise<UpdateEvent[]>;
   /**
-   * The hub's own running commit — compared against each Device.version to flag a
-   * screen that hasn't picked up the hub's current code yet (see Device.version's
-   * comment). `hubVersion: null` in standalone/localStorage mode (no real hub), or
-   * if a real hub can't tell what commit it's running (see hub/src/version.ts) —
-   * either way, nothing to compare against, so the Settings screen just shows each
-   * screen's raw version with no "needs updating" flag.
+   * The hub's own running version (a plain number like "1.0.1", not a git commit
+   * hash) — compared against each Device.version to flag a screen that hasn't
+   * picked up the hub's current code yet (see Device.version's comment).
+   * `hubVersion: null` in standalone/localStorage mode (no real hub), or if a real
+   * hub can't read its own /VERSION file (see hub/src/version.ts) — either way,
+   * nothing to compare against, so the Settings screen just shows each screen's
+   * raw version with no "needs updating" flag.
    */
   getHubVersion(): Promise<{ hubVersion: string | null }>;
   setDeviceAnnouncement(id: string, announcementId: string | null): Promise<void>;

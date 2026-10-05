@@ -752,7 +752,7 @@ export interface HeartbeatDiagnostics {
   usbOverrideActive?: boolean;
   /** See pi-player/src/diagnostics.ts's PROCESS_STARTED_AT and this file's markUpdateTriggered. */
   playerStartedAt?: number;
-  /** See pi-player/src/diagnostics.ts's GIT_VERSION and version.ts's HUB_VERSION. */
+  /** See pi-player/src/diagnostics.ts's VERSION and version.ts's HUB_VERSION. */
   version?: string | null;
 }
 

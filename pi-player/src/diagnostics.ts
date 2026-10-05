@@ -21,13 +21,17 @@ const execFileAsync = promisify(execFile);
 // distinct from os.uptime() above, which only resets on a full reboot.
 const PROCESS_STARTED_AT = Date.now();
 
-// Written by provision.sh/self-update.sh right after they pull/clone the repo —
-// see those scripts' own comments. Overridable for testing, same pattern as this
-// project's other env-overridden paths. Read once at module load (same reasoning
-// as PROCESS_STARTED_AT above): it can't change without a restart anyway, since
-// an update that changes it always restarts this process on completion.
+// A plain version number (e.g. "1.0.1"), copied from the repo's own /VERSION file
+// by provision.sh/self-update.sh right after they pull/clone it — see those
+// scripts' own comments. Not a git commit hash — this project bumps /VERSION by
+// hand with each meaningful change instead, so what shows up in the control app
+// is a normal-looking version number rather than git jargon. Overridable for
+// testing, same pattern as this project's other env-overridden paths. Read once
+// at module load (same reasoning as PROCESS_STARTED_AT above): it can't change
+// without a restart anyway, since an update that changes it always restarts this
+// process on completion.
 const VERSION_FILE = process.env.SIGNAGE_VERSION_PATH ?? '/opt/signage/version';
-const GIT_VERSION: string | null = (() => {
+const VERSION: string | null = (() => {
   try {
     const content = fsSync.readFileSync(VERSION_FILE, 'utf8').trim();
     return content && content !== 'unknown' ? content : null;
@@ -47,7 +51,7 @@ export interface Diagnostics {
   usbOverrideActive: boolean;
   /** ms since epoch this player process started — see PROCESS_STARTED_AT above. */
   playerStartedAt: number;
-  /** Short git commit hash this screen last updated/re-provisioned from — see GIT_VERSION above. Null for a screen never updated since this shipped, or not provisioned from a real git checkout. */
+  /** Plain version number this screen last updated/re-provisioned from — see VERSION above. Null for a screen never updated since this shipped. */
   version: string | null;
 }
 
@@ -87,6 +91,6 @@ export async function collect(): Promise<Diagnostics> {
   const [tempC, throttled, disk] = await Promise.all([measureTemp(), getThrottled(), diskUsage()]);
   return {
     tempC, throttled, uptimeSec: Math.round(os.uptime()), diskFreeMb: disk.freeMb, diskTotalMb: disk.totalMb,
-    usbOverrideActive: usbOverride.isActive(), playerStartedAt: PROCESS_STARTED_AT, version: GIT_VERSION,
+    usbOverrideActive: usbOverride.isActive(), playerStartedAt: PROCESS_STARTED_AT, version: VERSION,
   };
 }

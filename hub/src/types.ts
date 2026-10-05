@@ -173,7 +173,7 @@ export interface Device {
   playerStartedAt?: number | null;
   /** Settings screen's Update/Re-provision buttons: undefined/omitted once nothing's in flight (the normal case). 'updating' from the moment the Pi's agent accepts the trigger until its player process is confirmed to have restarted (or store.ts's UPDATE_TIMEOUT_MS passes with no such confirmation, reported as 'failed' instead) — see store.ts's markUpdateTriggered. A resolved 'done'/'failed' stays visible for a short window then reverts to undefined on its own. */
   updateStatus?: 'updating' | 'done' | 'failed';
-  /** Short git commit hash this screen last updated/re-provisioned from — reported alongside every heartbeat (pi-player/src/diagnostics.ts's GIT_VERSION). Null for a screen never updated since this shipped. Compared against version.ts's HUB_VERSION by the control app to flag screens that need updating. */
+  /** Plain version number (e.g. "1.0.1", from the repo's /VERSION file — not a git commit hash) this screen last updated/re-provisioned from, reported alongside every heartbeat (pi-player/src/diagnostics.ts's VERSION constant). Null for a screen never updated since this shipped. Compared against version.ts's HUB_VERSION by the control app to flag screens that need updating. */
   version?: string | null;
 }
 

@@ -291,11 +291,11 @@ export function SettingsScreen({
               <div style={{ fontSize: 11, color: 'var(--color-danger, #c0392b)' }} title={device.lastSeenAt ? `Last heard from ${new Date(device.lastSeenAt).toLocaleString()}` : "Hasn't sent a heartbeat yet"}>Offline</div>
             )}
             {/* Compares this screen's last-reported version against the hub's own
-                running commit (see app/client.ts's getHubVersion comment) — lets you
-                spot screens that haven't picked up the latest code without having to
-                update every screen "just in case." Omitted entirely for a screen
-                that's never reported a version (not updated since this shipped) or
-                when the hub itself can't tell its own version. */}
+                (see app/client.ts's getHubVersion comment) — lets you spot screens
+                that haven't picked up the latest code without having to update
+                every screen "just in case." Omitted entirely for a screen that's
+                never reported a version (not updated since this shipped) or when
+                the hub itself can't tell its own version. */}
             {device.version && hubVersion && device.version !== hubVersion ? (
               <div style={{ fontSize: 11, color: 'var(--color-accent-800)' }} title={`This screen is on ${device.version}; the hub is on ${hubVersion}`}>Update available ({device.version})</div>
             ) : device.version ? (

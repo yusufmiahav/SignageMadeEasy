@@ -174,7 +174,7 @@ export interface Device {
   usbOverrideActive?: boolean;
   /** Settings screen's Update/Re-provision buttons: undefined once nothing's in flight. 'updating' while a triggered update/re-provision hasn't yet been confirmed to have restarted the screen's player process, 'done'/'failed' briefly once it resolves one way or the other — see hub/src/store.ts's markUpdateTriggered. Always undefined in standalone/localStorage mode (no real Pi to update). */
   updateStatus?: 'updating' | 'done' | 'failed';
-  /** Short git commit hash this screen last updated/re-provisioned from — reported by its own agent alongside every heartbeat. Null/undefined for a screen never updated since this shipped, or any device in standalone/localStorage mode (no real Pi to ask). Compare against SignageApiClient.getHubVersion() to tell whether a screen needs updating. */
+  /** Plain version number (e.g. "1.0.1", not a git commit hash) this screen last updated/re-provisioned from, reported by its own agent alongside every heartbeat. Null/undefined for a screen never updated since this shipped, or any device in standalone/localStorage mode (no real Pi to ask). Compare against SignageApiClient.getHubVersion() to tell whether a screen needs updating. */
   version?: string | null;
 }
 
