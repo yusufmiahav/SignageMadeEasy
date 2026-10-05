@@ -234,17 +234,48 @@ orientation, nothing here applies live: both the initial negotiation and any
 change to it only take effect on the next boot, so the setup page always
 prompts for a reboot after a change, never just on a non-default value.
 
-**UNVERIFIED on real hardware as of writing** — the write/idempotency/merge
-mechanics (preserving the other setting's token, never introducing a newline,
-removing the parameter entirely once both settings are back at their
-defaults) were thoroughly tested against simulated `cmdline.txt` content run
-through the real scripts, including a full set-resolution/set-rotation/
-set-resolution-back cross-sequence — but whether a real consumer TV actually
-renders correctly, full-screen, once this mode is forced has not been
-confirmed against physical hardware. If a screen is showing the small-box
-symptom described above, re-provision it (this needs re-provisioning, not
-just the fast Update path — a new root script and sudoers grant), set
-"Force 1920x1080", reboot, and let us know whether it fixed it either way.
+**Confirmed working on at least one real screen** (an LG TV, once a separate
+cable problem — see the troubleshooting note just below — was ruled out). If
+a screen is showing the small-box symptom described above, re-provision it
+(this needs re-provisioning, not just the fast Update path — a new root
+script and sudoers grant), set "Force 1920x1080", reboot, and let us know
+whether it fixed it either way; the write/idempotency/merge mechanics
+(preserving the other setting's token, never introducing a newline, removing
+the parameter entirely once both settings are back at their defaults) were
+also thoroughly tested against simulated `cmdline.txt` content run through
+the real scripts, including a full set-resolution/set-rotation/
+set-resolution-back cross-sequence.
+
+**Troubleshooting: forcing a resolution doesn't fix a wrong-aspect-ratio
+screen.** Before assuming this feature itself isn't working, check whether
+the Pi can actually see the TV's real EDID at all:
+
+```
+cat /sys/class/drm/card*-HDMI-A-1/modes   # use the connector detectConnector() reports
+```
+
+If that lists only a handful of generic modes — `1024x768`, `800x600`
+(sometimes twice), `848x480`, `640x480` — that's the kernel's built-in
+fallback list for a *failed* EDID read, not this TV's actual capabilities.
+No amount of resolution-forcing will help here, because the kernel doesn't
+know what the display really supports (and forcing a mode can itself behave
+oddly without a clean EDID to merge against). On a real screen, this was
+caused by an HDMI cable that passed video fine but wasn't passing EDID/DDC —
+swapping the cable produced a modes list headed by several real `1920x1080`
+entries and the problem resolved itself immediately, without changing any
+settings. Before digging further into software, try:
+- A different HDMI (or micro-HDMI) cable — a cable or adapter can carry
+  video but silently fail to carry EDID/DDC.
+- Powering the TV on *before* the Pi, so its EDID is actually available over
+  DDC when the Pi probes it at boot — probing an HDMI port that hasn't
+  finished waking up often produces the same generic-fallback-list symptom.
+- A different HDMI port on the TV, or removing any switch/splitter between
+  the Pi and the TV (these can block EDID passthrough even when video gets
+  through).
+
+Re-run the `cat .../modes` command above after each change — once it lists
+the TV's real modes (1920x1080 among them), Force 1920x1080 has an accurate
+EDID to work against and should behave as expected.
 
 ## Configuring Wi-Fi in the field (no SSH needed)
 
