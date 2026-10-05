@@ -476,11 +476,15 @@ export function useAppState() {
   // failure mode here (see api/client.ts's setDeviceIp comment), not a rare
   // edge case worth leaving as a silent unhandled rejection.
   const setDeviceIp = useCallback(async (device: Device, ip: string, hubUrl?: string) => {
+    // Captured before the call resolves and refreshDevices() updates `devices` —
+    // used only to pick the right toast wording (did the IP itself change, or was
+    // this a same-IP re-sync to force-correct a stale hubUrl on the Pi?).
+    const ipChanged = ip !== device.ip;
     try {
       const { reconfigured } = await api.setDeviceIp(device.id, ip, hubUrl);
       await refreshDevices();
       showToast(reconfigured
-        ? `${device.name} is now at ${ip} — reconfigured and ready`
+        ? (ipChanged ? `${device.name} is now at ${ip} — reconfigured and ready` : `${device.name} re-synced — it'll pick up any address change`)
         : `Saved ${ip} for ${device.name} — nothing answered there yet, but it'll pick this up once it's reachable`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : `Could not update ${device.name}'s IP`);

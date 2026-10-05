@@ -131,6 +131,15 @@ devicesRouter.patch('/:id', async (req, res) => {
   // same "still save it, the Pi can catch up later" reasoning as pairing's own
   // handshake, and matters here in particular: the IP might be edited based on
   // what the router's DHCP table says *before* that Pi has even booted yet.
+  //
+  // The /configure push below fires even when the given IP matches what's
+  // already stored — real-world case: a screen's hubUrl goes stale (e.g. it was
+  // first paired against a different network before being physically moved, or
+  // the hub itself changed address) while its own IP hasn't changed at all, so
+  // gating the push on "did the IP change" would never fix it. Re-saving the
+  // same IP from Settings is then the way to force a fresh /configure — using
+  // whichever hub address *this* request arrived on — without needing to SSH in
+  // and hand-edit the Pi's config.json.
   if (typeof ip === 'string' && ip.trim()) {
     const device = store.getDevice(req.params.id);
     if (!device) return res.status(404).json({ error: 'not found' });
@@ -140,15 +149,15 @@ devicesRouter.patch('/:id', async (req, res) => {
         return res.status(409).json({ error: `A screen is already paired at ${trimmedIp}` });
       }
       store.setDeviceIp(device.id, trimmedIp);
-      let reconfigured = false;
-      try {
-        await piAgent.configure(trimmedIp, device.id, (typeof hubUrl === 'string' && hubUrl) || publicHubUrl(req));
-        reconfigured = true;
-      } catch {
-        // Non-fatal — see this block's own comment above.
-      }
-      return res.json({ ok: true, reconfigured });
     }
+    let reconfigured = false;
+    try {
+      await piAgent.configure(trimmedIp, device.id, (typeof hubUrl === 'string' && hubUrl) || publicHubUrl(req));
+      reconfigured = true;
+    } catch {
+      // Non-fatal — see this block's own comment above.
+    }
+    return res.json({ ok: true, reconfigured });
   }
 
   res.status(204).end();

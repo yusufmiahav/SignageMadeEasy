@@ -124,12 +124,17 @@ export interface SignageApiClient {
    * Repoints an existing device at a different IP — e.g. its DHCP lease changed
    * (no reservation), or its SD card was re-flashed/factory-reset and would
    * otherwise re-pair as a brand new device. Pushes a /configure call to
-   * whatever Pi is actually at the new address so it adopts THIS device's
+   * whatever Pi is actually at the given address so it adopts THIS device's
    * identity and inherits its full existing configuration (group, schedule,
    * forced content, name, etc.) instead of starting over — same handshake
-   * pairDevice's own hubUrl override uses. `reconfigured: false` isn't an
-   * error: the IP is still saved, the Pi just didn't answer there right now
-   * (not booted yet, mid-DHCP-renewal, etc.) and will pick this up once it is
+   * pairDevice's own hubUrl override uses. Always pushes, even when `ip` is the
+   * same as the device's current one — real-world case: the screen's IP never
+   * changed, but its *hubUrl* went stale (first paired against a different
+   * network before being physically moved, or the hub itself changed address),
+   * which re-saving the same IP is the way to force-correct without SSHing into
+   * the Pi to hand-edit its config.json. `reconfigured: false` isn't an error:
+   * the IP is still saved, the Pi just didn't answer there right now (not
+   * booted yet, mid-DHCP-renewal, etc.) and will pick this up once it is
    * reachable, the same way initial pairing already degrades gracefully.
    */
   setDeviceIp(id: string, ip: string, hubUrl?: string): Promise<{ reconfigured: boolean }>;

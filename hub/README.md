@@ -152,6 +152,27 @@ player service, pair it from the control app's Settings/Home "Add a screen" dial
 Scan network, Scan QR, or Enter IP all end up calling this hub's `/api/devices/pair`,
 which reaches the Pi directly to complete the handshake.
 
+### A screen is stuck on "Paired, waiting for the hub…" with a timeout error
+
+Each Pi's `/opt/signage/config.json` stores a `hubUrl` captured once, at
+pairing (or last re-link) time — it never auto-updates itself. If that address
+goes stale (the screen was first paired against a different network before
+being physically moved, or the hub itself changed address) while the *screen's
+own* IP hasn't changed at all, the Pi keeps retrying the wrong hub address
+forever: `Last error: The operation was aborted due to timeout` on its own
+screen is this exact symptom (`pi-player/src/poller.ts`'s 4s fetch timeout,
+not a pairing/identity problem — a screen's MAC address is purely a stored
+inventory field, never used for any pairing/matching logic).
+
+Fix it from Settings without SSH: open that screen's edit (pencil icon) and
+re-save its IP, even if the field already shows the correct value — saving
+always pushes a fresh `/configure` call using whichever address *your own
+browser* reached the hub through, which corrects the Pi's stored `hubUrl`.
+(The fast route, if you're already SSH'd into the Pi: hand-edit
+`/opt/signage/config.json`'s `hubUrl` and `sudo systemctl restart
+signage-player` — editing the file alone doesn't take effect until that
+restart, since it's cached in memory on load.)
+
 ## Video: resolution, format, and how the automatic capping works
 
 **Why this matters**: a Raspberry Pi 3B+ decodes video in hardware (the VideoCore IV

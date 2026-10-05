@@ -205,7 +205,11 @@ export function SettingsScreen({
         renameDevice(editing.id, editingName);
         const device = devices.find((d) => d.id === editing.id);
         const trimmedIp = editingIp.trim();
-        if (device && trimmedIp && trimmedIp !== device.ip) void setDeviceIp(device, trimmedIp);
+        // Pushes even when trimmedIp === device.ip — see api/client.ts's
+        // setDeviceIp comment: that's also how a stale hubUrl on the Pi gets
+        // force-corrected, since the IP it's stored under may not have
+        // changed at all.
+        if (device && trimmedIp) void setDeviceIp(device, trimmedIp);
       }
     }
     setEditing(null);
@@ -256,7 +260,9 @@ export function SettingsScreen({
             {/* No DHCP reservation, or the Pi was re-flashed/factory-reset and got a
                 fresh lease — saving a new IP here re-links this existing device's
                 config to whatever's at that address instead of needing a re-pair.
-                See api/client.ts's setDeviceIp comment for the full story. */}
+                Saving the SAME IP still re-pushes it, which is also how a stale
+                hubUrl on the Pi gets force-corrected. See api/client.ts's
+                setDeviceIp comment for the full story. */}
             <input
               className="input"
               placeholder="IP address"
