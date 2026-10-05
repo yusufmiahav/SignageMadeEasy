@@ -93,7 +93,10 @@ export function DeviceCard({
   };
 
   return (
-    <div className="card">
+    // Stable anchor the Search screen scrolls to when jumping here from a result
+    // (see SearchScreen.tsx's onJumpToHome) — every DeviceCard on Home, standalone
+    // or inside a group, gets one for free from device.id alone.
+    <div className="card" id={`device-${device.id}`}>
       {!device.groupId && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {device.blackout ? (

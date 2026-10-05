@@ -98,6 +98,10 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
   const uiSettings = useUiSettings();
   const [tab, setTab] = useState<Tab>('home');
   const [dialog, setDialog] = useState<DialogState>(null);
+  // Set by Search's "jump to it" action (see SearchScreen.tsx's onJumpToHome) —
+  // `device-<id>` or `group-<id>`, matching the DOM ids HomeScreen's own cards/
+  // group sections carry. Cleared once HomeScreen's effect actually scrolls to it.
+  const [homeScrollTarget, setHomeScrollTarget] = useState<string | null>(null);
 
   const closeDialog = () => setDialog(null);
 
@@ -132,6 +136,8 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onPreviewContent={(item) => setDialog({ type: 'preview', item })}
             advancedDeviceInfo={uiSettings.advancedDeviceInfo}
             hideAnnouncementRow={uiSettings.hideAnnouncementRow}
+            scrollTarget={homeScrollTarget}
+            onScrollTargetHandled={() => setHomeScrollTarget(null)}
           />
         )}
         {tab === 'library' && (
@@ -166,6 +172,9 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
           <SearchScreen
             app={app}
             onOpenDevicePreview={(device) => setDialog({ type: 'previewDevice', device })}
+            onForceContentForDevice={(deviceId) => setDialog({ type: 'forceContentDevice', deviceId })}
+            onOpenBlackoutForDevice={(deviceId) => setDialog({ type: 'blackoutDevice', deviceId })}
+            onJumpToHome={(target) => { setHomeScrollTarget(target); setTab('home'); }}
           />
         )}
         {tab === 'settings' && (

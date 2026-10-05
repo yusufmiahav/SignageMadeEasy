@@ -2,10 +2,16 @@ import { useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
 import type { Device } from '../api/types';
+import { forcedPlaylistLabel } from '../api/resolve';
 
 interface SearchScreenProps {
   app: AppState;
   onOpenDevicePreview: (device: Device) => void;
+  /** Standalone-screen force-content/blackout only — a grouped screen's content comes from its group instead, same gating DeviceCard itself uses. */
+  onForceContentForDevice: (deviceId: string) => void;
+  onOpenBlackoutForDevice: (deviceId: string) => void;
+  /** Switches to Home and scrolls to the given screen's card or group section — `device-<id>` or `group-<id>`, matching the DOM ids HomeScreen's own cards/group sections carry (see HomeScreen.tsx's scrollTarget prop). */
+  onJumpToHome: (target: string) => void;
 }
 
 // Where a screen physically "lives," for display only — mirrors the same
@@ -24,9 +30,10 @@ function locationLabel(device: Device, groups: AppState['groups'], locations: Ap
   return loc ? `Standalone · ${loc}` : 'Standalone';
 }
 
-export function SearchScreen({ app, onOpenDevicePreview }: SearchScreenProps) {
-  const { devices, groups, locations, flashDevice, restartDevice } = app;
+export function SearchScreen({ app, onOpenDevicePreview, onForceContentForDevice, onOpenBlackoutForDevice, onJumpToHome }: SearchScreenProps) {
+  const { devices, groups, locations, library, flashDevice, restartDevice, setDeviceForcedPlaylist, setDeviceBlackout } = app;
   const [query, setQuery] = useState('');
+  const libraryById = new Map(library.map((item) => [item.id, item]));
 
   const trimmed = query.trim().toLowerCase();
   // Name, IP, and MAC are the three fields someone's actually likely to have
@@ -66,46 +73,95 @@ export function SearchScreen({ app, onOpenDevicePreview }: SearchScreenProps) {
           <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>No screens match "{query}".</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {results.map((device) => (
-              <div
-                key={device.id}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: '1px solid var(--color-divider)', flexWrap: 'wrap' }}
-              >
-                <span className={`status-dot ${device.status}`} style={{ flexShrink: 0 }} />
-                {/* A fixed flex-basis (rather than plain flex: 1) so a narrow row wraps
-                    this whole name block onto its own line instead of squeezing it thin
-                    enough to truncate — same pattern as Settings' own device rows. */}
-                <div style={{ flex: '1 1 140px', minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{device.name}</div>
-                  <div className="text-muted" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {locationLabel(device, groups, locations)}
+            {results.map((device) => {
+              const jumpTarget = device.groupId ? `group-${device.groupId}` : `device-${device.id}`;
+              const forced = device.forcedPlaylist.length > 0;
+              return (
+                <div
+                  key={device.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: '1px solid var(--color-divider)', flexWrap: 'wrap' }}
+                >
+                  <span className={`status-dot ${device.status}`} style={{ flexShrink: 0 }} />
+                  {/* Clicking the name/location jumps to this screen's full card (standalone)
+                      or its group's full management section (grouped) on Home — same target
+                      as the explicit "Open" button below, just the larger, more obvious
+                      click target for the common case of wanting the full view. */}
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ flex: '1 1 140px', minWidth: 0, justifyContent: 'flex-start', textAlign: 'left', padding: '2px 4px' }}
+                    onClick={() => onJumpToHome(jumpTarget)}
+                    title={device.groupId ? "Open this screen's group on Home" : 'Open this screen on Home'}
+                  >
+                    <span style={{ minWidth: 0, overflow: 'hidden' }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{device.name}</span>
+                      <span className="text-muted" style={{ display: 'block', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {locationLabel(device, groups, locations)}
+                      </span>
+                    </span>
+                  </button>
+                  <a
+                    className="tag tag-neutral"
+                    style={{ textDecoration: 'none', flexShrink: 0 }}
+                    href={`http://${device.ip}:8088/network-setup.html`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open this screen's own settings page (Wi-Fi, local content, performance)"
+                  >
+                    {device.ip}
+                  </a>
+                  {device.mac && <span className="tag tag-neutral" style={{ flexShrink: 0 }}>{device.mac}</span>}
+                  <span className="tag tag-neutral" style={{ flexShrink: 0 }}>{device.status === 'online' ? 'Online' : 'Offline'}</span>
+                  {/* Force content/blackout only make sense for a standalone screen — a
+                      grouped one's content comes from its group instead (see DeviceCard's
+                      own identical !device.groupId gating). For a grouped screen, "Open"
+                      below is the fast path to its group's own force-content/blackout
+                      controls instead. */}
+                  {!device.groupId && (
+                    <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                      {device.blackout ? (
+                        <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => setDeviceBlackout(device.id, false)} title="Stop blackout">
+                          Blacked out · Stop
+                        </button>
+                      ) : (
+                        <button type="button" className="btn btn-warning btn-icon" aria-label="Blackout" title="Blackout this screen" onClick={() => onOpenBlackoutForDevice(device.id)}>
+                          <Icon name="moon" size={14} />
+                        </button>
+                      )}
+                      {forced ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ fontSize: 11, padding: '4px 8px' }}
+                          onClick={() => setDeviceForcedPlaylist(device.id, [])}
+                          title={`Stop forcing: ${forcedPlaylistLabel(device.forcedPlaylist, libraryById)}`}
+                        >
+                          Forced · Stop
+                        </button>
+                      ) : (
+                        <button type="button" className="btn btn-secondary btn-icon" aria-label="Force content" title="Force content on this screen" onClick={() => onForceContentForDevice(device.id)}>
+                          <Icon name="monitor" size={14} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                    <button type="button" className="btn btn-ghost btn-icon" aria-label="Identify" title="Blink this screen's display" onClick={() => void flashDevice(device)}>
+                      <Icon name="lightbulb" size={14} />
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-icon" aria-label="Preview" title="See what's currently on this screen" onClick={() => onOpenDevicePreview(device)}>
+                      <Icon name="eye" size={14} />
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" title="Reboot this screen" onClick={() => void restartDevice(device)}>
+                      <Icon name="restart" size={14} />
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-icon" aria-label="Open" title={device.groupId ? "Open this screen's group on Home" : 'Open this screen on Home'} onClick={() => onJumpToHome(jumpTarget)}>
+                      <Icon name="chevronRight" size={14} />
+                    </button>
                   </div>
                 </div>
-                <a
-                  className="tag tag-neutral"
-                  style={{ textDecoration: 'none', flexShrink: 0 }}
-                  href={`http://${device.ip}:8088/network-setup.html`}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="Open this screen's own settings page (Wi-Fi, local content, performance)"
-                >
-                  {device.ip}
-                </a>
-                {device.mac && <span className="tag tag-neutral" style={{ flexShrink: 0 }}>{device.mac}</span>}
-                <span className="tag tag-neutral" style={{ flexShrink: 0 }}>{device.status === 'online' ? 'Online' : 'Offline'}</span>
-                <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Identify" title="Blink this screen's display" onClick={() => void flashDevice(device)}>
-                    <Icon name="lightbulb" size={14} />
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Preview" title="See what's currently on this screen" onClick={() => onOpenDevicePreview(device)}>
-                    <Icon name="eye" size={14} />
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" title="Reboot this screen" onClick={() => void restartDevice(device)}>
-                    <Icon name="restart" size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

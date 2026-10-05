@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Icon } from '../components/icons/Icon';
 import { DeviceCard } from '../components/DeviceCard';
 import type { AppState } from '../hooks/useAppState';
@@ -25,6 +26,17 @@ interface HomeScreenProps {
   onPreviewContent: (item: LibraryItem) => void;
   advancedDeviceInfo: boolean;
   hideAnnouncementRow: boolean;
+  /**
+   * DOM id to scroll to on mount/change — `device-<id>` or `group-<id>`, set when
+   * arriving here via the Search screen's "jump to it" action (see
+   * SearchScreen.tsx's onJumpToHome). Every group section and DeviceCard carries
+   * a matching id regardless of which Location/grouping bucket it's rendered
+   * under, since this screen renders all of them unconditionally (no tabs to
+   * switch into first). Null the rest of the time.
+   */
+  scrollTarget?: string | null;
+  /** Called once the scroll above actually happens, so App.tsx can clear scrollTarget — otherwise navigating back to Search and jumping to the same screen again wouldn't re-trigger the effect (same value, no change to react to). */
+  onScrollTargetHandled?: () => void;
 }
 
 export function HomeScreen({
@@ -46,7 +58,15 @@ export function HomeScreen({
   onPreviewContent,
   advancedDeviceInfo,
   hideAnnouncementRow,
+  scrollTarget,
+  onScrollTargetHandled,
 }: HomeScreenProps) {
+  useEffect(() => {
+    if (!scrollTarget) return;
+    document.getElementById(scrollTarget)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    onScrollTargetHandled?.();
+  }, [scrollTarget, onScrollTargetHandled]);
+
   const {
     groups, devices, locations, library, renameDevice, flashDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality,
     setForcedPlaylist, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedPlaylist, setDeviceBlackout, clearUsbOverride,
@@ -90,7 +110,9 @@ export function HomeScreen({
     const activeAnnId = activeAnnouncementId(group);
     const activeAnnouncement = activeAnnId ? libraryById.get(activeAnnId) : undefined;
     return (
-      <div key={group.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      // Stable anchor the Search screen scrolls to when jumping here — see
+      // SearchScreen.tsx's onJumpToHome and this screen's own scrollTarget effect.
+      <div key={group.id} id={`group-${group.id}`} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
