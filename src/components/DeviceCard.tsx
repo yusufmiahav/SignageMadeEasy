@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon } from './icons/Icon';
+import { previewImageUrl } from './libraryItemMeta';
 import type { Device, LibraryItem } from '../api/types';
 
 // Bits 0-3 of vcgencmd's get_throttled bitmask are current-state (under-voltage,
@@ -85,6 +86,7 @@ export function DeviceCard({
 }: DeviceCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(device.name);
+  const previewImage = nowPlayingItem && previewImageUrl(nowPlayingItem);
 
   const startEdit = () => {
     setName(device.name);
@@ -130,13 +132,13 @@ export function DeviceCard({
       <div
         className="preview-box"
         style={
-          nowPlayingItem?.type === 'image' && nowPlayingItem.thumb
-            ? { backgroundImage: `url(${nowPlayingItem.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+          previewImage
+            ? { backgroundImage: `url(${previewImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
             : undefined
         }
       >
         <span className="tag tag-outline dims-tag">1920×1080</span>
-        {!(nowPlayingItem?.type === 'image' && nowPlayingItem.thumb) && (
+        {!previewImage && (
           <span className="preview-box-label">{nowPlaying}</span>
         )}
         {nowPlayingItem && (

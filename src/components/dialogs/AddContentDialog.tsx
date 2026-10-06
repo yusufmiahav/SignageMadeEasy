@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DialogShell } from './DialogShell';
 import { FolderTreeList } from '../FolderTreeList';
+import { previewImageUrl } from '../libraryItemMeta';
 import type { AppState } from '../../hooks/useAppState';
 import type { LibraryItem } from '../../api/types';
 
@@ -38,7 +39,7 @@ export function AddContentDialog({ app, alreadyIncludedIds, onConfirm, onClose }
   const renderItem = (item: LibraryItem) => (
     <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
       <input type="checkbox" checked={checked.has(item.id)} onChange={() => toggle(item.id)} />
-      {item.type === 'image' && item.thumb && (
+      {previewImageUrl(item) && (
         <div
           style={{
             width: 32,
@@ -46,7 +47,7 @@ export function AddContentDialog({ app, alreadyIncludedIds, onConfirm, onClose }
             flexShrink: 0,
             borderRadius: 4,
             backgroundColor: 'var(--color-neutral-200)',
-            backgroundImage: `url(${item.thumb})`,
+            backgroundImage: `url(${previewImageUrl(item)})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}

@@ -44,6 +44,8 @@ export interface LibraryItem {
   tflStations?: TflStationConfig[];
   /** Data URL thumbnail. Images only. */
   thumb?: string;
+  /** Videos only — a real poster-frame image grabbed from the video at upload time, for the control app's preview boxes. Unlike `thumb` (which for a video is the playable video URL, not an image), this is always an actual image URL — unset falls back to the file-type icon (upload predates this feature, extraction failed, or always unset in standalone/localStorage mode, which has no server-side ffmpeg to grab a frame with). */
+  posterUrl?: string;
   /** Message body. Announcements only. */
   text?: string;
   /** Videos only — the original, untouched upload. `thumb` holds the resolution-capped copy once one exists (see transcodeStatus); screens set to "full resolution" (Device.videoQuality) are served this instead. */

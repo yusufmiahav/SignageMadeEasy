@@ -8,6 +8,7 @@ import * as store from '../store.js';
 import { countPdfPages } from '../pdfPages.js';
 import { getVideoDuration } from '../videoDuration.js';
 import { needsCapping, transcodeToCapped } from '../videoTranscode.js';
+import { extractPosterFrame } from '../videoPoster.js';
 import * as tflArrivals from '../tflArrivals.js';
 
 export const libraryRouter = Router();
@@ -71,6 +72,11 @@ libraryRouter.post('/video', upload.single('file'), async (req, res) => {
   const duration = await getVideoDuration(req.file.path);
   const fullUrl = `/uploads/${req.file.filename}`;
   const shouldCap = await needsCapping(req.file.path);
+  // A fast single-frame grab (unlike the potentially multi-minute full capping
+  // below) — worth awaiting inline so the item never has a moment of "video with no
+  // thumbnail at all" the way a backgrounded job would leave it for.
+  const posterPath = path.join(UPLOADS_DIR, `${path.basename(req.file.filename, path.extname(req.file.filename))}.poster.jpg`);
+  const posterUrl = (await extractPosterFrame(req.file.path, posterPath)) ? `/uploads/${path.basename(posterPath)}` : undefined;
   const item = store.addLibraryItem({
     name: req.file.originalname,
     type: 'video',
@@ -78,6 +84,7 @@ libraryRouter.post('/video', upload.single('file'), async (req, res) => {
     duration,
     thumb: fullUrl, // fallback until (if) a capped copy lands, and the permanent value if capping is skipped/fails
     fullUrl,
+    posterUrl,
     transcodeStatus: shouldCap ? 'processing' : 'skipped',
   });
   res.status(201).json(item);

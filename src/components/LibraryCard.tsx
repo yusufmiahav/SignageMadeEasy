@@ -1,6 +1,6 @@
 import { useState, type HTMLAttributes } from 'react';
 import { Icon } from './icons/Icon';
-import { TYPE_ICON, TYPE_LABEL, metaText, downloadUrlFor } from './libraryItemMeta';
+import { TYPE_ICON, TYPE_LABEL, metaText, downloadUrlFor, previewImageUrl } from './libraryItemMeta';
 import type { LibraryItem } from '../api/types';
 
 interface LibraryCardProps {
@@ -30,6 +30,7 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
   const [editingTags, setEditingTags] = useState(false);
   const [tagsInput, setTagsInput] = useState('');
   const downloadUrl = downloadUrlFor(item);
+  const previewImage = previewImageUrl(item);
 
   const startEdit = () => {
     setName(item.name);
@@ -64,8 +65,8 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
             onChange={() => onToggleSelect?.(item.id)}
           />
         )}
-        {item.type === 'image' && item.thumb ? (
-          <div className="thumb-img" style={{ backgroundImage: `url(${item.thumb})` }} />
+        {previewImage ? (
+          <div className="thumb-img" style={{ backgroundImage: `url(${previewImage})` }} />
         ) : item.type === 'announcement' ? (
           <div
             style={{
@@ -85,14 +86,12 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
         ) : item.type === 'clock' || item.type === 'ndi' || item.type === 'tfl-status' || item.type === 'tfl-arrivals' || item.type === 'video' ? (
           // clock/ndi/tfl-status/tfl-arrivals have no underlying file at all —
           // live-rendered, streamed, or polled at playback time, so there's no
-          // real image to thumbnail. Video does have a file, but `thumb` there
-          // points at a video URL, not an image one — a CSS background-image
-          // can't render a video frame from it (nothing this project does today
-          // extracts an actual poster frame), so it's grouped with the others
-          // here rather than pretending the tiny `Icon` fallback below is doing
-          // it. Same full-bleed tile as announcement above either way — reads
-          // as deliberate content rather than a missing/blank thumbnail, which a
-          // small icon floating on the plain thumb-box background did not.
+          // real image to thumbnail. Video falls through to here too, but only when
+          // previewImage came back empty (uploaded before poster extraction shipped,
+          // or extraction failed) — the normal case is caught by the previewImage
+          // branch above instead. Same full-bleed tile as announcement above either
+          // way — reads as deliberate content rather than a missing/blank thumbnail,
+          // which a small icon floating on the plain thumb-box background did not.
           <div
             style={{
               width: '100%', height: '100%', background: 'var(--color-neutral-900)', color: '#fff',

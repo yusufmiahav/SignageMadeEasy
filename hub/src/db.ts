@@ -412,6 +412,15 @@ if (!deviceColsVersion.includes('version')) db.exec('ALTER TABLE devices ADD COL
 const eventColsRecurrence = (db.prepare("PRAGMA table_info(events)").all() as { name: string }[]).map((c) => c.name);
 if (!eventColsRecurrence.includes('daysOfWeek')) db.exec('ALTER TABLE events ADD COLUMN daysOfWeek TEXT');
 
+// Same reasoning, for hubs deployed before a video upload got an actual poster-frame
+// image (see videoPoster.ts) — a URL path like `thumb`/`fullUrl` above, but an image
+// this time; `thumb` for a video item is itself a video URL (the capped copy), not
+// something a CSS background-image can render. Null for every video uploaded before
+// this shipped — its control-app preview falls back to the plain file-type icon tile
+// it always showed, same as any other item type with nothing to thumbnail.
+const libraryColsPoster = (db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).map((c) => c.name);
+if (!libraryColsPoster.includes('posterUrl')) db.exec('ALTER TABLE library ADD COLUMN posterUrl TEXT');
+
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's

@@ -53,6 +53,21 @@ export function metaText(item: LibraryItem): string {
   }
 }
 
+/**
+ * A real image URL to show as a background thumbnail — an actual picture of the
+ * content, not just its file-type icon/label. Images use their own `thumb`; videos
+ * use `posterUrl`, the poster frame grabbed at upload time (see hub/src/videoPoster.ts)
+ * — NOT `thumb`, which for a video is the playable video URL, not an image one.
+ * Undefined for every other type (nothing to show a frame of), or for a video
+ * uploaded before this shipped / in standalone mode (no server-side ffmpeg to grab
+ * one with) — callers fall back to the plain icon tile in that case, same as before.
+ */
+export function previewImageUrl(item: LibraryItem): string | undefined {
+  if (item.type === 'image') return item.thumb;
+  if (item.type === 'video') return item.posterUrl;
+  return undefined;
+}
+
 // Announcements and clocks have no underlying file — nothing to download for
 // those. Video downloads the original upload (fullUrl), not whichever capped/full
 // copy a given screen happens to be playing, since "download the uploaded content"

@@ -18,7 +18,7 @@ function uid(prefix: string): string {
 
 interface LibraryRow {
   id: string; name: string; type: LibraryItem['type']; size: string | null; duration: string | null; durationSec: number | null; thumb: string | null; text: string | null; pageCount: number | null;
-  fullUrl: string | null; transcodeStatus: LibraryItem['transcodeStatus'] | null; tags: string; ndiSourceName: string | null; tflModes: string | null;
+  fullUrl: string | null; posterUrl: string | null; transcodeStatus: LibraryItem['transcodeStatus'] | null; tags: string; ndiSourceName: string | null; tflModes: string | null;
   // The three legacy single-station columns are read-only from here on (kept only
   // for rowToLibraryItem's fallback below) — new rows always write tflStations
   // instead. See db.ts's tflStations migration comment for why the old columns
@@ -28,7 +28,7 @@ interface LibraryRow {
   folderId: string | null;
   createdAt: number | null;
 }
-const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines, tflStations, folderId, createdAt';
+const LIBRARY_COLUMNS = 'id, name, type, size, duration, durationSec, thumb, text, pageCount, fullUrl, posterUrl, transcodeStatus, tags, ndiSourceName, tflModes, tflStopPointId, tflStopPointName, tflArrivalLines, tflStations, folderId, createdAt';
 
 function rowToLibraryItem(r: LibraryRow): LibraryItem {
   const item: LibraryItem = { id: r.id, name: r.name, type: r.type, tags: r.tags ? JSON.parse(r.tags) : [] };
@@ -41,6 +41,7 @@ function rowToLibraryItem(r: LibraryRow): LibraryItem {
   if (r.text != null) item.text = r.text;
   if (r.pageCount != null) item.pageCount = r.pageCount;
   if (r.fullUrl != null) item.fullUrl = r.fullUrl;
+  if (r.posterUrl != null) item.posterUrl = r.posterUrl;
   if (r.transcodeStatus != null) item.transcodeStatus = r.transcodeStatus;
   if (r.ndiSourceName != null) item.ndiSourceName = r.ndiSourceName;
   if (r.tflModes != null) item.tflModes = JSON.parse(r.tflModes);
@@ -66,16 +67,16 @@ export function listLibrary(): LibraryItem[] {
 
 export function addLibraryItem(input: {
   name: string; type: LibraryItem['type']; size?: string; duration?: string; thumb?: string; text?: string; pageCount?: number;
-  fullUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus']; ndiSourceName?: string; tflModes?: string[];
+  fullUrl?: string; posterUrl?: string; transcodeStatus?: LibraryItem['transcodeStatus']; ndiSourceName?: string; tflModes?: string[];
   tflStations?: TflStationConfig[];
 }): LibraryItem {
   const id = uid('l');
   const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM library').get() as { n: number }).n;
   const createdAt = Date.now();
-  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, transcodeStatus, ndiSourceName, tflModes, tflStations, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@transcodeStatus,@ndiSourceName,@tflModes,@tflStations,@sortOrder,@createdAt)').run({
+  db.prepare('INSERT INTO library (id, name, type, size, duration, thumb, text, pageCount, fullUrl, posterUrl, transcodeStatus, ndiSourceName, tflModes, tflStations, sortOrder, createdAt) VALUES (@id,@name,@type,@size,@duration,@thumb,@text,@pageCount,@fullUrl,@posterUrl,@transcodeStatus,@ndiSourceName,@tflModes,@tflStations,@sortOrder,@createdAt)').run({
     id, name: input.name, type: input.type,
     size: input.size ?? null, duration: input.duration ?? null, thumb: input.thumb ?? null, text: input.text ?? null, pageCount: input.pageCount ?? null,
-    fullUrl: input.fullUrl ?? null, transcodeStatus: input.transcodeStatus ?? null, ndiSourceName: input.ndiSourceName ?? null,
+    fullUrl: input.fullUrl ?? null, posterUrl: input.posterUrl ?? null, transcodeStatus: input.transcodeStatus ?? null, ndiSourceName: input.ndiSourceName ?? null,
     tflModes: input.tflModes ? JSON.stringify(input.tflModes) : null,
     tflStations: input.tflStations ? JSON.stringify(input.tflStations) : null,
     sortOrder: nextOrder,
@@ -85,7 +86,8 @@ export function addLibraryItem(input: {
     id, name: input.name, type: input.type, tags: [], createdAt,
     ...(input.size && { size: input.size }), ...(input.duration && { duration: input.duration }),
     ...(input.thumb && { thumb: input.thumb }), ...(input.text && { text: input.text }), ...(input.pageCount != null && { pageCount: input.pageCount }),
-    ...(input.fullUrl && { fullUrl: input.fullUrl }), ...(input.transcodeStatus && { transcodeStatus: input.transcodeStatus }),
+    ...(input.fullUrl && { fullUrl: input.fullUrl }), ...(input.posterUrl && { posterUrl: input.posterUrl }),
+    ...(input.transcodeStatus && { transcodeStatus: input.transcodeStatus }),
     ...(input.ndiSourceName && { ndiSourceName: input.ndiSourceName }),
     ...(input.tflModes && { tflModes: input.tflModes }),
     ...(input.tflStations && { tflStations: input.tflStations }),

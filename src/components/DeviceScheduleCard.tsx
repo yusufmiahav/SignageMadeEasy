@@ -5,6 +5,7 @@ import { EventRow } from './EventRow';
 import { Icon } from './icons/Icon';
 import type { AppState } from '../hooks/useAppState';
 import { activeContentIdsForDevice, itemsForDateForDevice } from '../api/resolve';
+import { previewImageUrl } from './libraryItemMeta';
 import type { Device, LibraryItem } from '../api/types';
 
 function pad2(n: number): string {
@@ -43,6 +44,7 @@ export function DeviceScheduleCard({ app, device, library, onOpenAddContent, onO
   const effectiveDate = selectedCalDate ?? todayISO();
   const active = activeContentIdsForDevice(device);
   const nowPlayingItem = active.ids.length > 0 ? libraryById.get(active.ids[0]) : undefined;
+  const previewImage = nowPlayingItem && previewImageUrl(nowPlayingItem);
   const todayLabel = active.kind === 'forced' ? 'FORCED' : active.kind === 'event' ? 'EVENT' : active.kind === 'blackout' ? 'BLACKOUT' : 'DEFAULT';
   const todayTagClass = active.kind === 'forced' || active.kind === 'event' ? 'tag-accent' : 'tag-outline';
 
@@ -87,12 +89,12 @@ export function DeviceScheduleCard({ app, device, library, onOpenAddContent, onO
       <div
         className={`preview-box preview-box-compact${active.kind === 'forced' ? ' preview-box-forced' : ''}`}
         style={
-          nowPlayingItem?.type === 'image' && nowPlayingItem.thumb
-            ? { backgroundImage: `url(${nowPlayingItem.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+          previewImage
+            ? { backgroundImage: `url(${previewImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
             : undefined
         }
       >
-        {!(nowPlayingItem?.type === 'image' && nowPlayingItem.thumb) && (
+        {!previewImage && (
           <span className="preview-box-label" style={{ fontSize: 13 }}>{nowPlayingItem ? nowPlayingItem.name : '—'}</span>
         )}
         {nowPlayingItem && (

@@ -6,6 +6,7 @@ import { DeviceScheduleCard } from '../components/DeviceScheduleCard';
 import { Icon } from '../components/icons/Icon';
 import type { AppState } from '../hooks/useAppState';
 import { activeContentIds, itemsForDate } from '../api/resolve';
+import { previewImageUrl } from '../components/libraryItemMeta';
 import type { LibraryItem } from '../api/types';
 
 function pad2(n: number): string {
@@ -109,6 +110,7 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onOpenAd
   const effectiveDate = selectedCalDate ?? todayISO();
   const active = activeContentIds(selectedGroup);
   const nowPlayingItem = active.ids.length > 0 ? libraryById.get(active.ids[0]) : undefined;
+  const previewImage = nowPlayingItem && previewImageUrl(nowPlayingItem);
   const todayLabel = active.kind === 'forced' ? 'FORCED · 1920×1080' : active.kind === 'event' ? 'EVENT · 1920×1080' : 'DEFAULT · 1920×1080';
   const todayTagClass = active.kind === 'forced' || active.kind === 'event' ? 'tag-accent' : 'tag-outline';
 
@@ -164,13 +166,13 @@ export function ScheduleScreen({ app, onOpenAddContent, onOpenAddEvent, onOpenAd
       <div
         className={`preview-box preview-box-compact${active.kind === 'forced' ? ' preview-box-forced' : ''}`}
         style={
-          nowPlayingItem?.type === 'image' && nowPlayingItem.thumb
-            ? { backgroundImage: `url(${nowPlayingItem.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+          previewImage
+            ? { backgroundImage: `url(${previewImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
             : undefined
         }
       >
         <span className={`tag ${todayTagClass}`} style={{ position: 'absolute', top: 6, left: 6, fontSize: 9, zIndex: 1 }}>{todayLabel}</span>
-        {!(nowPlayingItem?.type === 'image' && nowPlayingItem.thumb) && (
+        {!previewImage && (
           <span className="preview-box-label" style={{ fontSize: 13 }}>{nowPlayingItem ? nowPlayingItem.name : '—'}</span>
         )}
         {nowPlayingItem && (

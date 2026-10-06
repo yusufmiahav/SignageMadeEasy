@@ -48,6 +48,8 @@ export interface LibraryItem {
   tflStations?: TflStationConfig[];
   /** URL path (e.g. "/uploads/<id>.jpg"), not a data URL — served statically by the hub. */
   thumb?: string;
+  /** Videos only — a real poster-frame image grabbed from the video at upload time (see videoPoster.ts), for the control app's preview boxes. Unlike `thumb` (which for a video is the playable video URL, not an image), this is always an actual image URL — falls back to the file-type icon when unset (upload predates this feature, or extraction failed). */
+  posterUrl?: string;
   text?: string;
   /** PDFs only — real page count, extracted server-side (the frontend's local-storage mode has no way to do this). */
   pageCount?: number;
