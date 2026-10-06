@@ -1,4 +1,4 @@
-import type { Device, Group, LibraryItem } from './types';
+import type { Device, Group, LibraryItem, ScheduleEvent } from './types';
 
 export interface ActiveContent {
   ids: string[];
@@ -11,6 +11,16 @@ export interface ActiveContent {
 function toISODate(d: Date): string {
   const pad2 = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+// Mirrors hub/src/store.ts's identical eventMatchesNow — see its comment for the
+// daysOfWeek/startTime-endTime semantics. This copy exists purely so the control
+// app's own preview matches what the hub actually resolves for a Pi.
+function eventMatchesNow(e: ScheduleEvent, today: string, hhmm: string, dayOfWeek: number): boolean {
+  if (today < e.start || today > e.end) return false;
+  if (e.daysOfWeek && e.daysOfWeek.length > 0 && !e.daysOfWeek.includes(dayOfWeek)) return false;
+  if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
+  return true;
 }
 
 /**
@@ -34,11 +44,7 @@ export function activeContentIds(group: Group, now: Date = new Date()): ActiveCo
   }
   const today = toISODate(now);
   const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const event = group.events.find((e) => {
-    if (today < e.start || today > e.end) return false;
-    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
-    return true;
-  });
+  const event = group.events.find((e) => eventMatchesNow(e, today, hhmm, now.getDay()));
   if (event) {
     return { ids: event.libIds, kind: 'event', label: event.name };
   }
@@ -107,11 +113,7 @@ export function activeContentIdsForDevice(device: Device, now: Date = new Date()
   if (device.forcedPlaylist.length > 0) return { ids: device.forcedPlaylist, kind: 'forced', label: 'Forced' };
   const today = toISODate(now);
   const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const event = device.events.find((e) => {
-    if (today < e.start || today > e.end) return false;
-    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
-    return true;
-  });
+  const event = device.events.find((e) => eventMatchesNow(e, today, hhmm, now.getDay()));
   if (event) return { ids: event.libIds, kind: 'event', label: event.name };
   if (device.defaultPlaylist.length > 0) return { ids: device.defaultPlaylist, kind: 'default', label: 'Default playlist' };
   return { ids: [], kind: 'default', label: 'No content' };
@@ -126,15 +128,24 @@ export function nowPlayingNameForDevice(device: Device, libraryById: Map<string,
   return nowPlayingItemForDevice(device, libraryById)?.name ?? '—';
 }
 
+// Local midnight, not UTC (new Date("YYYY-MM-DD") parses as UTC, which can land on
+// the wrong local day and so the wrong weekday) — matches how the time-aware
+// functions above derive dayOfWeek from a local `now`.
+function dayOfWeekForDate(date: string): number {
+  return new Date(`${date}T00:00:00`).getDay();
+}
+
 export function itemsForDate(group: Group, date: string): { ids: string[]; kind: 'event' | 'default'; label: string } {
-  const event = group.events.find((e) => date >= e.start && date <= e.end);
+  const dow = dayOfWeekForDate(date);
+  const event = group.events.find((e) => date >= e.start && date <= e.end && (!e.daysOfWeek || e.daysOfWeek.length === 0 || e.daysOfWeek.includes(dow)));
   if (event) return { ids: event.libIds, kind: 'event', label: event.name };
   return { ids: group.defaultPlaylist, kind: 'default', label: 'Default playlist' };
 }
 
 /** Mirrors itemsForDate — see Device.events' comment in types.ts. */
 export function itemsForDateForDevice(device: Device, date: string): { ids: string[]; kind: 'event' | 'default'; label: string } {
-  const event = device.events.find((e) => date >= e.start && date <= e.end);
+  const dow = dayOfWeekForDate(date);
+  const event = device.events.find((e) => date >= e.start && date <= e.end && (!e.daysOfWeek || e.daysOfWeek.length === 0 || e.daysOfWeek.includes(dow)));
   if (event) return { ids: event.libIds, kind: 'event', label: event.name };
   return { ids: device.defaultPlaylist, kind: 'default', label: 'Default playlist' };
 }

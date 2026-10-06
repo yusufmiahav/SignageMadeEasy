@@ -304,23 +304,25 @@ const GROUP_COLUMNS = 'id, name, locationId, defaultPlaylist, forcedPlaylist, fo
 function parseForcedPlaylist(r: { forcedPlaylist: string | null; forcedContentId: string | null }): string[] {
   return r.forcedPlaylist != null ? JSON.parse(r.forcedPlaylist) : r.forcedContentId ? [r.forcedContentId] : [];
 }
-interface EventRow { id: string; groupId: string | null; deviceId: string | null; name: string; start: string; end: string; libIds: string; startTime: string | null; endTime: string | null }
+interface EventRow { id: string; groupId: string | null; deviceId: string | null; name: string; start: string; end: string; libIds: string; startTime: string | null; endTime: string | null; daysOfWeek: string | null }
 interface AnnouncementScheduleRow { id: string; groupId: string; announcementId: string; startDate: string; endDate: string; startTime: string; endTime: string }
 
 function eventsForGroup(groupId: string): ScheduleEvent[] {
-  const rows = db.prepare('SELECT id, groupId, deviceId, name, start, end, libIds, startTime, endTime FROM events WHERE groupId = ? ORDER BY start ASC').all(groupId) as EventRow[];
+  const rows = db.prepare('SELECT id, groupId, deviceId, name, start, end, libIds, startTime, endTime, daysOfWeek FROM events WHERE groupId = ? ORDER BY start ASC').all(groupId) as EventRow[];
   return rows.map((r) => ({
     id: r.id, name: r.name, start: r.start, end: r.end, libIds: JSON.parse(r.libIds),
     startTime: r.startTime ?? undefined, endTime: r.endTime ?? undefined,
+    daysOfWeek: r.daysOfWeek ? JSON.parse(r.daysOfWeek) : undefined,
   }));
 }
 
 /** Mirrors eventsForGroup — see Device.events' comment in types.ts. */
 function eventsForDevice(deviceId: string): ScheduleEvent[] {
-  const rows = db.prepare('SELECT id, groupId, deviceId, name, start, end, libIds, startTime, endTime FROM events WHERE deviceId = ? ORDER BY start ASC').all(deviceId) as EventRow[];
+  const rows = db.prepare('SELECT id, groupId, deviceId, name, start, end, libIds, startTime, endTime, daysOfWeek FROM events WHERE deviceId = ? ORDER BY start ASC').all(deviceId) as EventRow[];
   return rows.map((r) => ({
     id: r.id, name: r.name, start: r.start, end: r.end, libIds: JSON.parse(r.libIds),
     startTime: r.startTime ?? undefined, endTime: r.endTime ?? undefined,
+    daysOfWeek: r.daysOfWeek ? JSON.parse(r.daysOfWeek) : undefined,
   }));
 }
 
@@ -418,8 +420,9 @@ export function reorderDefaultPlaylist(groupId: string, libId: string, direction
 
 export function addEvent(groupId: string, event: Omit<ScheduleEvent, 'id'>): ScheduleEvent {
   const id = uid('e');
-  db.prepare('INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime) VALUES (?,?,NULL,?,?,?,?,?,?)').run(
+  db.prepare('INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime, daysOfWeek) VALUES (?,?,NULL,?,?,?,?,?,?,?)').run(
     id, groupId, event.name, event.start, event.end, JSON.stringify(event.libIds), event.startTime ?? null, event.endTime ?? null,
+    event.daysOfWeek && event.daysOfWeek.length > 0 ? JSON.stringify(event.daysOfWeek) : null,
   );
   return { id, ...event };
 }
@@ -717,8 +720,9 @@ export function reorderDeviceDefaultPlaylist(deviceId: string, libId: string, di
 /** Mirrors addEvent/removeEvent — see Device.events' comment in types.ts. */
 export function addDeviceEvent(deviceId: string, event: Omit<ScheduleEvent, 'id'>): ScheduleEvent {
   const id = uid('e');
-  db.prepare('INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime) VALUES (?,NULL,?,?,?,?,?,?,?)').run(
+  db.prepare('INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime, daysOfWeek) VALUES (?,NULL,?,?,?,?,?,?,?,?)').run(
     id, deviceId, event.name, event.start, event.end, JSON.stringify(event.libIds), event.startTime ?? null, event.endTime ?? null,
+    event.daysOfWeek && event.daysOfWeek.length > 0 ? JSON.stringify(event.daysOfWeek) : null,
   );
   return { id, ...event };
 }
@@ -882,6 +886,20 @@ function toISODate(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+// Shared by activeContentIds/activeContentIdsForDevice below — an event with no
+// startTime/endTime runs all day (the original behavior); one with both set only
+// replaces the default playlist during that daily window, same "doesn't span
+// midnight" string-compare caveat as activeAnnouncementId's schedules further down.
+// daysOfWeek (0=Sun..6=Sat, unset/empty meaning "every day") narrows [start, end]
+// down to specific weekdays within it, independently of any time window — e.g. a
+// long/open-ended range plus [1,2,3,4,5] for "every weekday."
+function eventMatchesNow(e: ScheduleEvent, today: string, hhmm: string, dayOfWeek: number): boolean {
+  if (today < e.start || today > e.end) return false;
+  if (e.daysOfWeek && e.daysOfWeek.length > 0 && !e.daysOfWeek.includes(dayOfWeek)) return false;
+  if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
+  return true;
+}
+
 export function activeContentIds(group: Group, now: Date = new Date()): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
   // Highest priority, above even forced content — an emergency override meant to
   // win regardless of anything else configured for this group.
@@ -889,15 +907,7 @@ export function activeContentIds(group: Group, now: Date = new Date()): { ids: s
   if (group.forcedPlaylist.length > 0) return { ids: group.forcedPlaylist, kind: 'forced', label: 'Forced' };
   const today = toISODate(now);
   const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  // An event with no startTime/endTime runs all day, every day in [start, end] (the
-  // original behavior); one with both set only replaces the default playlist during
-  // that daily window — same "doesn't span midnight" string-compare caveat as
-  // activeAnnouncementId's schedules below.
-  const event = group.events.find((e) => {
-    if (today < e.start || today > e.end) return false;
-    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
-    return true;
-  });
+  const event = group.events.find((e) => eventMatchesNow(e, today, hhmm, now.getDay()));
   if (event) return { ids: event.libIds, kind: 'event', label: event.name };
   return { ids: group.defaultPlaylist, kind: 'default', label: 'Default playlist' };
 }
@@ -931,11 +941,7 @@ function activeContentIdsForDevice(device: Device, now: Date = new Date()): { id
   if (device.forcedPlaylist.length > 0) return { ids: device.forcedPlaylist, kind: 'forced', label: 'Forced' };
   const today = toISODate(now);
   const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const event = device.events.find((e) => {
-    if (today < e.start || today > e.end) return false;
-    if (e.startTime && e.endTime) return hhmm >= e.startTime && hhmm <= e.endTime;
-    return true;
-  });
+  const event = device.events.find((e) => eventMatchesNow(e, today, hhmm, now.getDay()));
   if (event) return { ids: event.libIds, kind: 'event', label: event.name };
   if (device.defaultPlaylist.length > 0) return { ids: device.defaultPlaylist, kind: 'default', label: 'Default playlist' };
   return { ids: [], kind: 'default', label: 'No content' };
@@ -1104,7 +1110,7 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
     'INSERT INTO groups_ (id, name, locationId, defaultPlaylist, forcedPlaylist, forcedContentId, forcedAnnouncementId, sortOrder, blackout) VALUES (@id,@name,@locationId,@defaultPlaylist,@forcedPlaylist,@forcedContentId,@forcedAnnouncementId,@sortOrder,@blackout)',
   );
   const insertEvent = db.prepare(
-    'INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime) VALUES (@id,@groupId,@deviceId,@name,@start,@end,@libIds,@startTime,@endTime)',
+    'INSERT INTO events (id, groupId, deviceId, name, start, end, libIds, startTime, endTime, daysOfWeek) VALUES (@id,@groupId,@deviceId,@name,@start,@end,@libIds,@startTime,@endTime,@daysOfWeek)',
   );
   const insertAnnSchedule = db.prepare(
     'INSERT INTO announcement_schedules (id, groupId, announcementId, startDate, endDate, startTime, endTime) VALUES (@id,@groupId,@announcementId,@startDate,@endDate,@startTime,@endTime)',
@@ -1123,6 +1129,7 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       insertEvent.run({
         id: event.id, groupId: group.id, deviceId: null, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds),
         startTime: event.startTime ?? null, endTime: event.endTime ?? null,
+        daysOfWeek: event.daysOfWeek && event.daysOfWeek.length > 0 ? JSON.stringify(event.daysOfWeek) : null,
       });
     }
     for (const s of group.announcementSchedules) {
@@ -1160,6 +1167,7 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       insertEvent.run({
         id: event.id, groupId: null, deviceId: device.id, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds),
         startTime: event.startTime ?? null, endTime: event.endTime ?? null,
+        daysOfWeek: event.daysOfWeek && event.daysOfWeek.length > 0 ? JSON.stringify(event.daysOfWeek) : null,
       });
     }
   });

@@ -58,7 +58,9 @@ export function DeviceScheduleCard({ app, device, library, onOpenAddContent, onO
   const todayForBanner = todayISO();
   const nowForBanner = new Date();
   const hhmmNow = `${pad2(nowForBanner.getHours())}:${pad2(nowForBanner.getMinutes())}`;
-  const todaysEvent = device.events.find((e) => todayForBanner >= e.start && todayForBanner <= e.end);
+  const todaysEvent = device.events.find(
+    (e) => todayForBanner >= e.start && todayForBanner <= e.end && (!e.daysOfWeek || e.daysOfWeek.length === 0 || e.daysOfWeek.includes(nowForBanner.getDay())),
+  );
   const todaysEventIsLive = !!todaysEvent && (!todaysEvent.startTime || !todaysEvent.endTime || (hhmmNow >= todaysEvent.startTime && hhmmNow <= todaysEvent.endTime));
 
   return (

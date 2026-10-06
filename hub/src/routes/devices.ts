@@ -396,14 +396,17 @@ devicesRouter.post('/:id/playlist/:libId/reorder', (req, res) => {
 });
 
 devicesRouter.post('/:id/events', (req, res) => {
-  const { name, start, end, libIds, startTime, endTime } = req.body ?? {};
+  const { name, start, end, libIds, startTime, endTime, daysOfWeek } = req.body ?? {};
   if (typeof name !== 'string' || typeof start !== 'string' || typeof end !== 'string' || !Array.isArray(libIds)) {
     return res.status(400).json({ error: 'name, start, end, libIds are required' });
   }
   if ((startTime !== undefined && typeof startTime !== 'string') || (endTime !== undefined && typeof endTime !== 'string')) {
     return res.status(400).json({ error: 'startTime/endTime must be strings when provided' });
   }
-  res.status(201).json(store.addDeviceEvent(req.params.id, { name, start, end, libIds, startTime, endTime }));
+  if (daysOfWeek !== undefined && (!Array.isArray(daysOfWeek) || daysOfWeek.some((d) => typeof d !== 'number' || d < 0 || d > 6))) {
+    return res.status(400).json({ error: 'daysOfWeek must be an array of numbers 0-6 when provided' });
+  }
+  res.status(201).json(store.addDeviceEvent(req.params.id, { name, start, end, libIds, startTime, endTime, daysOfWeek }));
 });
 
 devicesRouter.delete('/:id/events/:eventId', (req, res) => {

@@ -79,6 +79,14 @@ export interface ScheduleEvent {
   startTime?: string;
   /** 24h "HH:MM", e.g. "17:00" — see startTime. */
   endTime?: string;
+  /**
+   * 0=Sunday..6=Saturday (matches JS Date.getDay()) — restricts this event to only
+   * those weekdays within [start, end], e.g. a long/open-ended range plus [1,2,3,4,5]
+   * for "every weekday." Unset or empty (the default): every day in range, same as
+   * before this field existed. Combines with startTime/endTime independently — a
+   * weekday filter and a daily time window can both apply to the same event.
+   */
+  daysOfWeek?: number[];
 }
 
 export interface AnnouncementSchedule {

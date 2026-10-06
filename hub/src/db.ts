@@ -400,6 +400,18 @@ if (!deviceColsPlayer.includes('playerStartedAt')) db.exec('ALTER TABLE devices 
 const deviceColsVersion = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
 if (!deviceColsVersion.includes('version')) db.exec('ALTER TABLE devices ADD COLUMN version TEXT');
 
+// Same reasoning, for hubs deployed before an event could recur on specific weekdays
+// instead of running every day in [start, end] — a JSON array of 0(Sun)-6(Sat), same
+// encoding as defaultPlaylist/libIds elsewhere in this file. Null (not '[]') for
+// every existing event, matching startTime/endTime's own "unset means no
+// restriction" nullable pattern. Added here, well after the events table's own
+// NOT-NULL-groupId rebuild above (which recreates the table with a fixed column
+// list) rather than alongside startTime/endTime near that rebuild — adding it
+// earlier in this file would have it silently dropped the moment that rebuild ran
+// on a hub that still needed it.
+const eventColsRecurrence = (db.prepare("PRAGMA table_info(events)").all() as { name: string }[]).map((c) => c.name);
+if (!eventColsRecurrence.includes('daysOfWeek')) db.exec('ALTER TABLE events ADD COLUMN daysOfWeek TEXT');
+
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's

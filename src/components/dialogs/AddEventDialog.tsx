@@ -6,6 +6,14 @@ import type { LibraryItem, ScheduleEvent } from '../../api/types';
 
 const TYPE_LABEL: Record<string, string> = { image: 'Image', video: 'Video', pdf: 'PDF', announcement: 'Announcement' };
 
+// 0=Sunday..6=Saturday, matching ScheduleEvent.daysOfWeek/JS Date.getDay() — shown
+// Mon-first since that's the more natural reading order for a work-week pattern
+// like "every weekday," but the stored values stay Sun=0-based.
+const WEEKDAYS: { value: number; label: string }[] = [
+  { value: 1, label: 'Mon' }, { value: 2, label: 'Tue' }, { value: 3, label: 'Wed' }, { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' }, { value: 6, label: 'Sat' }, { value: 0, label: 'Sun' },
+];
+
 function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -26,6 +34,10 @@ export function AddEventDialog({ app, onConfirm, onClose }: AddEventDialogProps)
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [recurring, setRecurring] = useState(false);
+  // Pre-checked to the most common recurring case ("every weekday") the moment
+  // recurring is turned on, rather than starting empty and forcing a pick of all 7.
+  const [days, setDays] = useState<Set<number>>(new Set([1, 2, 3, 4, 5]));
 
   const toggle = (id: string) => {
     setChecked((prev) => {
@@ -35,13 +47,23 @@ export function AddEventDialog({ app, onConfirm, onClose }: AddEventDialogProps)
     });
   };
 
+  const toggleDay = (value: number) => {
+    setDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value); else next.add(value);
+      return next;
+    });
+  };
+
   const confirm = async () => {
     if (!name.trim() || !start || !end) return;
     if (!allDay && (!startTime || !endTime)) return;
+    if (recurring && days.size === 0) return;
     await onConfirm({
       name: name.trim(), start, end, libIds: Array.from(checked),
       startTime: allDay ? undefined : startTime,
       endTime: allDay ? undefined : endTime,
+      daysOfWeek: recurring ? Array.from(days) : undefined,
     });
     onClose();
   };
@@ -62,6 +84,30 @@ export function AddEventDialog({ app, onConfirm, onClose }: AddEventDialogProps)
           <input className="input" id="ev-end" type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
         </div>
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 13 }}>Only on certain days of the week</span>
+        <label className="toggle">
+          <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
+          <span className="toggle-track">
+            <span className="toggle-dot" />
+          </span>
+        </label>
+      </div>
+      {recurring && (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {WEEKDAYS.map((d) => (
+            <button
+              key={d.value}
+              type="button"
+              className={days.has(d.value) ? 'btn btn-primary' : 'btn btn-secondary'}
+              style={{ fontSize: 12, padding: '4px 10px' }}
+              onClick={() => toggleDay(d.value)}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ fontSize: 13 }}>All day</span>
         <label className="toggle">

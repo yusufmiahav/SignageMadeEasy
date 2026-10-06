@@ -76,6 +76,8 @@ export interface ScheduleEvent {
   /** 24h "HH:MM" — see src/api/types.ts's copy of this interface for the full comment. */
   startTime?: string;
   endTime?: string;
+  /** 0=Sunday..6=Saturday (JS Date.getDay()) — see src/api/types.ts's copy of this interface for the full comment. */
+  daysOfWeek?: number[];
 }
 
 export interface AnnouncementSchedule {

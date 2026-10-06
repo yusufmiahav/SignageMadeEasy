@@ -363,6 +363,7 @@ export function useAppState() {
     await api.addEvent(groupId, {
       name: `${event.name} (copy)`, start: event.start, end: event.end, libIds: [...event.libIds],
       startTime: event.startTime, endTime: event.endTime,
+      daysOfWeek: event.daysOfWeek ? [...event.daysOfWeek] : undefined,
     });
     await refreshGroups();
     showToast('Event duplicated');
@@ -602,6 +603,7 @@ export function useAppState() {
     await api.addDeviceEvent(deviceId, {
       name: `${event.name} (copy)`, start: event.start, end: event.end, libIds: [...event.libIds],
       startTime: event.startTime, endTime: event.endTime,
+      daysOfWeek: event.daysOfWeek ? [...event.daysOfWeek] : undefined,
     });
     await refreshDevices();
     showToast('Event duplicated');
