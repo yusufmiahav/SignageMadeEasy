@@ -40,11 +40,14 @@ interface DeviceCardProps {
   advancedInfo: boolean;
   hideAnnouncementRow: boolean;
   /**
-   * A screen with no group has no group header to host force-content/
-   * announcement/blackout buttons, so this card shows its own — only rendered
-   * while device.groupId is null. forcedContentName resolves device.forcedPlaylist
-   * to a display label — e.g. the one item's name, or "First item +2 more" for a
-   * multi-item forced playlist (the card itself has no library to look it up in).
+   * Force content/blackout render for every card, standalone or grouped — a
+   * grouped screen's own forcedPlaylist/blackout override its group's (see
+   * hub/src/store.ts's activeContentIdsForGroupedDevice), so this card needs the
+   * same two buttons either way. Force announcement stays standalone-only below:
+   * announcements aren't part of this override. forcedContentName resolves
+   * device.forcedPlaylist to a display label — e.g. the one item's name, or
+   * "First item +2 more" for a multi-item forced playlist (the card itself has no
+   * library to look it up in).
    */
   forcedContentName?: string;
   onForceContent: (deviceId: string) => void;
@@ -97,33 +100,33 @@ export function DeviceCard({
     // (see SearchScreen.tsx's onJumpToHome) — every DeviceCard on Home, standalone
     // or inside a group, gets one for free from device.id alone.
     <div className="card" id={`device-${device.id}`}>
-      {!device.groupId && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          {device.blackout ? (
-            <>
-              <span className="tag tag-warning">Blacked out</span>
-              <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onStopBlackout(device.id)}>Stop</button>
-            </>
-          ) : (
-            <button type="button" className="btn btn-warning btn-icon" style={{ width: 26, height: 26 }} aria-label="Blackout" title="Blackout" onClick={() => onOpenBlackout(device.id)}>
-              <Icon name="moon" size={13} />
-            </button>
-          )}
-          {device.forcedPlaylist.length > 0 ? (
-            <>
-              <span className="tag tag-accent">Forced: {forcedContentName ?? '—'}</span>
-              <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onStopForcedContent(device.id)}>Stop</button>
-            </>
-          ) : (
-            <button type="button" className="btn btn-secondary btn-icon" style={{ width: 26, height: 26 }} aria-label="Force content" title="Force content" onClick={() => onForceContent(device.id)}>
-              <Icon name="monitor" size={13} />
-            </button>
-          )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {device.blackout ? (
+          <>
+            <span className="tag tag-warning">Blacked out</span>
+            <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onStopBlackout(device.id)}>Stop</button>
+          </>
+        ) : (
+          <button type="button" className="btn btn-warning btn-icon" style={{ width: 26, height: 26 }} aria-label="Blackout" title="Blackout" onClick={() => onOpenBlackout(device.id)}>
+            <Icon name="moon" size={13} />
+          </button>
+        )}
+        {device.forcedPlaylist.length > 0 ? (
+          <>
+            <span className="tag tag-accent">Forced: {forcedContentName ?? '—'}</span>
+            <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onStopForcedContent(device.id)}>Stop</button>
+          </>
+        ) : (
+          <button type="button" className="btn btn-secondary btn-icon" style={{ width: 26, height: 26 }} aria-label="Force content" title="Force content" onClick={() => onForceContent(device.id)}>
+            <Icon name="monitor" size={13} />
+          </button>
+        )}
+        {!device.groupId && (
           <button type="button" className="btn btn-secondary btn-icon" style={{ width: 26, height: 26 }} aria-label="Force announcement" title="Force announcement" onClick={() => onForceAnnouncement(device.id)}>
             <Icon name="messageCircle" size={13} />
           </button>
-        </div>
-      )}
+        )}
+      </div>
       <div
         className="preview-box"
         style={

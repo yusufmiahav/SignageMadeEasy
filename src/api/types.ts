@@ -135,21 +135,21 @@ export interface Device {
   /** Captured once at pairing time from the Pi's own agent. Null for a screen paired before this existed, one paired while offline, or any device in standalone/localStorage mode (no real Pi to ask). */
   mac: string | null;
   status: DeviceStatus;
-  /** Null for a screen not assigned to any group yet ("standalone" screens, whether or not they're filed under a Location) — see forcedPlaylist/blackout below, which fill in for the group-level controls it doesn't have. */
+  /** Null for a screen not assigned to any group yet ("standalone" screens, whether or not they're filed under a Location) — see forcedPlaylist/blackout below, which fill in for the group-level controls it doesn't have, and still take priority over the group's own once it has one. */
   groupId: string | null;
   /** Which Location this screen is filed under when it's standalone (groupId is null) — purely organizational, same as Group.locationId. Meaningless while groupId is set: a grouped screen's Location comes from its Group instead, not set directly here. */
   locationId: string | null;
   announcementId: string | null;
   announcementOn: boolean;
-  /** Only meaningful/settable while groupId is null — a grouped screen's content comes from its group instead. Mirrors Group.forcedPlaylist for a standalone screen. */
+  /** Settable regardless of groupId. For a standalone screen this is its whole forced-content control (mirrors Group.forcedPlaylist); for a grouped screen it overrides the group's own forcedPlaylist/blackout for just this one screen, until cleared back to empty — see resolve.ts's activeContentIdsForDeviceInGroup. */
   forcedPlaylist: string[];
   /** @deprecated Read-only mirror of forcedPlaylist[0] (or null when empty) — see Group.forcedContentId's comment. */
   forcedContentId: string | null;
-  /** Same scope as forcedPlaylist — only meaningful while groupId is null. */
+  /** Same scope as forcedPlaylist — settable and effective regardless of groupId, overriding the group's own blackout for just this screen when set. */
   blackout: boolean;
-  /** Same scope as forcedPlaylist — mirrors Group.defaultPlaylist for a standalone screen. */
+  /** Only meaningful/settable while groupId is null — mirrors Group.defaultPlaylist for a standalone screen. A grouped screen falls through to its group's own schedule instead (see activeContentIdsForDeviceInGroup), not to this field. */
   defaultPlaylist: string[];
-  /** Same scope as forcedPlaylist — mirrors Group.events for a standalone screen. */
+  /** Only meaningful/settable while groupId is null — mirrors Group.events for a standalone screen. Same fallthrough-to-group caveat as defaultPlaylist above. */
   events: ScheduleEvent[];
   /**
    * Which copy of a video this screen is served. 'auto' (default): the resolution-capped

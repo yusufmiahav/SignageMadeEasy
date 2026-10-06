@@ -7,7 +7,7 @@ import { forcedPlaylistLabel } from '../api/resolve';
 interface SearchScreenProps {
   app: AppState;
   onOpenDevicePreview: (device: Device) => void;
-  /** Standalone-screen force-content/blackout only — a grouped screen's content comes from its group instead, same gating DeviceCard itself uses. */
+  /** A grouped screen's own forced content/blackout overrides its group's (same as DeviceCard on Home) — these apply regardless of groupId. */
   onForceContentForDevice: (deviceId: string) => void;
   onOpenBlackoutForDevice: (deviceId: string) => void;
   /** Switches to Home and scrolls to the given screen's card or group section — `device-<id>` or `group-<id>`, matching the DOM ids HomeScreen's own cards/group sections carry (see HomeScreen.tsx's scrollTarget prop). */
@@ -112,39 +112,36 @@ export function SearchScreen({ app, onOpenDevicePreview, onForceContentForDevice
                   </a>
                   {device.mac && <span className="tag tag-neutral" style={{ flexShrink: 0 }}>{device.mac}</span>}
                   <span className="tag tag-neutral" style={{ flexShrink: 0 }}>{device.status === 'online' ? 'Online' : 'Offline'}</span>
-                  {/* Force content/blackout only make sense for a standalone screen — a
-                      grouped one's content comes from its group instead (see DeviceCard's
-                      own identical !device.groupId gating). For a grouped screen, "Open"
-                      below is the fast path to its group's own force-content/blackout
-                      controls instead. */}
-                  {!device.groupId && (
-                    <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                      {device.blackout ? (
-                        <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => setDeviceBlackout(device.id, false)} title="Stop blackout">
-                          Blacked out · Stop
-                        </button>
-                      ) : (
-                        <button type="button" className="btn btn-warning btn-icon" aria-label="Blackout" title="Blackout this screen" onClick={() => onOpenBlackoutForDevice(device.id)}>
-                          <Icon name="moon" size={14} />
-                        </button>
-                      )}
-                      {forced ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          style={{ fontSize: 11, padding: '4px 8px' }}
-                          onClick={() => setDeviceForcedPlaylist(device.id, [])}
-                          title={`Stop forcing: ${forcedPlaylistLabel(device.forcedPlaylist, libraryById)}`}
-                        >
-                          Forced · Stop
-                        </button>
-                      ) : (
-                        <button type="button" className="btn btn-secondary btn-icon" aria-label="Force content" title="Force content on this screen" onClick={() => onForceContentForDevice(device.id)}>
-                          <Icon name="monitor" size={14} />
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  {/* A grouped screen's own forced content/blackout overrides its group's
+                      (same as DeviceCard on Home) — shown for every screen, standalone or
+                      grouped. "Open" below is still the fast path to the whole group's
+                      own controls when that's what's wanted instead. */}
+                  <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                    {device.blackout ? (
+                      <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => setDeviceBlackout(device.id, false)} title="Stop blackout">
+                        Blacked out · Stop
+                      </button>
+                    ) : (
+                      <button type="button" className="btn btn-warning btn-icon" aria-label="Blackout" title="Blackout this screen" onClick={() => onOpenBlackoutForDevice(device.id)}>
+                        <Icon name="moon" size={14} />
+                      </button>
+                    )}
+                    {forced ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ fontSize: 11, padding: '4px 8px' }}
+                        onClick={() => setDeviceForcedPlaylist(device.id, [])}
+                        title={`Stop forcing: ${forcedPlaylistLabel(device.forcedPlaylist, libraryById)}`}
+                      >
+                        Forced · Stop
+                      </button>
+                    ) : (
+                      <button type="button" className="btn btn-secondary btn-icon" aria-label="Force content" title="Force content on this screen" onClick={() => onForceContentForDevice(device.id)}>
+                        <Icon name="monitor" size={14} />
+                      </button>
+                    )}
+                  </div>
                   <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
                     <button type="button" className="btn btn-ghost btn-icon" aria-label="Identify" title="Blink this screen's display" onClick={() => void flashDevice(device)}>
                       <Icon name="lightbulb" size={14} />

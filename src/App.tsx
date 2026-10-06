@@ -59,7 +59,7 @@ type DialogState =
   | { type: 'forceContent'; groupId: string | null }
   | { type: 'forceAnnouncement'; groupId: string | null }
   | { type: 'blackout'; groupId: string | null }
-  /** Same three actions, scoped to a single standalone screen (no group) instead of a group. */
+  /** Same three actions, scoped to a single screen instead of a whole group — forceContentDevice/blackoutDevice work on a grouped screen too, overriding its group (see DeviceCard's forcedContentName comment); forceAnnouncementDevice stays standalone-only. */
   | { type: 'forceContentDevice'; deviceId: string }
   | { type: 'forceAnnouncementDevice'; deviceId: string }
   | { type: 'blackoutDevice'; deviceId: string }

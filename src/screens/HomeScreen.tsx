@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Icon } from '../components/icons/Icon';
 import { DeviceCard } from '../components/DeviceCard';
 import type { AppState } from '../hooks/useAppState';
-import { activeAnnouncementId, activeContentIds, forcedPlaylistLabel, nowPlayingItem, nowPlayingName, nowPlayingItemForDevice, nowPlayingNameForDevice } from '../api/resolve';
+import { activeAnnouncementId, activeContentIds, forcedPlaylistLabel, nowPlayingItemForDevice, nowPlayingNameForDevice, nowPlayingItemForDeviceInGroup, nowPlayingNameForDeviceInGroup } from '../api/resolve';
 import type { Device, Group, LibraryItem } from '../api/types';
 
 interface HomeScreenProps {
@@ -192,8 +192,8 @@ export function HomeScreen({
               <DeviceCard
                 key={device.id}
                 device={device}
-                nowPlaying={nowPlayingName(group, libraryById)}
-                nowPlayingItem={nowPlayingItem(group, libraryById)}
+                nowPlaying={nowPlayingNameForDeviceInGroup(device, group, libraryById)}
+                nowPlayingItem={nowPlayingItemForDeviceInGroup(device, group, libraryById)}
                 announcement={device.announcementId ? libraryById.get(device.announcementId) : undefined}
                 onRename={renameDevice}
                 onFlash={flashDevice}
@@ -206,6 +206,7 @@ export function HomeScreen({
                 onPreview={onPreviewContent}
                 advancedInfo={advancedDeviceInfo}
                 hideAnnouncementRow={hideAnnouncementRow}
+                forcedContentName={device.forcedPlaylist.length > 0 ? forcedPlaylistLabel(device.forcedPlaylist, libraryById) : undefined}
                 onForceContent={onForceContentForDevice}
                 onForceAnnouncement={onForceAnnouncementForDevice}
                 onOpenBlackout={onOpenBlackoutForDevice}

@@ -68,6 +68,34 @@ export function nowPlayingItem(group: Group, libraryById: Map<string, LibraryIte
 }
 
 /**
+ * A device inside a group normally shows exactly what its group resolves to — but
+ * its own forcedPlaylist/blackout (same fields activeContentIdsForDevice uses for a
+ * standalone screen) take priority when set, letting one screen in a group show
+ * something different without pulling it out of the group. Mirrors
+ * hub/src/store.ts's identical device-overrides-group priority check — this is what
+ * actually gets served to the Pi; this copy exists purely so the control app's own
+ * preview/thumbnail for that one card matches instead of showing the group's.
+ */
+export function activeContentIdsForDeviceInGroup(device: Device, group: Group, now: Date = new Date()): ActiveContent {
+  if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
+  if (device.forcedPlaylist.length > 0) return { ids: device.forcedPlaylist, kind: 'forced', label: 'Forced' };
+  return activeContentIds(group, now);
+}
+
+function firstResolvedItemForDeviceInGroup(device: Device, group: Group, libraryById: Map<string, LibraryItem>): LibraryItem | undefined {
+  const { ids } = activeContentIdsForDeviceInGroup(device, group);
+  return ids.map((id) => libraryById.get(id)).find((item): item is LibraryItem => !!item);
+}
+
+export function nowPlayingNameForDeviceInGroup(device: Device, group: Group, libraryById: Map<string, LibraryItem>): string {
+  return firstResolvedItemForDeviceInGroup(device, group, libraryById)?.name ?? '—';
+}
+
+export function nowPlayingItemForDeviceInGroup(device: Device, group: Group, libraryById: Map<string, LibraryItem>): LibraryItem | undefined {
+  return firstResolvedItemForDeviceInGroup(device, group, libraryById);
+}
+
+/**
  * A screen with no group has no group-level schedule to fall back on, but does have
  * its own — forcedPlaylist/blackout (the standalone-screen equivalents of a
  * group's controls), then its own events/defaultPlaylist, same priority order

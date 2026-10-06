@@ -900,13 +900,27 @@ function activeContentIdsForDevice(device: Device, now: Date = new Date()): { id
   return { ids: [], kind: 'default', label: 'No content' };
 }
 
+// A device inside a group normally shows whatever the group resolves to — but its
+// own forcedPlaylist/blackout (the same fields activeContentIdsForDevice above uses
+// for a standalone screen) take priority when set, letting one screen in a group
+// show something different without pulling it out of the group. Falls straight
+// through to the group's own activeContentIds the moment both are unset, which is
+// every existing grouped device's state (empty forcedPlaylist, blackout false) —
+// this is purely additive, not a behavior change for a device that's never set an
+// override of its own.
+function activeContentIdsForGroupedDevice(device: Device, group: Group, now: Date = new Date()): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
+  if (device.blackout) return { ids: [], kind: 'blackout', label: 'Blackout' };
+  if (device.forcedPlaylist.length > 0) return { ids: device.forcedPlaylist, kind: 'forced', label: 'Forced' };
+  return activeContentIds(group, now);
+}
+
 export function getPlayerState(deviceId: string): PlayerState | null {
   const device = getDevice(deviceId);
   if (!device) return null;
   const group = device.groupId ? getGroup(device.groupId) : null;
   if (device.groupId && !group) return null;
 
-  const active = group ? activeContentIds(group) : activeContentIdsForDevice(device);
+  const active = group ? activeContentIdsForGroupedDevice(device, group) : activeContentIdsForDevice(device);
   const libraryById = new Map(listLibrary().map((item) => [item.id, item]));
   const items = active.ids
     .map((id) => libraryById.get(id))
