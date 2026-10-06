@@ -47,6 +47,15 @@ export function SettingsScreen({
   const mutedDevices = devices.filter((d) => d.offlineAlertsMuted);
   const [offlineAlertDraft, setOfflineAlertDraft] = useState(String(offlineAlertMinutes));
   useEffect(() => setOfflineAlertDraft(String(offlineAlertMinutes)), [offlineAlertMinutes]);
+  // 0 is how "disabled" is actually stored (see hub/src/store.ts's getOfflineAlertMinutes)
+  // — this just remembers the last real threshold so flipping the toggle back on
+  // restores it instead of landing on 0 again. Not persisted; worst case (a reload
+  // between turning it off and back on) just falls back to the 15-minute default.
+  const [lastOfflineAlertMinutes, setLastOfflineAlertMinutes] = useState(offlineAlertMinutes > 0 ? offlineAlertMinutes : 15);
+  useEffect(() => {
+    if (offlineAlertMinutes > 0) setLastOfflineAlertMinutes(offlineAlertMinutes);
+  }, [offlineAlertMinutes]);
+  const offlineAlertsEnabled = offlineAlertMinutes > 0;
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [hubNetworkDrafts, setHubNetworkDrafts] = useState<SavedHubNetwork[]>(savedHubNetworks);
   useEffect(() => setHubNetworkDrafts(savedHubNetworks), [savedHubNetworks]);
@@ -527,24 +536,39 @@ export function SettingsScreen({
           <span style={{ fontSize: 13 }}>
             Offline alerts
             <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
-              Shows a banner (on every tab) once a screen's been offline longer than this. 0 turns it off.
+              Shows a banner (on every tab) once a screen's been offline longer than a set number of minutes.
             </span>
           </span>
-          <input
-            className="input"
-            type="number"
-            min={0}
-            step={1}
-            style={{ width: 70, textAlign: 'right', flexShrink: 0 }}
-            value={offlineAlertDraft}
-            onChange={(e) => setOfflineAlertDraft(e.target.value)}
-            onBlur={() => {
-              const n = Number(offlineAlertDraft);
-              if (Number.isFinite(n) && n >= 0) void setOfflineAlertMinutes(n);
-              else setOfflineAlertDraft(String(offlineAlertMinutes));
-            }}
-          />
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={offlineAlertsEnabled}
+              onChange={(e) => void setOfflineAlertMinutes(e.target.checked ? lastOfflineAlertMinutes : 0)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
         </div>
+        {offlineAlertsEnabled && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingLeft: 4 }}>
+            <span className="text-muted" style={{ fontSize: 12 }}>Alert after this many minutes offline</span>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              step={1}
+              style={{ width: 70, textAlign: 'right', flexShrink: 0 }}
+              value={offlineAlertDraft}
+              onChange={(e) => setOfflineAlertDraft(e.target.value)}
+              onBlur={() => {
+                const n = Number(offlineAlertDraft);
+                if (Number.isFinite(n) && n >= 1) void setOfflineAlertMinutes(n);
+                else setOfflineAlertDraft(String(offlineAlertMinutes));
+              }}
+            />
+          </div>
+        )}
         {mutedDevices.length > 0 && (
           <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 12, marginTop: 4 }}>
             <span style={{ fontSize: 13 }}>
