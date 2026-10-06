@@ -8,6 +8,14 @@ export interface DiscoveredDevice {
   ip: string;
 }
 
+/** previewDevice's result — see its own comment below for what stale/capturedAt mean. */
+export interface DevicePreview {
+  url: string;
+  stale: boolean;
+  /** ISO timestamp the stale frame was captured at; null when stale is false (it's live, so "now"), or when a device has never been successfully previewed at all. */
+  capturedAt: string | null;
+}
+
 /**
  * The control app's data contract. Every call is async so this can be pointed at the
  * future hub's REST API (running on the NAS, polled by every paired Pi) by swapping
@@ -145,12 +153,15 @@ export interface SignageApiClient {
   /**
    * Fetches a live screenshot of exactly what's currently rendering on this screen —
    * via the paired Pi's own already-open Chromium DevTools port (see
-   * hub/src/piAgent.ts's preview / pi-player/src/preview.ts). Resolves to a `blob:`
-   * URL ready for an `<img src>`; the caller owns it and must
-   * `URL.revokeObjectURL` it once done. Throws if the device is offline/unreachable,
-   * or always in standalone/localStorage mode (no real screen to preview).
+   * hub/src/piAgent.ts's preview / pi-player/src/preview.ts). `url` is a `blob:` URL
+   * ready for an `<img src>`; the caller owns it and must `URL.revokeObjectURL` it
+   * once done. If the screen can't be reached right now but answered at least once
+   * before, resolves with the hub's cached last-known frame instead (`stale: true`,
+   * `capturedAt` set) rather than throwing — see devices.ts's /:id/preview route.
+   * Only throws when there's truly nothing to show: never reached, or always in
+   * standalone/localStorage mode (no real screen to preview).
    */
-  previewDevice(id: string): Promise<string>;
+  previewDevice(id: string): Promise<DevicePreview>;
   /**
    * Fast path: pulls the latest pi-player code, rebuilds, and restarts the player
    * process on this screen (~10-30s) — for routine app updates, not system-level

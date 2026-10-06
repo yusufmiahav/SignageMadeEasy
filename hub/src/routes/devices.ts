@@ -1,9 +1,24 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { Router, type Request } from 'express';
 import * as store from '../store.js';
 import * as piAgent from '../piAgent.js';
 import { requireAuth } from '../auth.js';
+import { DATA_DIR } from '../db.js';
 
 export const devicesRouter = Router();
+
+// The most recent successful /preview frame for each device, kept so a screen that's
+// gone offline since the last time someone checked still shows *something* instead
+// of just "couldn't reach this screen" — see the /:id/preview route below. Filename
+// is the device id alone (deterministic, no DB column needed); mtime doubles as the
+// "captured at" timestamp.
+const PREVIEWS_DIR = path.join(DATA_DIR, 'previews');
+fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+
+function previewCachePath(deviceId: string): string {
+  return path.join(PREVIEWS_DIR, `${deviceId}.jpg`);
+}
 
 // The hub can't know which of its own addresses a given Pi can actually reach —
 // blindly trusting req.get('host') below bakes in whichever address the *browser*
@@ -167,6 +182,9 @@ devicesRouter.delete('/:id', (req, res) => {
   const device = store.getDevice(req.params.id);
   store.removeDevice(req.params.id);
   res.status(204).end();
+  // Otherwise orphaned forever — nothing else ever looks this file up again once
+  // the device id it's keyed by no longer exists.
+  fs.unlink(previewCachePath(req.params.id), () => {});
 
   // Best-effort and fire-and-forget: don't make "delete" feel slow waiting on a Pi
   // that might be offline. If this doesn't land, the Pi's own poller notices within
@@ -212,17 +230,31 @@ devicesRouter.post('/:id/identify-flash', async (req, res) => {
   }
 });
 
-// Settings screen's "Preview" button — see pi-player/src/preview.ts. 502 on
-// unreachable/DevTools-not-ready mirrors /restart and the other agent-relayed
-// routes above.
+// Settings screen's "Preview" button — see pi-player/src/preview.ts. A successful
+// live fetch is cached to disk (fire-and-forget — a failed write here shouldn't fail
+// the request that already has a perfectly good image to return); a failed one falls
+// back to that cache so an offline screen still shows its last-known frame instead of
+// just an error, with X-Preview-Stale/X-Preview-At telling the control app which
+// case this is (see DevicePreviewDialog.tsx). Only a 502 with no cache at all — a
+// screen that's never once successfully previewed — behaves exactly as before.
 devicesRouter.get('/:id/preview', async (req, res) => {
   const device = store.getDevice(req.params.id);
   if (!device) return res.status(404).json({ error: 'not found' });
+  const cachePath = previewCachePath(device.id);
   try {
     const jpeg = await piAgent.preview(device.ip);
+    fs.writeFile(cachePath, jpeg, () => {});
+    res.set('X-Preview-Stale', 'false');
     res.type('image/jpeg').send(jpeg);
   } catch {
-    res.status(502).json({ error: 'could not reach device' });
+    try {
+      const cached = fs.readFileSync(cachePath);
+      res.set('X-Preview-Stale', 'true');
+      res.set('X-Preview-At', fs.statSync(cachePath).mtime.toISOString());
+      res.type('image/jpeg').send(cached);
+    } catch {
+      res.status(502).json({ error: 'could not reach device' });
+    }
   }
 });
 

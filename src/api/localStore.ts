@@ -1,5 +1,5 @@
 import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
-import type { DiscoveredDevice, SignageApiClient } from './client';
+import type { DevicePreview, DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
 
@@ -686,7 +686,7 @@ class LocalStoreClient implements SignageApiClient {
   // Unlike flashDevice/restartDevice above, there's no silent no-op that makes sense
   // here — a preview has nothing to show at all in standalone mode, so this throws
   // and lets the dialog surface that instead of rendering a blank image.
-  async previewDevice(): Promise<string> {
+  async previewDevice(): Promise<DevicePreview> {
     throw new Error('No real screen to preview in standalone mode');
   }
 

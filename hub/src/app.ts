@@ -26,7 +26,11 @@ export function createApp() {
   // Origin header, which covers both the same-origin production deployment (hub
   // serves the control app itself) and the cross-origin dev setup (vite dev server
   // on a different port than the hub).
-  app.use(cors({ origin: true, credentials: true }));
+  // exposedHeaders lets the control app's fetch() read the two custom headers
+  // devices.ts's /:id/preview route sets on a stale (cached, Pi unreachable) reply —
+  // without this, browsers hide every response header except a small CORS-safelisted
+  // set from JS even though the body itself came through fine.
+  app.use(cors({ origin: true, credentials: true, exposedHeaders: ['X-Preview-Stale', 'X-Preview-At'] }));
   // A backup export/import (see routes/backup.ts) is pure JSON metadata, no binary,
   // but a large library/device count could still exceed express's 100kb default —
   // raised generously since every other route here sends tiny bodies anyway.

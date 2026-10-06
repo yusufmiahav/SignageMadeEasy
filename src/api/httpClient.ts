@@ -1,5 +1,5 @@
 import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationResult, UpdateEvent } from './types';
-import type { DiscoveredDevice, SignageApiClient } from './client';
+import type { DevicePreview, DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 
@@ -141,13 +141,15 @@ export const httpClient: SignageApiClient = {
   removeDevice: (id) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
   flashDevice: (id) => request<void>(`/api/devices/${id}/identify-flash`, { method: 'POST' }),
-  previewDevice: async (id) => {
+  previewDevice: async (id): Promise<DevicePreview> => {
     const res = await fetch(`${BASE_URL}/api/devices/${id}/preview`, { credentials: 'include' });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       throw new Error(body?.error || `GET /api/devices/${id}/preview failed: ${res.status}`);
     }
-    return URL.createObjectURL(await res.blob());
+    const url = URL.createObjectURL(await res.blob());
+    const stale = res.headers.get('X-Preview-Stale') === 'true';
+    return { url, stale, capturedAt: stale ? res.headers.get('X-Preview-At') : null };
   },
   updateDevice: (id) => request<void>(`/api/devices/${id}/update`, { method: 'POST' }),
   reprovisionDevice: (id) => request<void>(`/api/devices/${id}/reprovision`, { method: 'POST' }),

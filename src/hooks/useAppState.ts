@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type DiscoveredDevice } from '../api/client';
+import { api, type DevicePreview, type DiscoveredDevice } from '../api/client';
 import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, UpdateEvent } from '../api/types';
 
 // One row of updateAllDevices' result breakdown — see UpdateResultsDialog.tsx.
@@ -620,7 +620,7 @@ export function useAppState() {
 
   // Just a passthrough for the preview dialog — no app state to refresh, same
   // reasoning as listNdiSources above.
-  const previewDevice = useCallback((id: string): Promise<string> => api.previewDevice(id), []);
+  const previewDevice = useCallback((id: string): Promise<DevicePreview> => api.previewDevice(id), []);
 
   // Unlike flashDevice/restartDevice above, these catch and toast their own
   // failures rather than leaving an unhandled rejection: the single most likely
