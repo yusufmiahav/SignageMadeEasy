@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
+import type { ActionEvent, AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
 import type { DevicePreview, DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -700,6 +700,14 @@ class LocalStoreClient implements SignageApiClient {
 
   async getUpdateLog(): Promise<UpdateEvent[]> {
     // Nothing is ever triggered in standalone mode, so there's nothing to log.
+    return [];
+  }
+
+  async getActionLog(): Promise<ActionEvent[]> {
+    // Force-content/blackout changes do take effect in standalone mode (see
+    // setGroupBlackout/setForcedPlaylist/setDeviceForcedPlaylist/setDeviceBlackout
+    // below) — there's just nothing here persisting a history of when each one
+    // happened, unlike the real hub's action_events table.
     return [];
   }
 

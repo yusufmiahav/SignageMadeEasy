@@ -191,6 +191,19 @@ export interface UpdateEvent {
   resolvedAt?: number | null;
 }
 
+/** One entry in the Settings screen's action history — see SignageApiClient.getActionLog. */
+export interface ActionEvent {
+  id: string;
+  scope: 'group' | 'device';
+  targetId: string;
+  /** Snapshot of the group/device's name at the time this event was logged — stays readable even if it's later renamed or removed. */
+  targetName: string;
+  action: 'forceContent' | 'clearForceContent' | 'blackout' | 'clearBlackout';
+  /** A short label for what was forced — e.g. the one item's name, or "First item +2 more". Null for blackout/clearBlackout/clearForceContent. */
+  detail: string | null;
+  triggeredAt: number;
+}
+
 /** One line serving a searched-for TfL station — see SignageApiClient.searchTflStations. */
 export interface TflStationLine {
   id: string;

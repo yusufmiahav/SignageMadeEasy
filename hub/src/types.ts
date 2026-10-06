@@ -189,6 +189,18 @@ export interface UpdateEvent {
   resolvedAt?: number | null;
 }
 
+/** One entry in the Settings screen's action history — see store.ts's recordActionEvent/listActionEvents and db.ts's action_events table comment for why targetName is a snapshot, not a join. */
+export interface ActionEvent {
+  id: string;
+  scope: 'group' | 'device';
+  targetId: string;
+  targetName: string;
+  action: 'forceContent' | 'clearForceContent' | 'blackout' | 'clearBlackout';
+  /** A short label for what was forced — the one item's name, or "First item +2 more" for a multi-item forced playlist (see store.ts's forcedPlaylistLabel). Null for blackout/clearBlackout/clearForceContent, which have nothing to name. */
+  detail: string | null;
+  triggeredAt: number;
+}
+
 export interface DiscoveredDevice {
   id: string;
   name: string;

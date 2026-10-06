@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DevicePreview, type DiscoveredDevice } from '../api/client';
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, UpdateEvent } from '../api/types';
+import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, UpdateEvent } from '../api/types';
 
 // One row of updateAllDevices' result breakdown — see UpdateResultsDialog.tsx.
 export interface UpdateResult {
@@ -30,6 +30,10 @@ export function useAppState() {
   // status, and refreshing it there would mean every tab re-fetching it 15x/minute
   // for a list that's realistically appended to a few times a day at most.
   const [updateLog, setUpdateLog] = useState<UpdateEvent[]>([]);
+  // Settings screen's "Action history" — refreshed after every force-content/
+  // blackout mutation below, same "changes rarely enough not to need the 4s poll"
+  // reasoning as updateLog above.
+  const [actionLog, setActionLog] = useState<ActionEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -45,6 +49,7 @@ export function useAppState() {
   const refreshFolders = useCallback(async () => setFolders(await api.listFolders()), []);
   const refreshLocations = useCallback(async () => setLocations(await api.listLocations()), []);
   const refreshUpdateLog = useCallback(async () => setUpdateLog(await api.getUpdateLog()), []);
+  const refreshActionLog = useCallback(async () => setActionLog(await api.getActionLog()), []);
 
   // Tracks each device's last-known status across polls (not React state — this
   // must never itself trigger a render) purely to detect an online->offline
@@ -99,11 +104,11 @@ export function useAppState() {
 
   useEffect(() => {
     (async () => {
-      await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices(), refreshSettings(), refreshFolders(), refreshLocations(), refreshUpdateLog()]);
+      await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices(), refreshSettings(), refreshFolders(), refreshLocations(), refreshUpdateLog(), refreshActionLog()]);
       api.getHubVersion().then((r) => setHubVersion(r.hubVersion)).catch(() => setHubVersion(null));
       setLoaded(true);
     })();
-  }, [refreshLibrary, refreshGroups, refreshDevices, refreshSettings, refreshFolders, refreshLocations, refreshUpdateLog]);
+  }, [refreshLibrary, refreshGroups, refreshDevices, refreshSettings, refreshFolders, refreshLocations, refreshUpdateLog, refreshActionLog]);
 
   // Device online/offline status (and group-level forced/scheduled announcement
   // state) can change on their own with nobody touching the control app - a screen
@@ -365,23 +370,27 @@ export function useAppState() {
 
   const setForcedPlaylist = useCallback(async (groupId: string, libIds: string[]) => {
     await api.setForcedPlaylist(groupId, libIds);
-    await refreshGroups();
-  }, [refreshGroups]);
+    await Promise.all([refreshGroups(), refreshActionLog()]);
+  }, [refreshGroups, refreshActionLog]);
 
   const addToForcedPlaylist = useCallback(async (groupId: string, libIds: string[]) => {
     await api.addToForcedPlaylist(groupId, libIds);
-    await refreshGroups();
-  }, [refreshGroups]);
+    await Promise.all([refreshGroups(), refreshActionLog()]);
+  }, [refreshGroups, refreshActionLog]);
 
   const removeFromForcedPlaylist = useCallback(async (groupId: string, libId: string) => {
     await api.removeFromForcedPlaylist(groupId, libId);
-    await refreshGroups();
-  }, [refreshGroups]);
+    await Promise.all([refreshGroups(), refreshActionLog()]);
+  }, [refreshGroups, refreshActionLog]);
 
   const reorderForcedPlaylist = useCallback(async (groupId: string, libId: string, direction: 'up' | 'down') => {
     await api.reorderForcedPlaylist(groupId, libId, direction);
-    await refreshGroups();
-  }, [refreshGroups]);
+    // Reordering still goes through the hub's same setForcedPlaylist (see its
+    // comment in hub/src/store.ts), which logs an action_events row every time —
+    // refreshed here too so the Settings screen's history doesn't go stale relative
+    // to what the hub actually recorded.
+    await Promise.all([refreshGroups(), refreshActionLog()]);
+  }, [refreshGroups, refreshActionLog]);
 
   // Mirrors forceAnnouncementAllScreens below: same per-group forcedPlaylist,
   // just applied to every group at once via a client-side loop, no new endpoint.
@@ -393,9 +402,9 @@ export function useAppState() {
       ...groups.map((g) => api.setForcedPlaylist(g.id, libIds)),
       ...misc.map((d) => api.setDeviceForcedPlaylist(d.id, libIds)),
     ]);
-    await Promise.all([refreshGroups(), refreshDevices()]);
+    await Promise.all([refreshGroups(), refreshDevices(), refreshActionLog()]);
     showToast(libIds.length > 0 ? 'Content forced on for every screen' : 'Forced content cleared on every screen');
-  }, [groups, devices, refreshGroups, refreshDevices, showToast]);
+  }, [groups, devices, refreshGroups, refreshDevices, refreshActionLog, showToast]);
 
   const setForcedAnnouncement = useCallback(async (groupId: string, announcementId: string | null) => {
     await api.setForcedAnnouncement(groupId, announcementId);
@@ -421,8 +430,8 @@ export function useAppState() {
 
   const setGroupBlackout = useCallback(async (groupId: string, blackout: boolean) => {
     await api.setGroupBlackout(groupId, blackout);
-    await refreshGroups();
-  }, [refreshGroups]);
+    await Promise.all([refreshGroups(), refreshActionLog()]);
+  }, [refreshGroups, refreshActionLog]);
 
   // "Blackout all screens": same client-side-loop-over-the-per-group-call pattern
   // as forceContentAllScreens/forceAnnouncementAllScreens above — no dedicated bulk
@@ -434,9 +443,9 @@ export function useAppState() {
       ...groups.map((g) => api.setGroupBlackout(g.id, blackout)),
       ...misc.map((d) => api.setDeviceBlackout(d.id, blackout)),
     ]);
-    await Promise.all([refreshGroups(), refreshDevices()]);
+    await Promise.all([refreshGroups(), refreshDevices(), refreshActionLog()]);
     showToast(blackout ? 'Every screen blacked out' : 'Blackout cleared on every screen');
-  }, [groups, devices, refreshGroups, refreshDevices, showToast]);
+  }, [groups, devices, refreshGroups, refreshDevices, refreshActionLog, showToast]);
 
   // Search screen's multi-select toolbar — same client-side-loop-over-the-per-device-
   // call pattern as forceContentAllScreens/blackoutAllScreens above, just scoped to
@@ -446,15 +455,15 @@ export function useAppState() {
   // multi-screen checklist has no single group to target.
   const forceContentForDevices = useCallback(async (deviceIds: string[], libIds: string[]) => {
     await Promise.all(deviceIds.map((id) => api.setDeviceForcedPlaylist(id, libIds)));
-    await refreshDevices();
+    await Promise.all([refreshDevices(), refreshActionLog()]);
     showToast(libIds.length > 0 ? `Content forced on ${deviceIds.length} screens` : `Forced content cleared on ${deviceIds.length} screens`);
-  }, [refreshDevices, showToast]);
+  }, [refreshDevices, refreshActionLog, showToast]);
 
   const blackoutForDevices = useCallback(async (deviceIds: string[], blackout: boolean) => {
     await Promise.all(deviceIds.map((id) => api.setDeviceBlackout(id, blackout)));
-    await refreshDevices();
+    await Promise.all([refreshDevices(), refreshActionLog()]);
     showToast(blackout ? `${deviceIds.length} screens blacked out` : `Blackout cleared on ${deviceIds.length} screens`);
-  }, [refreshDevices, showToast]);
+  }, [refreshDevices, refreshActionLog, showToast]);
 
   const addAnnouncementSchedule = useCallback(async (groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>) => {
     const s = await api.addAnnouncementSchedule(groupId, schedule);
@@ -516,28 +525,28 @@ export function useAppState() {
 
   const setDeviceForcedPlaylist = useCallback(async (deviceId: string, libIds: string[]) => {
     await api.setDeviceForcedPlaylist(deviceId, libIds);
-    await refreshDevices();
-  }, [refreshDevices]);
+    await Promise.all([refreshDevices(), refreshActionLog()]);
+  }, [refreshDevices, refreshActionLog]);
 
   const addToDeviceForcedPlaylist = useCallback(async (deviceId: string, libIds: string[]) => {
     await api.addToDeviceForcedPlaylist(deviceId, libIds);
-    await refreshDevices();
-  }, [refreshDevices]);
+    await Promise.all([refreshDevices(), refreshActionLog()]);
+  }, [refreshDevices, refreshActionLog]);
 
   const removeFromDeviceForcedPlaylist = useCallback(async (deviceId: string, libId: string) => {
     await api.removeFromDeviceForcedPlaylist(deviceId, libId);
-    await refreshDevices();
-  }, [refreshDevices]);
+    await Promise.all([refreshDevices(), refreshActionLog()]);
+  }, [refreshDevices, refreshActionLog]);
 
   const reorderDeviceForcedPlaylist = useCallback(async (deviceId: string, libId: string, direction: 'up' | 'down') => {
     await api.reorderDeviceForcedPlaylist(deviceId, libId, direction);
-    await refreshDevices();
-  }, [refreshDevices]);
+    await Promise.all([refreshDevices(), refreshActionLog()]);
+  }, [refreshDevices, refreshActionLog]);
 
   const setDeviceBlackout = useCallback(async (id: string, blackout: boolean) => {
     await api.setDeviceBlackout(id, blackout);
-    await refreshDevices();
-  }, [refreshDevices]);
+    await Promise.all([refreshDevices(), refreshActionLog()]);
+  }, [refreshDevices, refreshActionLog]);
 
   // Catches and toasts its own failure rather than leaving an unhandled rejection
   // (same reasoning as updateDevice below): the badge this button lives on only
@@ -754,6 +763,7 @@ export function useAppState() {
     locations,
     hubVersion,
     updateLog,
+    actionLog,
     safetyHold,
     setSafetyHold,
     savedHubNetworks,

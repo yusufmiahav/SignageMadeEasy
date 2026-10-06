@@ -7,6 +7,13 @@ settingsRouter.get('/', (_req, res) => {
   res.json({ safetyHold: store.getSafetyHold(), savedHubNetworks: store.listSavedHubNetworks() });
 });
 
+// Settings screen's action history — see store.ts's listActionEvents. Lives here
+// rather than under /api/devices/update-log (devices.ts) since an entry can be
+// either a group or a device.
+settingsRouter.get('/action-log', (_req, res) => {
+  res.json(store.listActionEvents());
+});
+
 settingsRouter.patch('/', (req, res) => {
   const { safetyHold } = req.body ?? {};
   if (safetyHold !== undefined) {

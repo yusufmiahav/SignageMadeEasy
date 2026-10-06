@@ -91,6 +91,23 @@ db.exec(`
     triggeredAt INTEGER NOT NULL,
     resolvedAt INTEGER
   );
+
+  -- Same snapshot-not-join reasoning as update_events' deviceName above, for
+  -- force-content/blackout changes instead of Update/Re-provision triggers — see
+  -- store.ts's recordActionEvent, called from every place that actually writes a
+  -- forcedPlaylist or blackout column (group or device), regardless of which UI
+  -- flow or Companion module action got there. targetName is the group/device name
+  -- at the time; detail is a short label for what was forced (null for a blackout
+  -- or a "back to normal"/"cleared" action).
+  CREATE TABLE IF NOT EXISTS action_events (
+    id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,
+    targetId TEXT NOT NULL,
+    targetName TEXT NOT NULL,
+    action TEXT NOT NULL,
+    detail TEXT,
+    triggeredAt INTEGER NOT NULL
+  );
 `);
 
 // Migration for hubs deployed before durationSec existed: CREATE TABLE IF NOT EXISTS

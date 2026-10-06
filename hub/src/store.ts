@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
 import * as tflStatus from './tflStatus.js';
 import * as tflArrivals from './tflArrivals.js';
-import type { AnnouncementSchedule, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PlayerState, ScheduleEvent, TflStationConfig, UpdateEvent } from './types.js';
+import type { ActionEvent, AnnouncementSchedule, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PlayerState, ScheduleEvent, TflStationConfig, UpdateEvent } from './types.js';
 
 // The Pi heartbeats every 5s (pi-player/src/poller.ts's POLL_INTERVAL_MS) — this
 // window needs to be a few multiples of that so one dropped heartbeat (WiFi jitter)
@@ -372,6 +372,8 @@ export const reorderGroups = db.transaction((ids: string[]): void => {
 
 export function setGroupBlackout(groupId: string, blackout: boolean): void {
   db.prepare('UPDATE groups_ SET blackout = ? WHERE id = ?').run(blackout ? 1 : 0, groupId);
+  const group = getGroup(groupId);
+  if (group) recordActionEvent({ scope: 'group', targetId: groupId, targetName: group.name, action: blackout ? 'blackout' : 'clearBlackout', detail: null });
 }
 
 export function renameGroup(id: string, name: string): void {
@@ -429,6 +431,14 @@ export function removeEvent(groupId: string, eventId: string): void {
 /** Sets the group's full forced playlist, replacing whatever was there — pass `[]` to go back to the rolling schedule. Keeps the deprecated forcedContentId column in sync (its first item, or null when empty) for older API consumers — see types.ts's comment on it. */
 export function setForcedPlaylist(groupId: string, libIds: string[]): void {
   db.prepare('UPDATE groups_ SET forcedPlaylist = ?, forcedContentId = ? WHERE id = ?').run(JSON.stringify(libIds), libIds[0] ?? null, groupId);
+  const group = getGroup(groupId);
+  if (group) {
+    recordActionEvent({
+      scope: 'group', targetId: groupId, targetName: group.name,
+      action: libIds.length > 0 ? 'forceContent' : 'clearForceContent',
+      detail: libIds.length > 0 ? forcedPlaylistLabel(libIds) : null,
+    });
+  }
 }
 
 /** @deprecated Single-item convenience wrapper around setForcedPlaylist, kept for the Companion module's existing action — see types.ts's Group.forcedContentId comment. */
@@ -557,6 +567,27 @@ export function listUpdateEvents(limit = 200): UpdateEvent[] {
   return rows;
 }
 
+/** A short display label for a forced playlist — the one item's name, or "First item +2 more" once there's more than one. Mirrors src/api/resolve.ts's identical frontend helper, which exists purely for the control app's own UI; this copy is for action_events' snapshot, taken at write time so a later library rename/delete doesn't change what the history reads. */
+function forcedPlaylistLabel(ids: string[]): string {
+  const libraryById = new Map(listLibrary().map((item) => [item.id, item]));
+  const items = ids.map((id) => libraryById.get(id)).filter((item): item is LibraryItem => !!item);
+  if (items.length === 0) return '—';
+  if (items.length === 1) return items[0].name;
+  return `${items[0].name} +${items.length - 1} more`;
+}
+
+/** Logs one force-content/blackout change to the Settings screen's action history — see db.ts's action_events table comment for why this is called from every low-level setter (setForcedPlaylist/setGroupBlackout/setDeviceForcedPlaylist/setDeviceBlackout) rather than from the routes above them, so it captures a Companion module action the same as one from the control app's own dialogs. */
+function recordActionEvent(input: { scope: ActionEvent['scope']; targetId: string; targetName: string; action: ActionEvent['action']; detail: string | null }): void {
+  db.prepare('INSERT INTO action_events (id, scope, targetId, targetName, action, detail, triggeredAt) VALUES (?,?,?,?,?,?,?)').run(
+    uid('ae'), input.scope, input.targetId, input.targetName, input.action, input.detail, Date.now(),
+  );
+}
+
+/** Settings screen's action history — every force-content/blackout change ever recorded, newest first, capped like listUpdateEvents. targetName is a snapshot (see db.ts's action_events comment), so this stays readable for a since-renamed or since-deleted group/device. */
+export function listActionEvents(limit = 200): ActionEvent[] {
+  return db.prepare('SELECT id, scope, targetId, targetName, action, detail, triggeredAt FROM action_events ORDER BY triggeredAt DESC LIMIT ?').all(limit) as ActionEvent[];
+}
+
 function rowToDevice(r: DeviceRow): Device {
   const forcedPlaylist = parseForcedPlaylist(r);
   return {
@@ -598,9 +629,17 @@ export function pairDevice(input: { name: string; ip: string; mac?: string | nul
   };
 }
 
-/** Sets the device's full forced playlist, replacing whatever was there — mirrors setForcedPlaylist, see its comment. Only meaningful while the device has no group. */
+/** Sets the device's full forced playlist, replacing whatever was there — mirrors setForcedPlaylist, see its comment. Effective regardless of groupId: a grouped device's own forcedPlaylist overrides its group's (see getPlayerState's activeContentIdsForGroupedDevice). */
 export function setDeviceForcedPlaylist(id: string, libIds: string[]): void {
   db.prepare('UPDATE devices SET forcedPlaylist = ?, forcedContentId = ? WHERE id = ?').run(JSON.stringify(libIds), libIds[0] ?? null, id);
+  const device = getDevice(id);
+  if (device) {
+    recordActionEvent({
+      scope: 'device', targetId: id, targetName: device.name,
+      action: libIds.length > 0 ? 'forceContent' : 'clearForceContent',
+      detail: libIds.length > 0 ? forcedPlaylistLabel(libIds) : null,
+    });
+  }
 }
 
 /** @deprecated Single-item convenience wrapper around setDeviceForcedPlaylist — see setForcedContent's comment. */
@@ -634,6 +673,8 @@ export function reorderDeviceForcedPlaylist(deviceId: string, libId: string, dir
 
 export function setDeviceBlackout(id: string, blackout: boolean): void {
   db.prepare('UPDATE devices SET blackout = ? WHERE id = ?').run(blackout ? 1 : 0, id);
+  const device = getDevice(id);
+  if (device) recordActionEvent({ scope: 'device', targetId: id, targetName: device.name, action: blackout ? 'blackout' : 'clearBlackout', detail: null });
 }
 
 // Normally set purely by recordHeartbeat above, straight from what the Pi reports.

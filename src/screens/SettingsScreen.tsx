@@ -42,7 +42,7 @@ export function SettingsScreen({
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation, setDeviceIp,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
-    safetyHold, setSafetyHold, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, reprovisionAllDevices, restartAllDevices, hubVersion, updateLog,
+    safetyHold, setSafetyHold, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, reprovisionAllDevices, restartAllDevices, hubVersion, updateLog, actionLog,
   } = app;
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [hubNetworkDrafts, setHubNetworkDrafts] = useState<SavedHubNetwork[]>(savedHubNetworks);
@@ -841,6 +841,33 @@ export function SettingsScreen({
                         className={e.outcome === 'done' ? 'text-muted' : undefined}
                       >
                         {e.outcome === 'updating' ? 'In progress' : e.outcome === 'failed' ? 'Failed' : 'Done'}
+                      </span>
+                      <span className="text-muted" style={{ flexShrink: 0 }}>{new Date(e.triggeredAt).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Action history</div>
+              <p className="card-body">
+                Every Force content/Blackout change — on a group or a single screen,
+                set or cleared — from any source (this app's own dialogs, Search's
+                bulk actions, the Companion module), newest first.
+              </p>
+              {actionLog.length === 0 ? (
+                <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>Nothing triggered yet.</p>
+              ) : (
+                <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+                  {actionLog.map((e) => (
+                    <div key={e.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)', fontSize: 12 }}>
+                      <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <strong>{e.targetName}</strong> ({e.scope === 'group' ? 'group' : 'screen'}) —{' '}
+                        {e.action === 'blackout' && 'Blackout'}
+                        {e.action === 'clearBlackout' && 'Blackout cleared'}
+                        {e.action === 'forceContent' && `Forced: ${e.detail}`}
+                        {e.action === 'clearForceContent' && 'Forced content cleared'}
                       </span>
                       <span className="text-muted" style={{ flexShrink: 0 }}>{new Date(e.triggeredAt).toLocaleString()}</span>
                     </div>

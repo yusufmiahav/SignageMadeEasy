@@ -1,4 +1,4 @@
-import type { AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
+import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -186,6 +186,13 @@ export interface SignageApiClient {
    * Always empty in standalone/localStorage mode (no real Pi to update).
    */
   getUpdateLog(): Promise<UpdateEvent[]>;
+  /**
+   * Every force-content/blackout change ever made, newest first — Settings screen's
+   * "Action history" section. Covers group-scoped and device-scoped changes alike,
+   * from any source (the control app's own dialogs, the Bitfocus Companion module).
+   * Always empty in standalone/localStorage mode.
+   */
+  getActionLog(): Promise<ActionEvent[]>;
   /**
    * The hub's own running version (a plain number like "1.0.1", not a git commit
    * hash) — compared against each Device.version to flag a screen that hasn't
