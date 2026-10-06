@@ -438,6 +438,24 @@ export function useAppState() {
     showToast(blackout ? 'Every screen blacked out' : 'Blackout cleared on every screen');
   }, [groups, devices, refreshGroups, refreshDevices, showToast]);
 
+  // Search screen's multi-select toolbar — same client-side-loop-over-the-per-device-
+  // call pattern as forceContentAllScreens/blackoutAllScreens above, just scoped to
+  // whatever subset of screens is checked rather than every screen, and always the
+  // device's own forcedPlaylist/blackout even for a grouped one (overriding its
+  // group — see hub/src/store.ts's activeContentIdsForGroupedDevice) since a
+  // multi-screen checklist has no single group to target.
+  const forceContentForDevices = useCallback(async (deviceIds: string[], libIds: string[]) => {
+    await Promise.all(deviceIds.map((id) => api.setDeviceForcedPlaylist(id, libIds)));
+    await refreshDevices();
+    showToast(libIds.length > 0 ? `Content forced on ${deviceIds.length} screens` : `Forced content cleared on ${deviceIds.length} screens`);
+  }, [refreshDevices, showToast]);
+
+  const blackoutForDevices = useCallback(async (deviceIds: string[], blackout: boolean) => {
+    await Promise.all(deviceIds.map((id) => api.setDeviceBlackout(id, blackout)));
+    await refreshDevices();
+    showToast(blackout ? `${deviceIds.length} screens blacked out` : `Blackout cleared on ${deviceIds.length} screens`);
+  }, [refreshDevices, showToast]);
+
   const addAnnouncementSchedule = useCallback(async (groupId: string, schedule: Omit<AnnouncementSchedule, 'id'>) => {
     const s = await api.addAnnouncementSchedule(groupId, schedule);
     await refreshGroups();
@@ -790,6 +808,8 @@ export function useAppState() {
     forceAnnouncementAllScreens,
     setGroupBlackout,
     blackoutAllScreens,
+    forceContentForDevices,
+    blackoutForDevices,
     addAnnouncementSchedule,
     removeAnnouncementSchedule,
     pairDevice,

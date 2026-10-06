@@ -63,6 +63,9 @@ type DialogState =
   | { type: 'forceContentDevice'; deviceId: string }
   | { type: 'forceAnnouncementDevice'; deviceId: string }
   | { type: 'blackoutDevice'; deviceId: string }
+  /** Search screen's multi-select toolbar — same two actions, applied to every checked screen's own forcedPlaylist/blackout (not a group's) at once. */
+  | { type: 'forceContentDevices'; deviceIds: string[] }
+  | { type: 'blackoutDevices'; deviceIds: string[] }
   | { type: 'addAnnouncementSchedule'; groupId: string }
   | { type: 'preview'; item: LibraryItem }
   /** Settings screen's "Preview" button (eye icon) — see DevicePreviewDialog.tsx. */
@@ -174,6 +177,8 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onOpenDevicePreview={(device) => setDialog({ type: 'previewDevice', device })}
             onForceContentForDevice={(deviceId) => setDialog({ type: 'forceContentDevice', deviceId })}
             onOpenBlackoutForDevice={(deviceId) => setDialog({ type: 'blackoutDevice', deviceId })}
+            onForceContentForDevices={(deviceIds) => setDialog({ type: 'forceContentDevices', deviceIds })}
+            onOpenBlackoutForDevices={(deviceIds) => setDialog({ type: 'blackoutDevices', deviceIds })}
             onJumpToHome={(target) => { setHomeScrollTarget(target); setTab('home'); }}
           />
         )}
@@ -299,6 +304,28 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
           scopeLabel="this screen"
           current={app.devices.find((d) => d.id === dialog.deviceId)?.blackout ?? false}
           onConfirm={(blackout) => app.setDeviceBlackout(dialog.deviceId, blackout)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'forceContentDevices' && (
+        <ForceContentDialog
+          app={app}
+          scopeLabel={`${dialog.deviceIds.length} selected screens`}
+          isGlobal={false}
+          // Each selected screen may already have its own different forced playlist
+          // (or none) — starting the dialog empty rather than guessing at one of
+          // theirs means "Apply" always sets the exact same thing on every one of
+          // them, which is the whole point of a bulk action.
+          currentIds={[]}
+          onConfirm={(libIds) => app.forceContentForDevices(dialog.deviceIds, libIds)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'blackoutDevices' && (
+        <BlackoutDialog
+          scopeLabel={`${dialog.deviceIds.length} selected screens`}
+          current={false}
+          onConfirm={(blackout) => app.blackoutForDevices(dialog.deviceIds, blackout)}
           onClose={closeDialog}
         />
       )}

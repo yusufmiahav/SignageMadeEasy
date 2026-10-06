@@ -10,6 +10,9 @@ interface SearchScreenProps {
   /** A grouped screen's own forced content/blackout overrides its group's (same as DeviceCard on Home) — these apply regardless of groupId. */
   onForceContentForDevice: (deviceId: string) => void;
   onOpenBlackoutForDevice: (deviceId: string) => void;
+  /** Same two actions, applied to every checked result at once — see the selection toolbar below. */
+  onForceContentForDevices: (deviceIds: string[]) => void;
+  onOpenBlackoutForDevices: (deviceIds: string[]) => void;
   /** Switches to Home and scrolls to the given screen's card or group section — `device-<id>` or `group-<id>`, matching the DOM ids HomeScreen's own cards/group sections carry (see HomeScreen.tsx's scrollTarget prop). */
   onJumpToHome: (target: string) => void;
 }
@@ -30,9 +33,13 @@ function locationLabel(device: Device, groups: AppState['groups'], locations: Ap
   return loc ? `Standalone · ${loc}` : 'Standalone';
 }
 
-export function SearchScreen({ app, onOpenDevicePreview, onForceContentForDevice, onOpenBlackoutForDevice, onJumpToHome }: SearchScreenProps) {
+export function SearchScreen({ app, onOpenDevicePreview, onForceContentForDevice, onOpenBlackoutForDevice, onForceContentForDevices, onOpenBlackoutForDevices, onJumpToHome }: SearchScreenProps) {
   const { devices, groups, locations, library, flashDevice, restartDevice, setDeviceForcedPlaylist, setDeviceBlackout } = app;
   const [query, setQuery] = useState('');
+  // Kept as ids, not objects, so a selection survives the query changing underneath
+  // it (e.g. search for one screen, check it, search for another, check that one
+  // too) — results.filter below re-derives which checked ids are still on screen.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const libraryById = new Map(library.map((item) => [item.id, item]));
 
   const trimmed = query.trim().toLowerCase();
@@ -47,6 +54,32 @@ export function SearchScreen({ app, onOpenDevicePreview, onForceContentForDevice
         (d.mac?.toLowerCase().includes(trimmed) ?? false),
       )
     : devices;
+
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  // Derived from the full device list, not `results` — a selection made under one
+  // search query stays selected (and counted) after the query changes to something
+  // that no longer matches it, and self-heals if a selected device is later removed
+  // (it just drops out of `devices`, no stale id left behind to act on).
+  const selectedDevices = devices.filter((d) => selected.has(d.id));
+  const visibleSelectedCount = results.filter((d) => selected.has(d.id)).length;
+  const allVisibleSelected = results.length > 0 && visibleSelectedCount === results.length;
+  const toggleSelectAllVisible = () => {
+    setSelected((prev) => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        results.forEach((d) => next.delete(d.id));
+        return next;
+      }
+      return new Set([...prev, ...results.map((d) => d.id)]);
+    });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -66,6 +99,21 @@ export function SearchScreen({ app, onOpenDevicePreview, onForceContentForDevice
         </div>
       </div>
 
+      {selectedDevices.length > 0 && (
+        <div className="card" style={{ gap: 8, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{selectedDevices.length} selected</span>
+          <button type="button" className="btn btn-warning btn-icon" aria-label="Blackout selected" title="Blackout every selected screen" onClick={() => onOpenBlackoutForDevices(selectedDevices.map((d) => d.id))}>
+            <Icon name="moon" size={14} />
+          </button>
+          <button type="button" className="btn btn-secondary btn-icon" aria-label="Force content on selected" title="Force content on every selected screen" onClick={() => onForceContentForDevices(selectedDevices.map((d) => d.id))}>
+            <Icon name="monitor" size={14} />
+          </button>
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px', marginLeft: 'auto' }} onClick={() => setSelected(new Set())}>
+            Clear selection
+          </button>
+        </div>
+      )}
+
       <div className="card" style={{ gap: 8 }}>
         {devices.length === 0 ? (
           <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>No screens paired yet.</p>
@@ -73,6 +121,10 @@ export function SearchScreen({ app, onOpenDevicePreview, onForceContentForDevice
           <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>No screens match "{query}".</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 0 8px', cursor: 'pointer' }}>
+              <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} />
+              <span className="text-muted" style={{ fontSize: 12 }}>Select all {results.length === devices.length ? '' : 'matching '}screens</span>
+            </label>
             {results.map((device) => {
               const jumpTarget = device.groupId ? `group-${device.groupId}` : `device-${device.id}`;
               const forced = device.forcedPlaylist.length > 0;
@@ -81,6 +133,7 @@ export function SearchScreen({ app, onOpenDevicePreview, onForceContentForDevice
                   key={device.id}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: '1px solid var(--color-divider)', flexWrap: 'wrap' }}
                 >
+                  <input type="checkbox" checked={selected.has(device.id)} onChange={() => toggleSelected(device.id)} style={{ flexShrink: 0 }} />
                   <span className={`status-dot ${device.status}`} style={{ flexShrink: 0 }} />
                   {/* Clicking the name/location jumps to this screen's full card (standalone)
                       or its group's full management section (grouped) on Home — same target
