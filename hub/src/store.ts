@@ -497,10 +497,10 @@ interface DeviceRow {
   videoQuality: Device['videoQuality']; lastSeenAt: number | null;
   tempC: number | null; throttled: string | null; uptimeSec: number | null; baseUptimeSec: number; diskFreeMb: number | null; diskTotalMb: number | null;
   forcedPlaylist: string | null; forcedContentId: string | null; blackout: number; defaultPlaylist: string; usbOverrideActive: number;
-  playerStartedAt: number | null; version: string | null;
+  playerStartedAt: number | null; version: string | null; offlineAlertsMuted: number;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive, playerStartedAt, version';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive, playerStartedAt, version, offlineAlertsMuted';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -603,7 +603,13 @@ function rowToDevice(r: DeviceRow): Device {
     forcedPlaylist, forcedContentId: forcedPlaylist[0] ?? null, blackout: !!r.blackout,
     defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForDevice(r.id),
     usbOverrideActive: !!r.usbOverrideActive, updateStatus: currentUpdateStatus(r.id), version: r.version,
+    offlineAlertsMuted: !!r.offlineAlertsMuted,
   };
+}
+
+/** Settings/Home's "Mute offline alerts" action for a single screen — see types.ts's Device.offlineAlertsMuted. */
+export function setDeviceOfflineAlertsMuted(id: string, muted: boolean): void {
+  db.prepare('UPDATE devices SET offlineAlertsMuted = ? WHERE id = ?').run(muted ? 1 : 0, id);
 }
 
 export function listDevices(): Device[] {
@@ -630,7 +636,7 @@ export function pairDevice(input: { name: string; ip: string; mac?: string | nul
   return {
     id, name: input.name, ip: input.ip, mac, groupId: input.groupId, locationId, announcementId: null, announcementOn: false,
     videoQuality: 'auto', status: statusFor(lastSeenAt), forcedPlaylist: [], forcedContentId: null, blackout: false,
-    defaultPlaylist: [], events: [],
+    defaultPlaylist: [], events: [], offlineAlertsMuted: false,
   };
 }
 
@@ -852,6 +858,22 @@ export function getSafetyHold(): boolean {
 
 export function setSafetyHold(enabled: boolean): void {
   setSetting('safetyHold', enabled ? '1' : '0');
+}
+
+// Settings screen's "Alert when offline for more than N minutes" — purely a control
+// app notification threshold (see OfflineAlertBanner.tsx), never read by a Pi. Hub-wide
+// (not a per-browser localStorage preference) so everyone looking at the same hub
+// sees the same alerting policy, same reasoning as safetyHold above. Defaults to 15:
+// long enough that a routine reboot/update cycle (~1-2 min) never falsely alerts, short
+// enough to catch a real outage the same day. 0 disables alerting entirely.
+export function getOfflineAlertMinutes(): number {
+  const raw = getSetting('offlineAlertMinutes');
+  const n = raw != null ? Number(raw) : 15;
+  return Number.isFinite(n) && n >= 0 ? n : 15;
+}
+
+export function setOfflineAlertMinutes(minutes: number): void {
+  setSetting('offlineAlertMinutes', String(Math.max(0, Math.round(minutes))));
 }
 
 export interface SavedHubNetwork {
@@ -1143,8 +1165,8 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   });
 
   const insertDevice = db.prepare(
-    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, baseUptimeSec, sortOrder) ' +
-    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedPlaylist,@forcedContentId,@blackout,@defaultPlaylist,@baseUptimeSec,@sortOrder)',
+    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, baseUptimeSec, sortOrder, offlineAlertsMuted) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedPlaylist,@forcedContentId,@blackout,@defaultPlaylist,@baseUptimeSec,@sortOrder,@offlineAlertsMuted)',
   );
   backup.devices.forEach((device, i) => {
     // Same pre-migration fallback as the group loop above.
@@ -1154,6 +1176,7 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       announcementId: device.announcementId, announcementOn: device.announcementOn ? 1 : 0, videoQuality: device.videoQuality,
       forcedPlaylist: JSON.stringify(forcedPlaylist), forcedContentId: forcedPlaylist[0] ?? null, blackout: device.blackout ? 1 : 0,
       defaultPlaylist: JSON.stringify(device.defaultPlaylist ?? []),
+      offlineAlertsMuted: device.offlineAlertsMuted ? 1 : 0,
       // uptimeSec itself resets to NULL like the rest of this device's live
       // diagnostics (see this function's own doc comment) until its Pi heartbeats
       // again — but the lifetime total leading up to the backup is real history,

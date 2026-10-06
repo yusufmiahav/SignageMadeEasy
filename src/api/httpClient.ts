@@ -159,6 +159,7 @@ export const httpClient: SignageApiClient = {
   setDeviceAnnouncement: (id, announcementId) => request<void>(`/api/devices/${id}/announcement`, { method: 'PUT', ...json({ announcementId }) }),
   toggleDeviceAnnouncement: (id) => request<void>(`/api/devices/${id}/announcement/toggle`, { method: 'POST' }),
   setDeviceVideoQuality: (id, videoQuality) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ videoQuality }) }),
+  setDeviceOfflineAlertsMuted: (id, offlineAlertsMuted) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ offlineAlertsMuted }) }),
   setDeviceForcedContent: (id, libId) => request<void>(`/api/devices/${id}/forced`, { method: 'PUT', ...json({ libId }) }),
   setDeviceForcedPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/forced-playlist`, { method: 'PUT', ...json({ libIds }) }),
   addToDeviceForcedPlaylist: (deviceId, libIds) => request<void>(`/api/devices/${deviceId}/forced-playlist`, { method: 'POST', ...json({ libIds }) }),
@@ -183,7 +184,8 @@ export const httpClient: SignageApiClient = {
   importBackup: (backup) => request<void>('/api/backup/restore', { method: 'POST', ...json(backup) }),
 
   // Settings
-  getSettings: () => request<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] }>('/api/settings'),
+  getSettings: () => request<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number }>('/api/settings'),
   setSafetyHold: (safetyHold) => request<void>('/api/settings', { method: 'PATCH', ...json({ safetyHold }) }),
   setSavedHubNetworks: (networks) => request<void>('/api/settings/hub-networks', { method: 'PUT', ...json({ networks }) }),
+  setOfflineAlertMinutes: (offlineAlertMinutes) => request<void>('/api/settings', { method: 'PATCH', ...json({ offlineAlertMinutes }) }),
 };

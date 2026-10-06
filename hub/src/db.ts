@@ -421,6 +421,12 @@ if (!eventColsRecurrence.includes('daysOfWeek')) db.exec('ALTER TABLE events ADD
 const libraryColsPoster = (db.prepare("PRAGMA table_info(library)").all() as { name: string }[]).map((c) => c.name);
 if (!libraryColsPoster.includes('posterUrl')) db.exec('ALTER TABLE library ADD COLUMN posterUrl TEXT');
 
+// Same reasoning, for hubs deployed before a screen could be individually excluded
+// from OfflineAlertBanner.tsx's alerting (see types.ts's Device.offlineAlertsMuted) —
+// off (0) for every existing screen, matching the default for one freshly paired.
+const deviceColsAlertMute = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceColsAlertMute.includes('offlineAlertsMuted')) db.exec('ALTER TABLE devices ADD COLUMN offlineAlertsMuted INTEGER NOT NULL DEFAULT 0');
+
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's

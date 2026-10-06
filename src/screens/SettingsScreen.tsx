@@ -42,8 +42,11 @@ export function SettingsScreen({
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation, setDeviceIp,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
-    safetyHold, setSafetyHold, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, reprovisionAllDevices, restartAllDevices, hubVersion, updateLog, actionLog,
+    safetyHold, setSafetyHold, offlineAlertMinutes, setOfflineAlertMinutes, setDeviceOfflineAlertsMuted, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, reprovisionAllDevices, restartAllDevices, hubVersion, updateLog, actionLog,
   } = app;
+  const mutedDevices = devices.filter((d) => d.offlineAlertsMuted);
+  const [offlineAlertDraft, setOfflineAlertDraft] = useState(String(offlineAlertMinutes));
+  useEffect(() => setOfflineAlertDraft(String(offlineAlertMinutes)), [offlineAlertMinutes]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [hubNetworkDrafts, setHubNetworkDrafts] = useState<SavedHubNetwork[]>(savedHubNetworks);
   useEffect(() => setHubNetworkDrafts(savedHubNetworks), [savedHubNetworks]);
@@ -520,6 +523,53 @@ export function SettingsScreen({
             </span>
           </label>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px solid var(--color-divider)', paddingTop: 12, marginTop: 4 }}>
+          <span style={{ fontSize: 13 }}>
+            Offline alerts
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
+              Shows a banner (on every tab) once a screen's been offline longer than this. 0 turns it off.
+            </span>
+          </span>
+          <input
+            className="input"
+            type="number"
+            min={0}
+            step={1}
+            style={{ width: 70, textAlign: 'right', flexShrink: 0 }}
+            value={offlineAlertDraft}
+            onChange={(e) => setOfflineAlertDraft(e.target.value)}
+            onBlur={() => {
+              const n = Number(offlineAlertDraft);
+              if (Number.isFinite(n) && n >= 0) void setOfflineAlertMinutes(n);
+              else setOfflineAlertDraft(String(offlineAlertMinutes));
+            }}
+          />
+        </div>
+        {mutedDevices.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 12, marginTop: 4 }}>
+            <span style={{ fontSize: 13 }}>
+              Muted screens
+              <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
+                Excluded from offline alerts entirely — e.g. a spare or intentionally powered-off screen. Muted from the alert banner itself, or unmuted here.
+              </span>
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', marginTop: 6 }}>
+              {mutedDevices.map((d) => (
+                <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)' }}>
+                  <span style={{ flex: 1, fontSize: 13 }}>{d.name}</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12, padding: '2px 8px' }}
+                    onClick={() => void setDeviceOfflineAlertsMuted(d.id, false, d.name)}
+                  >
+                    Unmute
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ gap: 8 }}>

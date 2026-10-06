@@ -19,6 +19,9 @@ export function useAppState() {
   // hub's real value.
   const [safetyHold, setSafetyHoldState] = useState(true);
   const [savedHubNetworks, setSavedHubNetworksState] = useState<SavedHubNetwork[]>([]);
+  // Defaults 15 (see hub/src/store.ts's getOfflineAlertMinutes) until the initial
+  // load below overwrites it with the hub's real value — see OfflineAlertBanner.tsx.
+  const [offlineAlertMinutes, setOfflineAlertMinutesState] = useState(15);
   // Null in standalone/localStorage mode, or if the hub itself can't tell what
   // commit it's running (see hub/src/version.ts) — either way, Settings just shows
   // each screen's raw version with nothing to compare it to. Fetched once, not
@@ -89,12 +92,19 @@ export function useAppState() {
     const settings = await api.getSettings();
     setSafetyHoldState(settings.safetyHold);
     setSavedHubNetworksState(settings.savedHubNetworks);
+    setOfflineAlertMinutesState(settings.offlineAlertMinutes);
   }, []);
 
   const setSafetyHold = useCallback(async (enabled: boolean) => {
     await api.setSafetyHold(enabled);
     setSafetyHoldState(enabled);
     showToast(enabled ? 'Safety hold enabled' : 'Safety hold disabled');
+  }, [showToast]);
+
+  const setOfflineAlertMinutes = useCallback(async (minutes: number) => {
+    await api.setOfflineAlertMinutes(minutes);
+    setOfflineAlertMinutesState(minutes);
+    showToast(minutes > 0 ? `Offline alerts after ${minutes} minute${minutes === 1 ? '' : 's'}` : 'Offline alerts turned off');
   }, [showToast]);
 
   const setSavedHubNetworks = useCallback(async (networks: SavedHubNetwork[]) => {
@@ -748,6 +758,12 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
+  const setDeviceOfflineAlertsMuted = useCallback(async (id: string, muted: boolean, deviceName?: string) => {
+    await api.setDeviceOfflineAlertsMuted(id, muted);
+    await refreshDevices();
+    showToast(muted ? `Offline alerts muted for ${deviceName ?? 'this screen'}` : `Offline alerts unmuted for ${deviceName ?? 'this screen'}`);
+  }, [refreshDevices, showToast]);
+
   const scanNetwork = useCallback((subnetHint?: string): Promise<DiscoveredDevice[]> => api.scanNetwork(subnetHint), []);
 
   // ---- Backup / restore ----
@@ -768,6 +784,8 @@ export function useAppState() {
     actionLog,
     safetyHold,
     setSafetyHold,
+    offlineAlertMinutes,
+    setOfflineAlertMinutes,
     savedHubNetworks,
     setSavedHubNetworks,
     toast,
@@ -842,6 +860,7 @@ export function useAppState() {
     setDeviceAnnouncement,
     toggleDeviceAnnouncement,
     setDeviceVideoQuality,
+    setDeviceOfflineAlertsMuted,
     setDeviceForcedPlaylist,
     addToDeviceForcedPlaylist,
     removeFromDeviceForcedPlaylist,

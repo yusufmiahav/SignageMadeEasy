@@ -4,7 +4,7 @@ import * as store from '../store.js';
 export const settingsRouter = Router();
 
 settingsRouter.get('/', (_req, res) => {
-  res.json({ safetyHold: store.getSafetyHold(), savedHubNetworks: store.listSavedHubNetworks() });
+  res.json({ safetyHold: store.getSafetyHold(), savedHubNetworks: store.listSavedHubNetworks(), offlineAlertMinutes: store.getOfflineAlertMinutes() });
 });
 
 // Settings screen's action history — see store.ts's listActionEvents. Lives here
@@ -15,10 +15,16 @@ settingsRouter.get('/action-log', (_req, res) => {
 });
 
 settingsRouter.patch('/', (req, res) => {
-  const { safetyHold } = req.body ?? {};
+  const { safetyHold, offlineAlertMinutes } = req.body ?? {};
   if (safetyHold !== undefined) {
     if (typeof safetyHold !== 'boolean') return res.status(400).json({ error: 'safetyHold must be a boolean' });
     store.setSafetyHold(safetyHold);
+  }
+  if (offlineAlertMinutes !== undefined) {
+    if (typeof offlineAlertMinutes !== 'number' || !Number.isFinite(offlineAlertMinutes) || offlineAlertMinutes < 0) {
+      return res.status(400).json({ error: 'offlineAlertMinutes must be a non-negative number' });
+    }
+    store.setOfflineAlertMinutes(offlineAlertMinutes);
   }
   res.status(204).end();
 });

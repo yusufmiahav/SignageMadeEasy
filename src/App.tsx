@@ -117,6 +117,9 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
         onTabChange={setTab}
         deviceCount={app.devices.length}
         onlineCount={app.devices.filter((d) => d.status === 'online').length}
+        devices={app.devices}
+        offlineAlertMinutes={app.offlineAlertMinutes}
+        onSetDeviceOfflineAlertsMuted={(deviceId, muted, deviceName) => app.setDeviceOfflineAlertsMuted(deviceId, muted, deviceName)}
         onAddScreen={() => setDialog({ type: 'addChooser' })}
       >
         {tab === 'home' && (

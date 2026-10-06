@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { Icon, type IconName } from '../icons/Icon';
 import { HelpDialog } from '../dialogs/HelpDialog';
+import { OfflineAlertBanner } from '../OfflineAlertBanner';
+import type { Device } from '../../api/types';
 
 export type Tab = 'home' | 'library' | 'schedule' | 'announcements' | 'search' | 'settings';
 
@@ -20,10 +22,14 @@ interface AppShellProps {
   /** Devices currently reporting status === 'online' — shown alongside deviceCount in the top bar on every tab, not just Home, since it's a glance-worthy fleet stat regardless of what else you're doing. */
   onlineCount: number;
   onAddScreen: () => void;
+  /** Full device list, just for OfflineAlertBanner — see its own comment. */
+  devices: Device[];
+  offlineAlertMinutes: number;
+  onSetDeviceOfflineAlertsMuted: (deviceId: string, muted: boolean, deviceName: string) => void;
   children: ReactNode;
 }
 
-export function AppShell({ tab, onTabChange, deviceCount, onlineCount, onAddScreen, children }: AppShellProps) {
+export function AppShell({ tab, onTabChange, deviceCount, onlineCount, onAddScreen, devices, offlineAlertMinutes, onSetDeviceOfflineAlertsMuted, children }: AppShellProps) {
   // Self-contained — a static reference with no app data to show, so it doesn't need
   // to live in App.tsx's own dialog state alongside every data-driven dialog.
   const [showHelp, setShowHelp] = useState(false);
@@ -71,7 +77,10 @@ export function AppShell({ tab, onTabChange, deviceCount, onlineCount, onAddScre
             </button>
           ))}
         </nav>
-        <main className="app-content">{children}</main>
+        <main className="app-content">
+          <OfflineAlertBanner devices={devices} thresholdMinutes={offlineAlertMinutes} onSetMuted={onSetDeviceOfflineAlertsMuted} />
+          {children}
+        </main>
       </div>
 
       <nav className="app-tabbar">

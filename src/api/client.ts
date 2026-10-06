@@ -217,6 +217,8 @@ export interface SignageApiClient {
   setDeviceBlackout(id: string, blackout: boolean): Promise<void>;
   /** Clears a USB-stick-forced override on this screen (see Device.usbOverrideActive) — meaningful regardless of groupId, since it's a property of the physical screen, not its group. No-op if nothing's active. */
   clearUsbOverride(id: string): Promise<void>;
+  /** Excludes/re-includes this screen in OfflineAlertBanner.tsx's alerting — see Device.offlineAlertsMuted. */
+  setDeviceOfflineAlertsMuted(id: string, muted: boolean): Promise<void>;
   /** Standalone-screen (no group) equivalents of the group-level default-playlist/event methods above — only meaningful while the device has no groupId. */
   setDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void>;
   addToDeviceDefaultPlaylist(deviceId: string, libIds: string[]): Promise<void>;
@@ -241,9 +243,11 @@ export interface SignageApiClient {
   importBackup(backup: Backup): Promise<void>;
 
   // Hub-wide settings (unlike the frontend's own purely-local Settings toggles —
-  // dark mode, advanced device info — these need to be known by every Pi too, so
-  // they live on the hub, not localStorage).
-  getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] }>;
+  // dark mode, advanced device info — these are shared policy, not a per-browser
+  // preference: safetyHold needs to be known by every Pi too, and offlineAlertMinutes
+  // should alert the same way for everyone looking at this hub, not just whoever
+  // configured it).
+  getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number }>;
   /**
    * Defaults to true (see hub/src/store.ts's getSafetyHold): a Pi already caches its
    * last-resolved content and keeps showing it through a disconnect from the hub.
@@ -252,6 +256,12 @@ export interface SignageApiClient {
   setSafetyHold(enabled: boolean): Promise<void>;
   /** Replaces the whole saved-hub-networks list at once — see SavedHubNetwork. */
   setSavedHubNetworks(networks: SavedHubNetwork[]): Promise<void>;
+  /**
+   * How long a screen has to stay offline before OfflineAlertBanner.tsx warns about
+   * it in the control app — purely a notification threshold, never read by a Pi
+   * (unlike safetyHold above). 0 turns alerting off entirely.
+   */
+  setOfflineAlertMinutes(minutes: number): Promise<void>;
 }
 
 // Setting VITE_API_BASE_URL at build time (even to an empty string, for a same-origin

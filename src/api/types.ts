@@ -186,6 +186,8 @@ export interface Device {
   updateStatus?: 'updating' | 'done' | 'failed';
   /** Plain version number (e.g. "1.0.1", not a git commit hash) this screen last updated/re-provisioned from, reported by its own agent alongside every heartbeat. Null/undefined for a screen never updated since this shipped, or any device in standalone/localStorage mode (no real Pi to ask). Compare against SignageApiClient.getHubVersion() to tell whether a screen needs updating. */
   version?: string | null;
+  /** Excludes this screen from OfflineAlertBanner.tsx's alerting entirely (e.g. a spare/test screen, or one intentionally powered off for a while) — unlike dismissing a banner, which only silences the current outage until this screen recovers and drops again, this persists until explicitly unmuted. False for every screen by default. */
+  offlineAlertsMuted: boolean;
 }
 
 /** One entry in the Settings screen's update log — see SignageApiClient.getUpdateLog. */

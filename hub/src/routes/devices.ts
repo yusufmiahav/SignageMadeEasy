@@ -121,8 +121,9 @@ devicesRouter.post('/pair', async (req, res) => {
 });
 
 devicesRouter.patch('/:id', async (req, res) => {
-  const { name, groupId, locationId, videoQuality, ip, hubUrl } = req.body ?? {};
+  const { name, groupId, locationId, videoQuality, ip, hubUrl, offlineAlertsMuted } = req.body ?? {};
   if (typeof name === 'string') store.renameDevice(req.params.id, name);
+  if (typeof offlineAlertsMuted === 'boolean') store.setDeviceOfflineAlertsMuted(req.params.id, offlineAlertsMuted);
   // groupId: null moves the device to "standalone, no group" — distinct from
   // omitting the key entirely, which leaves its current group untouched.
   if (typeof groupId === 'string' || groupId === null) store.moveDevice(req.params.id, groupId);

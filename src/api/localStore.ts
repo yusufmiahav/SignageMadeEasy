@@ -52,20 +52,20 @@ function save(data: AppData): void {
 // UI consistency with the hub-backed client.
 const SETTINGS_KEY = 'signagemadeeasy.settings.v1';
 
-function loadSettings(): { safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] } {
+function loadSettings(): { safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number } {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] }>;
-      return { safetyHold: parsed.safetyHold ?? true, savedHubNetworks: parsed.savedHubNetworks ?? [] };
+      const parsed = JSON.parse(raw) as Partial<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number }>;
+      return { safetyHold: parsed.safetyHold ?? true, savedHubNetworks: parsed.savedHubNetworks ?? [], offlineAlertMinutes: parsed.offlineAlertMinutes ?? 15 };
     }
   } catch {
     // Fall through to the default below.
   }
-  return { safetyHold: true, savedHubNetworks: [] };
+  return { safetyHold: true, savedHubNetworks: [], offlineAlertMinutes: 15 };
 }
 
-function saveSettings(settings: { safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] }): void {
+function saveSettings(settings: { safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number }): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
@@ -529,6 +529,7 @@ class LocalStoreClient implements SignageApiClient {
       blackout: false,
       defaultPlaylist: [],
       events: [],
+      offlineAlertsMuted: false,
     };
     this.data.devices.push(device);
     this.persist();
@@ -737,6 +738,12 @@ class LocalStoreClient implements SignageApiClient {
     this.persist();
   }
 
+  async setDeviceOfflineAlertsMuted(id: string, muted: boolean): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === id);
+    if (device) device.offlineAlertsMuted = muted;
+    this.persist();
+  }
+
   // ---- Backup / restore ----
   async exportBackup(): Promise<Backup> {
     return {
@@ -762,7 +769,7 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   // ---- Settings ----
-  async getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[] }> {
+  async getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number }> {
     return loadSettings();
   }
 
@@ -772,6 +779,10 @@ class LocalStoreClient implements SignageApiClient {
 
   async setSavedHubNetworks(networks: SavedHubNetwork[]): Promise<void> {
     saveSettings({ ...loadSettings(), savedHubNetworks: networks });
+  }
+
+  async setOfflineAlertMinutes(minutes: number): Promise<void> {
+    saveSettings({ ...loadSettings(), offlineAlertMinutes: Math.max(0, Math.round(minutes)) });
   }
 
   // ---- Pairing helpers ----
