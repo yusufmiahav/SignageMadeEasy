@@ -476,23 +476,72 @@ of NDI (a Pi 4/5 or an x86 stick — not a Pi 3B+), but the actual NDI support �
 `ndisrc` GStreamer element and this project's small discovery helper
 (`pi-player/native/ndi-find.c`) — needs the proprietary **NDI SDK for Linux**, which
 can't be downloaded automatically: Vizrt's EULA requires a human to accept it first.
-Confirmed working end-to-end on real Pi 5 hardware (64-bit Raspberry Pi OS) with
-these exact steps; an x86 stick follows the same steps, just using the SDK's
-`x86_64-linux-gnu` folder instead of the ARM one (called out below).
+The build steps (3-6 below) are confirmed working end-to-end on real Pi 5 hardware
+(64-bit Raspberry Pi OS); an x86 stick follows the same steps, just using the SDK's
+`x86_64-linux-gnu` folder instead of the ARM one (called out below). Steps 1-2 —
+getting the SDK itself onto the Pi and unpacked — are spelled out in more detail
+below than a typical install guide, since the file transfer and the installer's own
+license-acceptance prompt are easy to get stuck on if you haven't done either before.
 
-1. Go to <https://ndi.video/for-developers/ndi-sdk/>, accept the EULA, and download
-   the **NDI SDK for Linux** (a `.tar.gz`). Get it onto the device (`scp` from your
-   computer works fine — remember the `:` before the remote path, e.g.
-   `scp Install_NDI_SDK_v6_Linux.tar.gz user@device-ip:~/`), then extract it:
+1. **Download the SDK on your main computer — not the Pi.** Go to
+   <https://ndi.video/for-developers/ndi-sdk/>, accept the EULA, and download the
+   **NDI SDK for Linux**. It saves as a `.tar.gz` file, usually into your
+   Downloads folder — check the exact filename there, since the version number in
+   it (e.g. `Install_NDI_SDK_v6_Linux.tar.gz`) changes over time. Keep that exact
+   name handy; you'll use it again below.
+
+   **Then get that file onto the Pi.** You already have working SSH access to it
+   (the same login you used for provisioning) — reuse those same details here.
+
+   - **Windows, easiest — [WinSCP](https://winscp.net/eng/download.php) (free, no
+     command line):** install it, open it, and on the login screen enter the Pi's
+     IP address as Host name, your SSH username, and your SSH password (file
+     protocol: SFTP — the default), then click Login. Two file panels appear: your
+     computer on the left, the Pi on the right. In the left panel, browse to your
+     Downloads folder, find the `.tar.gz` file, and **drag it across into the right
+     panel** — that copies it into the Pi's home folder. That's the whole transfer.
+   - **Windows, command line — PowerShell:** Windows 10/11 ships an `scp` command
+     already. Open PowerShell and run these two lines one at a time. `cd` first,
+     so the next line can find the file without needing its full path — it only
+     works when run from the folder the file is actually in:
+     ```powershell
+     cd $env:USERPROFILE\Downloads
+     scp .\Install_NDI_SDK_v6_Linux.tar.gz pi@192.168.1.42:~/
+     ```
+     Replace `Install_NDI_SDK_v6_Linux.tar.gz` with your file's exact name from
+     above, `pi` with your Pi's SSH username, and `192.168.1.42` with the Pi's own
+     IP address — the same three things your SSH command already uses. If
+     PowerShell says `scp` isn't recognized as a command, that machine is missing
+     Windows' optional OpenSSH Client component — use WinSCP above instead, or add
+     it via Settings → Apps → Optional features → Add a feature → "OpenSSH
+     Client".
+   - **Mac/Linux — Terminal:** same idea, from wherever the file downloaded
+     (usually `~/Downloads`):
+     ```bash
+     cd ~/Downloads
+     scp Install_NDI_SDK_v6_Linux.tar.gz pi@192.168.1.42:~/
+     ```
+
+   Back in your Pi SSH session, confirm it arrived before continuing:
+   ```bash
+   ls ~/*.tar.gz
+   ```
+
+2. **On the Pi**, extract and run the installer. This file is a self-extracting
+   script wrapped in a `.tar.gz`, not a plain archive on its own — both commands
+   below are needed, substituting your file's actual name for both:
    ```bash
    tar xzf Install_NDI_SDK_v6_Linux.tar.gz
+   ./Install_NDI_SDK_v6_Linux.sh
    ```
-   This unpacks straight into a `NDI SDK for Linux/` folder with `include/` and
-   per-architecture `lib/`/`bin/` subfolders — no separate installer script to run.
-   A Pi 4 or 5 (64-bit) uses the `aarch64-rpi4-linux-gnueabi` folder; an x86_64
-   stick uses `x86_64-linux-gnu`.
+   The second command prints the NDI EULA text — press Space to page through it,
+   `q` once you reach the end — then asks you to accept it; type `y` and press
+   Enter. Only then does it create the `NDI SDK for Linux/` folder with `include/`
+   and per-architecture `lib/`/`bin/` subfolders. A Pi 4 or 5 (64-bit) uses the
+   `aarch64-rpi4-linux-gnueabi` folder inside it; an x86_64 stick uses
+   `x86_64-linux-gnu`.
 
-2. Install the SDK's shared library where the system linker will find it (`-a`
+3. Install the SDK's shared library where the system linker will find it (`-a`
    preserves the `libndi.so` → `libndi.so.6` → `libndi.so.6.x.x` symlink chain) —
    substitute `x86_64-linux-gnu` for the folder name below on an x86 stick:
    ```bash
@@ -501,10 +550,10 @@ these exact steps; an x86 stick follows the same steps, just using the SDK's
    ldconfig -p | grep ndi   # should list libndi.so.6 resolving under /usr/local/lib
    ```
 
-3. Build [`gst-plugin-ndi`](https://github.com/teltek/gst-plugin-ndi) (the community
+4. Build [`gst-plugin-ndi`](https://github.com/teltek/gst-plugin-ndi) (the community
    GStreamer NDI plugin, written in Rust — needs `cargo`, installed via
    <https://rustup.rs> if it isn't already). It only needs `libndi` linkable from
-   step 2 above, not the SDK headers:
+   step 3 above, not the SDK headers:
    ```bash
    git clone https://github.com/teltek/gst-plugin-ndi.git
    cd gst-plugin-ndi
@@ -520,7 +569,7 @@ these exact steps; an x86 stick follows the same steps, just using the SDK's
    gst-inspect-1.0 ndisrc          # should show the ndisrc element details
    ```
 
-4. Build the discovery helper from this repo (`pi-player/native/`) — this one *does*
+5. Build the discovery helper from this repo (`pi-player/native/`) — this one *does*
    need the SDK's headers, since it's a small C program calling the NDI API directly:
    ```bash
    cd ~/SignageMadeEasy/pi-player/native   # wherever this repo is checked out on the Pi
@@ -535,7 +584,7 @@ these exact steps; an x86 stick follows the same steps, just using the SDK's
    /opt/signage/bin/ndi-find
    ```
 
-5. Re-run `provision.sh` (or just check manually) — it probes for both of these on a
+6. Re-run `provision.sh` (or just check manually) — it probes for both of these on a
    Pi 4/5 or x86 device and prints a reminder if either is still missing, but doesn't
    fail the rest of provisioning if they are.
 
