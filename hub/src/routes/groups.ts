@@ -8,15 +8,35 @@ groupsRouter.get('/', (_req, res) => {
 });
 
 groupsRouter.post('/', (req, res) => {
-  const { name } = req.body ?? {};
+  const { name, locationId } = req.body ?? {};
   if (typeof name !== 'string') return res.status(400).json({ error: 'name is required' });
-  res.status(201).json(store.addGroup(name));
+  if (locationId !== undefined && locationId !== null && typeof locationId !== 'string') {
+    return res.status(400).json({ error: 'locationId must be a string or null' });
+  }
+  res.status(201).json(store.addGroup(name, locationId ?? null));
+});
+
+// Registered before /:id routes below — a literal "reorder" segment here would
+// otherwise never be reachable if a param route matched it first, though none
+// currently do (mirrors library.ts's own reorder route for the same reason).
+groupsRouter.put('/reorder', (req, res) => {
+  const { ids } = req.body ?? {};
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
+    return res.status(400).json({ error: 'ids must be an array of strings' });
+  }
+  store.reorderGroups(ids);
+  res.status(204).end();
 });
 
 groupsRouter.patch('/:id', (req, res) => {
-  const { name } = req.body ?? {};
-  if (typeof name !== 'string') return res.status(400).json({ error: 'name is required' });
-  store.renameGroup(req.params.id, name);
+  const { name, locationId } = req.body ?? {};
+  if (typeof name === 'string') store.renameGroup(req.params.id, name);
+  // locationId: null files it back out of any Location; omitting the key leaves it
+  // untouched — same distinction as devices.ts's own groupId handling.
+  if (locationId !== undefined) {
+    if (locationId !== null && typeof locationId !== 'string') return res.status(400).json({ error: 'locationId must be a string or null' });
+    store.setGroupLocation(req.params.id, locationId);
+  }
   res.status(204).end();
 });
 
@@ -53,11 +73,17 @@ groupsRouter.post('/:id/playlist/:libId/reorder', (req, res) => {
 });
 
 groupsRouter.post('/:id/events', (req, res) => {
-  const { name, start, end, libIds } = req.body ?? {};
+  const { name, start, end, libIds, startTime, endTime, daysOfWeek } = req.body ?? {};
   if (typeof name !== 'string' || typeof start !== 'string' || typeof end !== 'string' || !Array.isArray(libIds)) {
     return res.status(400).json({ error: 'name, start, end, libIds are required' });
   }
-  res.status(201).json(store.addEvent(req.params.id, { name, start, end, libIds }));
+  if ((startTime !== undefined && typeof startTime !== 'string') || (endTime !== undefined && typeof endTime !== 'string')) {
+    return res.status(400).json({ error: 'startTime/endTime must be strings when provided' });
+  }
+  if (daysOfWeek !== undefined && (!Array.isArray(daysOfWeek) || daysOfWeek.some((d) => typeof d !== 'number' || d < 0 || d > 6))) {
+    return res.status(400).json({ error: 'daysOfWeek must be an array of numbers 0-6 when provided' });
+  }
+  res.status(201).json(store.addEvent(req.params.id, { name, start, end, libIds, startTime, endTime, daysOfWeek }));
 });
 
 groupsRouter.delete('/:id/events/:eventId', (req, res) => {
@@ -65,15 +91,53 @@ groupsRouter.delete('/:id/events/:eventId', (req, res) => {
   res.status(204).end();
 });
 
+// @deprecated Single-item route, kept for the Companion module's existing action
+// (see store.ts's setForcedContent comment) — the control app itself uses
+// /forced-playlist below, which supports forcing more than one item at once.
 groupsRouter.put('/:id/forced', (req, res) => {
   const { libId } = req.body ?? {};
   store.setForcedContent(req.params.id, libId ?? null);
   res.status(204).end();
 });
 
+// Mirrors the /:id/playlist routes above exactly, scoped to the forced playlist
+// instead of the rolling default one — see store.ts's setForcedPlaylist comment.
+groupsRouter.put('/:id/forced-playlist', (req, res) => {
+  const { libIds } = req.body ?? {};
+  if (!Array.isArray(libIds)) return res.status(400).json({ error: 'libIds must be an array' });
+  store.setForcedPlaylist(req.params.id, libIds);
+  res.status(204).end();
+});
+
+groupsRouter.post('/:id/forced-playlist', (req, res) => {
+  const { libIds } = req.body ?? {};
+  if (!Array.isArray(libIds)) return res.status(400).json({ error: 'libIds must be an array' });
+  store.addToForcedPlaylist(req.params.id, libIds);
+  res.status(204).end();
+});
+
+groupsRouter.delete('/:id/forced-playlist/:libId', (req, res) => {
+  store.removeFromForcedPlaylist(req.params.id, req.params.libId);
+  res.status(204).end();
+});
+
+groupsRouter.post('/:id/forced-playlist/:libId/reorder', (req, res) => {
+  const { direction } = req.body ?? {};
+  if (direction !== 'up' && direction !== 'down') return res.status(400).json({ error: 'direction must be "up" or "down"' });
+  store.reorderForcedPlaylist(req.params.id, req.params.libId, direction);
+  res.status(204).end();
+});
+
 groupsRouter.put('/:id/forced-announcement', (req, res) => {
   const { announcementId } = req.body ?? {};
   store.setForcedAnnouncement(req.params.id, announcementId ?? null);
+  res.status(204).end();
+});
+
+groupsRouter.put('/:id/blackout', (req, res) => {
+  const { blackout } = req.body ?? {};
+  if (typeof blackout !== 'boolean') return res.status(400).json({ error: 'blackout must be a boolean' });
+  store.setGroupBlackout(req.params.id, blackout);
   res.status(204).end();
 });
 

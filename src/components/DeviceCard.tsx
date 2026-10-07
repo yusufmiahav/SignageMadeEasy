@@ -1,6 +1,26 @@
 import { useState } from 'react';
 import { Icon } from './icons/Icon';
+import { previewImageUrl } from './libraryItemMeta';
 import type { Device, LibraryItem } from '../api/types';
+
+// Bits 0-3 of vcgencmd's get_throttled bitmask are current-state (under-voltage,
+// arm-freq-capped, throttled, soft-temp-limit); bits 16-19 are "has happened since
+// boot" versions of the same. Only the current-state bits are actionable right now —
+// something that happened once at boot and hasn't recurred isn't worth a persistent
+// warning badge.
+function isCurrentlyThrottled(throttled: string | null | undefined): boolean {
+  if (!throttled) return false;
+  return (Number.parseInt(throttled, 16) & 0xf) !== 0;
+}
+
+function formatUptime(sec: number): string {
+  const days = Math.floor(sec / 86400);
+  const hours = Math.floor((sec % 86400) / 3600);
+  const mins = Math.floor((sec % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
 
 interface DeviceCardProps {
   device: Device;
@@ -8,6 +28,8 @@ interface DeviceCardProps {
   nowPlayingItem: LibraryItem | undefined;
   announcement: LibraryItem | undefined;
   onRename: (id: string, name: string) => void;
+  /** Blinks this screen's physical display white/black twice — helps identify which real screen a card here corresponds to. Same action as Settings' own "Identify" button. */
+  onFlash: (device: Device) => void;
   onRestart: (device: Device) => void;
   onMove: (device: Device) => void;
   onRemove: (id: string) => void;
@@ -15,6 +37,27 @@ interface DeviceCardProps {
   onToggleAnnouncement: (id: string) => void;
   onSetVideoQuality: (id: string, videoQuality: 'auto' | 'full') => void;
   onPreview: (item: LibraryItem) => void;
+  /** Off by default (see Settings → Device cards) — shows just IP + online/offline until turned on. */
+  advancedInfo: boolean;
+  hideAnnouncementRow: boolean;
+  /**
+   * Force content/blackout render for every card, standalone or grouped — a
+   * grouped screen's own forcedPlaylist/blackout override its group's (see
+   * hub/src/store.ts's activeContentIdsForGroupedDevice), so this card needs the
+   * same two buttons either way. Force announcement stays standalone-only below:
+   * announcements aren't part of this override. forcedContentName resolves
+   * device.forcedPlaylist to a display label — e.g. the one item's name, or
+   * "First item +2 more" for a multi-item forced playlist (the card itself has no
+   * library to look it up in).
+   */
+  forcedContentName?: string;
+  onForceContent: (deviceId: string) => void;
+  onForceAnnouncement: (deviceId: string) => void;
+  onOpenBlackout: (deviceId: string) => void;
+  onStopForcedContent: (deviceId: string) => void;
+  onStopBlackout: (deviceId: string) => void;
+  /** Shown regardless of groupId — unlike force-content/announcement/blackout above, a USB override is a property of the physical screen, not something a group can set. */
+  onClearUsbOverride: (device: Device) => void;
 }
 
 export function DeviceCard({
@@ -23,6 +66,7 @@ export function DeviceCard({
   nowPlayingItem,
   announcement,
   onRename,
+  onFlash,
   onRestart,
   onMove,
   onRemove,
@@ -30,9 +74,19 @@ export function DeviceCard({
   onToggleAnnouncement,
   onSetVideoQuality,
   onPreview,
+  advancedInfo,
+  hideAnnouncementRow,
+  forcedContentName,
+  onForceContent,
+  onForceAnnouncement,
+  onOpenBlackout,
+  onStopForcedContent,
+  onStopBlackout,
+  onClearUsbOverride,
 }: DeviceCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(device.name);
+  const previewImage = nowPlayingItem && previewImageUrl(nowPlayingItem);
 
   const startEdit = () => {
     setName(device.name);
@@ -44,17 +98,47 @@ export function DeviceCard({
   };
 
   return (
-    <div className="card">
+    // Stable anchor the Search screen scrolls to when jumping here from a result
+    // (see SearchScreen.tsx's onJumpToHome) — every DeviceCard on Home, standalone
+    // or inside a group, gets one for free from device.id alone.
+    <div className="card" id={`device-${device.id}`}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {device.blackout ? (
+          <>
+            <span className="tag tag-warning">Blacked out</span>
+            <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onStopBlackout(device.id)}>Stop</button>
+          </>
+        ) : (
+          <button type="button" className="btn btn-warning btn-icon" style={{ width: 26, height: 26 }} aria-label="Blackout" title="Blackout" onClick={() => onOpenBlackout(device.id)}>
+            <Icon name="moon" size={13} />
+          </button>
+        )}
+        {device.forcedPlaylist.length > 0 ? (
+          <>
+            <span className="tag tag-accent">Forced: {forcedContentName ?? '—'}</span>
+            <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onStopForcedContent(device.id)}>Stop</button>
+          </>
+        ) : (
+          <button type="button" className="btn btn-secondary btn-icon" style={{ width: 26, height: 26 }} aria-label="Force content" title="Force content" onClick={() => onForceContent(device.id)}>
+            <Icon name="monitor" size={13} />
+          </button>
+        )}
+        {!device.groupId && (
+          <button type="button" className="btn btn-secondary btn-icon" style={{ width: 26, height: 26 }} aria-label="Force announcement" title="Force announcement" onClick={() => onForceAnnouncement(device.id)}>
+            <Icon name="messageCircle" size={13} />
+          </button>
+        )}
+      </div>
       <div
         className="preview-box"
         style={
-          nowPlayingItem?.type === 'image' && nowPlayingItem.thumb
-            ? { backgroundImage: `url(${nowPlayingItem.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+          previewImage
+            ? { backgroundImage: `url(${previewImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
             : undefined
         }
       >
         <span className="tag tag-outline dims-tag">1920×1080</span>
-        {!(nowPlayingItem?.type === 'image' && nowPlayingItem.thumb) && (
+        {!previewImage && (
           <span className="preview-box-label">{nowPlaying}</span>
         )}
         {nowPlayingItem && (
@@ -91,13 +175,16 @@ export function DeviceCard({
       </div>
       {!editing && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-          <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" onClick={() => onRestart(device)}>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Identify" title="Blink this screen's display" onClick={() => onFlash(device)}>
+            <Icon name="lightbulb" size={14} />
+          </button>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" title="Reboot this screen" onClick={() => onRestart(device)}>
             <Icon name="restart" size={14} />
           </button>
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={startEdit}>
             <Icon name="pencil" size={14} />
           </button>
-          <button type="button" className="btn btn-ghost btn-icon" aria-label="Move to another location" onClick={() => onMove(device)}>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="Move to another group" onClick={() => onMove(device)}>
             <Icon name="mapPin" size={14} />
           </button>
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => onRemove(device.id)}>
@@ -116,9 +203,38 @@ export function DeviceCard({
         >
           {device.ip}
         </a>
-        {device.mac && <span className="tag tag-neutral">{device.mac}</span>}
+        {advancedInfo && device.mac && <span className="tag tag-neutral">{device.mac}</span>}
         <span className="tag tag-neutral">{device.status === 'online' ? 'Online' : 'Offline'}</span>
+        {device.updateStatus === 'updating' && (
+          <span className="tag tag-accent" title="Pulling the latest code and restarting — can take up to a minute, longer for a re-provision/reboot">Updating…</span>
+        )}
+        {device.updateStatus === 'done' && <span className="tag tag-neutral">Updated</span>}
+        {device.updateStatus === 'failed' && (
+          <span className="tag tag-warning" title="This screen hasn't come back since an update/re-provision was triggered — check it over SSH">Update may have failed</span>
+        )}
       </div>
+      {device.usbOverrideActive && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="tag tag-accent" title="A USB stick plugged into this screen is forcing content on, overriding the hub">USB override active</span>
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onClearUsbOverride(device)}>Clear</button>
+        </div>
+      )}
+      {advancedInfo && (device.tempC != null || device.uptimeSec != null || device.totalUptimeSec != null || device.diskFreeMb != null) && (
+        <div className="text-muted" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
+          {device.tempC != null && (
+            <span style={isCurrentlyThrottled(device.throttled) ? { color: 'var(--color-danger, #c0392b)', fontWeight: 600 } : undefined}>
+              {device.tempC.toFixed(0)}°C{isCurrentlyThrottled(device.throttled) ? ' · Throttling' : ''}
+            </span>
+          )}
+          {device.uptimeSec != null && <span>Up {formatUptime(device.uptimeSec)}</span>}
+          {device.totalUptimeSec != null && (
+            <span title="Total time this screen has spent running, across every reboot">Lifetime {formatUptime(device.totalUptimeSec)}</span>
+          )}
+          {device.diskFreeMb != null && device.diskTotalMb != null && (
+            <span>{(device.diskFreeMb / 1024).toFixed(1)} / {(device.diskTotalMb / 1024).toFixed(1)} GB free</span>
+          )}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <Icon name="video" size={12} style={{ opacity: 0.6, flexShrink: 0 }} />
         <select
@@ -132,28 +248,30 @@ export function DeviceCard({
           <option value="full">Full-resolution video</option>
         </select>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 2, borderTop: '1px solid var(--color-divider)' }}>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          style={{ fontSize: 11, padding: '4px 0', flex: 1, justifyContent: 'flex-start', gap: 6 }}
-          onClick={() => onPickAnnouncement(device)}
-        >
-          <Icon name="messageCircle" size={13} />
-          {announcement ? announcement.name : 'Announcement: none'}
-        </button>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={device.announcementOn}
-            disabled={!device.announcementId}
-            onChange={() => onToggleAnnouncement(device.id)}
-          />
-          <span className="toggle-track">
-            <span className="toggle-dot" />
-          </span>
-        </label>
-      </div>
+      {!hideAnnouncementRow && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 2, borderTop: '1px solid var(--color-divider)' }}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ fontSize: 11, padding: '4px 0', flex: 1, justifyContent: 'flex-start', gap: 6 }}
+            onClick={() => onPickAnnouncement(device)}
+          >
+            <Icon name="messageCircle" size={13} />
+            {announcement ? announcement.name : 'Announcement: none'}
+          </button>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={device.announcementOn}
+              disabled={!device.announcementId}
+              onChange={() => onToggleAnnouncement(device.id)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+      )}
     </div>
   );
 }

@@ -9,12 +9,34 @@ interface AnnouncementsScreenProps {
   onOpenAddSchedule: (groupId: string) => void;
 }
 
+// Sentinel for the "No location" tab — see ScheduleScreen.tsx's identical pattern.
+const NO_LOCATION = '__none__';
+
 export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSchedule }: AnnouncementsScreenProps) {
-  const { groups, devices, library, removeAnnouncementSchedule, setForcedAnnouncement } = app;
-  const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id ?? '');
+  const { groups, devices, locations, library, removeAnnouncementSchedule, setForcedAnnouncement } = app;
+  const [selectedLocationTab, setSelectedLocationTab] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const libraryById = new Map(library.map((item) => [item.id, item]));
-  const effectiveGroupId = groups.some((g) => g.id === selectedGroupId) ? selectedGroupId : (groups[0]?.id ?? '');
-  const selectedGroup = groups.find((g) => g.id === effectiveGroupId);
+
+  // Scoped to one Location tab at a time, same reasoning and pattern as
+  // ScheduleScreen.tsx — this screen is a flat group-tab-bar with no location
+  // structure of its own, which gets just as unwieldy to scan across several
+  // locations' worth of groups. Unlike Schedule, there's no standalone-device
+  // section here at all (announcementSchedules only exists on Group — see the
+  // no-groups-yet message below), so "No location" only needs to bucket groups.
+  const locationIds = new Set(locations.map((l) => l.id));
+  const isUnfiled = (locationId: string | null) => !locationId || !locationIds.has(locationId);
+  const locationsWithGroups = locations.filter((loc) => groups.some((g) => g.locationId === loc.id));
+  const unfiledGroups = groups.filter((g) => isUnfiled(g.locationId));
+  const locationTabs = [
+    ...locationsWithGroups.map((l) => ({ id: l.id, name: l.name })),
+    ...(unfiledGroups.length > 0 ? [{ id: NO_LOCATION, name: 'No location' }] : []),
+  ];
+  const effectiveLocationTab = locationTabs.some((t) => t.id === selectedLocationTab) ? selectedLocationTab : (locationTabs[0]?.id ?? '');
+  const tabGroups = effectiveLocationTab === NO_LOCATION ? unfiledGroups : groups.filter((g) => g.locationId === effectiveLocationTab);
+
+  const effectiveGroupId = tabGroups.some((g) => g.id === selectedGroupId) ? selectedGroupId : (tabGroups[0]?.id ?? '');
+  const selectedGroup = tabGroups.find((g) => g.id === effectiveGroupId);
 
   if (devices.length === 0) {
     return (
@@ -25,7 +47,36 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
     );
   }
 
-  if (!selectedGroup) return null;
+  const locationTabBar = locationTabs.length > 1 && (
+    <div className="seg" style={{ flexWrap: 'wrap' }}>
+      {locationTabs.map((t) => (
+        <label key={t.id} className="seg-opt">
+          <input type="radio" name="announceLocationSel" checked={t.id === effectiveLocationTab} onChange={() => setSelectedLocationTab(t.id)} />
+          {t.name}
+        </label>
+      ))}
+    </div>
+  );
+
+  // A hub can have only standalone (no-group) screens and no groups at all — a
+  // perfectly normal small setup, not an edge case. Standalone screens have no
+  // announcementSchedules of their own (that field only exists on Group; see
+  // api/types.ts), so this screen — scoped entirely to picking among *groups* —
+  // has nothing to show them. Silently rendering nothing here (the previous
+  // behavior) left a totally blank page with no explanation; point at where
+  // standalone-screen announcements actually live instead.
+  if (!selectedGroup) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <h1 style={{ margin: 0 }}>Announcements</h1>
+        {locationTabBar}
+        <p className="text-muted" style={{ margin: 0 }}>
+          No groups yet — scheduled announcements are a per-group feature. For a standalone screen (no group), turn
+          its announcement on/off directly from its card on the Home tab instead.
+        </p>
+      </div>
+    );
+  }
 
   const activeId = activeAnnouncementId(selectedGroup);
   const activeItem = activeId ? libraryById.get(activeId) : undefined;
@@ -40,8 +91,10 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
         screen everywhere at once.
       </p>
 
+      {locationTabBar}
+
       <div className="seg" style={{ flexWrap: 'wrap' }}>
-        {groups.map((g) => (
+        {tabGroups.map((g) => (
           <label key={g.id} className="seg-opt">
             <input type="radio" name="announceGroupSel" checked={g.id === effectiveGroupId} onChange={() => setSelectedGroupId(g.id)} />
             {g.name}
@@ -51,7 +104,7 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
 
       <div className="card" style={{ gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="card-kicker">This location</div>
+          <div className="card-kicker">This group</div>
           {activeItem && <span className="tag tag-accent">On now: {activeItem.name}</span>}
         </div>
         {forcedItem ? (
@@ -73,7 +126,7 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
             style={{ alignSelf: 'flex-start', fontSize: 12, padding: '4px 10px' }}
             onClick={() => onOpenForceAnnouncement(selectedGroup.id)}
           >
-            Force on for this location
+            Force on for this group
           </button>
         )}
       </div>
@@ -86,7 +139,7 @@ export function AnnouncementsScreen({ app, onOpenForceAnnouncement, onOpenAddSch
           </button>
         </div>
         {selectedGroup.announcementSchedules.length === 0 ? (
-          <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>Nothing scheduled at this location.</p>
+          <p className="text-muted" style={{ margin: 0, fontSize: 13 }}>Nothing scheduled for this group.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {selectedGroup.announcementSchedules.map((s) => (

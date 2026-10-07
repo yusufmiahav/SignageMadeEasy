@@ -1,46 +1,110 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppShell, type Tab } from './components/layout/AppShell';
 import { HomeScreen } from './screens/HomeScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { ScheduleScreen } from './screens/ScheduleScreen';
 import { AnnouncementsScreen } from './screens/AnnouncementsScreen';
+import { SearchScreen } from './screens/SearchScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { Toast } from './components/Toast';
 import { PairDeviceDialog } from './components/dialogs/PairDeviceDialog';
 import { AddChooserDialog } from './components/dialogs/AddChooserDialog';
 import { AddLocationDialog } from './components/dialogs/AddLocationDialog';
+import { AddGroupDialog } from './components/dialogs/AddGroupDialog';
 import { AddContentDialog } from './components/dialogs/AddContentDialog';
 import { AddEventDialog } from './components/dialogs/AddEventDialog';
 import { AddAnnouncementDialog } from './components/dialogs/AddAnnouncementDialog';
+import { AddNdiSourceDialog } from './components/dialogs/AddNdiSourceDialog';
+import { AddTflStatusDialog } from './components/dialogs/AddTflStatusDialog';
+import { AddTflArrivalsDialog } from './components/dialogs/AddTflArrivalsDialog';
 import { AnnouncementPickerDialog } from './components/dialogs/AnnouncementPickerDialog';
 import { ForceAnnouncementDialog } from './components/dialogs/ForceAnnouncementDialog';
 import { AddAnnouncementScheduleDialog } from './components/dialogs/AddAnnouncementScheduleDialog';
 import { MoveDeviceDialog } from './components/dialogs/MoveDeviceDialog';
 import { ForceContentDialog } from './components/dialogs/ForceContentDialog';
+import { BlackoutDialog } from './components/dialogs/BlackoutDialog';
+import { UploadContentDialog } from './components/dialogs/UploadContentDialog';
 import { ContentPreviewDialog } from './components/dialogs/ContentPreviewDialog';
-import { useAppState } from './hooks/useAppState';
+import { DevicePreviewDialog } from './components/dialogs/DevicePreviewDialog';
+import { UpdateDeviceDialog } from './components/dialogs/UpdateDeviceDialog';
+import { UpdateResultsDialog } from './components/dialogs/UpdateResultsDialog';
+import { LoginScreen } from './screens/LoginScreen';
+import { useAppState, type UpdateResult } from './hooks/useAppState';
+import { useTheme } from './hooks/useTheme';
+import { useUiSettings } from './hooks/useUiSettings';
+import { checkAuthStatus } from './api/auth';
 import type { Device, LibraryItem } from './api/types';
 
 type DialogState =
   | { type: 'pair' }
   | { type: 'addChooser' }
   | { type: 'addLocation' }
+  /** `locationId` pre-files the new group under that Location — set when "Add group" is clicked from within a Location's section on Home; null from the top-level "+" chooser or Home's own header button. */
+  | { type: 'addGroup'; locationId: string | null }
+  | { type: 'uploadContent' }
   | { type: 'addContent'; groupId: string }
   | { type: 'addEvent'; groupId: string }
+  /** Same two dialogs, scoped to a single standalone screen (no group) instead of a group. */
+  | { type: 'addContentDevice'; deviceId: string }
+  | { type: 'addEventDevice'; deviceId: string }
   | { type: 'addAnnouncement' }
+  | { type: 'addNdiSource' }
+  | { type: 'addTflStatus' }
+  | { type: 'addTflArrivals' }
+  /** Reopens the corresponding Add dialog in edit mode for an existing item — see LibraryCard.tsx's "Edit options" button. */
+  | { type: 'configureTfl'; item: LibraryItem }
   | { type: 'announcementPicker'; device: Device }
   | { type: 'moveDevice'; device: Device }
   /** `groupId: null` means the global "force on every screen" action from the Home tab. */
   | { type: 'forceContent'; groupId: string | null }
   | { type: 'forceAnnouncement'; groupId: string | null }
+  | { type: 'blackout'; groupId: string | null }
+  /** Same three actions, scoped to a single screen instead of a whole group — forceContentDevice/blackoutDevice work on a grouped screen too, overriding its group (see DeviceCard's forcedContentName comment); forceAnnouncementDevice stays standalone-only. */
+  | { type: 'forceContentDevice'; deviceId: string }
+  | { type: 'forceAnnouncementDevice'; deviceId: string }
+  | { type: 'blackoutDevice'; deviceId: string }
+  /** Search screen's multi-select toolbar — same two actions, applied to every checked screen's own forcedPlaylist/blackout (not a group's) at once. */
+  | { type: 'forceContentDevices'; deviceIds: string[] }
+  | { type: 'blackoutDevices'; deviceIds: string[] }
   | { type: 'addAnnouncementSchedule'; groupId: string }
   | { type: 'preview'; item: LibraryItem }
+  /** Settings screen's "Preview" button (eye icon) — see DevicePreviewDialog.tsx. */
+  | { type: 'previewDevice'; device: Device }
+  /** Settings screen's "Update" button (download icon) — see UpdateDeviceDialog.tsx. */
+  | { type: 'updateDevice'; device: Device }
+  /** Settings screen's "Update all"/"Advanced > Re-provision all"/"Advanced > Restart all" buttons — see UpdateResultsDialog.tsx. */
+  | { type: 'updateResults'; results: UpdateResult[]; kind: 'update' | 'reprovision' | 'restart' }
   | null;
 
 export default function App() {
+  // Gated a level above useAppState (rather than inside it) so an unauthenticated
+  // session never even starts fetching library/groups/devices — those calls would
+  // just 401 (see hub/src/auth.ts) and leave useAppState's initial Promise.all stuck
+  // rejected, with app.loaded never flipping true.
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  // Mounted here, not inside AuthenticatedApp, so dark mode applies to the login
+  // screen too — not just after signing in.
+  const theme = useTheme();
+
+  useEffect(() => {
+    void checkAuthStatus().then(setAuthed);
+  }, []);
+
+  if (authed === null) return null;
+  if (!authed) return <LoginScreen onSuccess={() => setAuthed(true)} />;
+
+  return <AuthenticatedApp onLogout={() => setAuthed(false)} theme={theme} />;
+}
+
+function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: ReturnType<typeof useTheme> }) {
   const app = useAppState();
+  const uiSettings = useUiSettings();
   const [tab, setTab] = useState<Tab>('home');
   const [dialog, setDialog] = useState<DialogState>(null);
+  // Set by Search's "jump to it" action (see SearchScreen.tsx's onJumpToHome) —
+  // `device-<id>` or `group-<id>`, matching the DOM ids HomeScreen's own cards/
+  // group sections carry. Cleared once HomeScreen's effect actually scrolls to it.
+  const [homeScrollTarget, setHomeScrollTarget] = useState<string | null>(null);
 
   const closeDialog = () => setDialog(null);
 
@@ -48,29 +112,59 @@ export default function App() {
 
   return (
     <>
-      <AppShell tab={tab} onTabChange={setTab} deviceCount={app.devices.length} onAddScreen={() => setDialog({ type: 'addChooser' })}>
+      <AppShell
+        tab={tab}
+        onTabChange={setTab}
+        deviceCount={app.devices.length}
+        onlineCount={app.devices.filter((d) => d.status === 'online').length}
+        devices={app.devices}
+        offlineAlertMinutes={app.offlineAlertMinutes}
+        onSetDeviceOfflineAlertsMuted={(deviceId, muted, deviceName) => app.setDeviceOfflineAlertsMuted(deviceId, muted, deviceName)}
+        onAddScreen={() => setDialog({ type: 'addChooser' })}
+      >
         {tab === 'home' && (
           <HomeScreen
             app={app}
             onAddScreen={() => setDialog({ type: 'pair' })}
             onAddLocation={() => setDialog({ type: 'addLocation' })}
+            onAddGroup={(locationId) => setDialog({ type: 'addGroup', locationId })}
             onForceContent={(groupId) => setDialog({ type: 'forceContent', groupId })}
             onForceContentAllScreens={() => setDialog({ type: 'forceContent', groupId: null })}
             onForceAnnouncement={(groupId) => setDialog({ type: 'forceAnnouncement', groupId })}
             onForceAnnouncementAllScreens={() => setDialog({ type: 'forceAnnouncement', groupId: null })}
+            onOpenBlackout={(groupId) => setDialog({ type: 'blackout', groupId })}
+            onOpenBlackoutAllScreens={() => setDialog({ type: 'blackout', groupId: null })}
+            onForceContentForDevice={(deviceId) => setDialog({ type: 'forceContentDevice', deviceId })}
+            onForceAnnouncementForDevice={(deviceId) => setDialog({ type: 'forceAnnouncementDevice', deviceId })}
+            onOpenBlackoutForDevice={(deviceId) => setDialog({ type: 'blackoutDevice', deviceId })}
             onMoveDevice={(device) => setDialog({ type: 'moveDevice', device })}
             onPickAnnouncement={(device) => setDialog({ type: 'announcementPicker', device })}
             onPreviewContent={(item) => setDialog({ type: 'preview', item })}
+            advancedDeviceInfo={uiSettings.advancedDeviceInfo}
+            hideAnnouncementRow={uiSettings.hideAnnouncementRow}
+            scrollTarget={homeScrollTarget}
+            onScrollTargetHandled={() => setHomeScrollTarget(null)}
           />
         )}
         {tab === 'library' && (
-          <LibraryScreen app={app} onOpenAnnounceDialog={() => setDialog({ type: 'addAnnouncement' })} />
+          <LibraryScreen
+            app={app}
+            onOpenAnnounceDialog={() => setDialog({ type: 'addAnnouncement' })}
+            onOpenNdiDialog={() => setDialog({ type: 'addNdiSource' })}
+            onOpenTflDialog={() => setDialog({ type: 'addTflStatus' })}
+            onOpenTflArrivalsDialog={() => setDialog({ type: 'addTflArrivals' })}
+            onConfigureTflItem={(item) => setDialog({ type: 'configureTfl', item })}
+            onPreviewContent={(item) => setDialog({ type: 'preview', item })}
+          />
         )}
         {tab === 'schedule' && (
           <ScheduleScreen
             app={app}
             onOpenAddContent={(groupId) => setDialog({ type: 'addContent', groupId })}
             onOpenAddEvent={(groupId) => setDialog({ type: 'addEvent', groupId })}
+            onOpenAddContentDevice={(deviceId) => setDialog({ type: 'addContentDevice', deviceId })}
+            onOpenAddEventDevice={(deviceId) => setDialog({ type: 'addEventDevice', deviceId })}
+            onPreviewContent={(item) => setDialog({ type: 'preview', item })}
           />
         )}
         {tab === 'announcements' && (
@@ -80,7 +174,32 @@ export default function App() {
             onOpenAddSchedule={(groupId) => setDialog({ type: 'addAnnouncementSchedule', groupId })}
           />
         )}
-        {tab === 'settings' && <SettingsScreen app={app} />}
+        {tab === 'search' && (
+          <SearchScreen
+            app={app}
+            onOpenDevicePreview={(device) => setDialog({ type: 'previewDevice', device })}
+            onForceContentForDevice={(deviceId) => setDialog({ type: 'forceContentDevice', deviceId })}
+            onOpenBlackoutForDevice={(deviceId) => setDialog({ type: 'blackoutDevice', deviceId })}
+            onForceContentForDevices={(deviceIds) => setDialog({ type: 'forceContentDevices', deviceIds })}
+            onOpenBlackoutForDevices={(deviceIds) => setDialog({ type: 'blackoutDevices', deviceIds })}
+            onJumpToHome={(target) => { setHomeScrollTarget(target); setTab('home'); }}
+          />
+        )}
+        {tab === 'settings' && (
+          <SettingsScreen
+            app={app}
+            onLogout={onLogout}
+            theme={theme.theme}
+            onSetTheme={theme.setTheme}
+            advancedDeviceInfo={uiSettings.advancedDeviceInfo}
+            onSetAdvancedDeviceInfo={uiSettings.setAdvancedDeviceInfo}
+            hideAnnouncementRow={uiSettings.hideAnnouncementRow}
+            onSetHideAnnouncementRow={uiSettings.setHideAnnouncementRow}
+            onOpenDevicePreview={(device) => setDialog({ type: 'previewDevice', device })}
+            onOpenDeviceUpdate={(device) => setDialog({ type: 'updateDevice', device })}
+            onOpenUpdateResults={(results, kind) => setDialog({ type: 'updateResults', results, kind })}
+          />
+        )}
       </AppShell>
 
       {dialog?.type === 'pair' && <PairDeviceDialog app={app} onClose={closeDialog} />}
@@ -88,28 +207,66 @@ export default function App() {
         <AddChooserDialog
           onChooseScreen={() => setDialog({ type: 'pair' })}
           onChooseLocation={() => setDialog({ type: 'addLocation' })}
+          onChooseGroup={() => setDialog({ type: 'addGroup', locationId: null })}
+          onChooseContent={() => setDialog({ type: 'uploadContent' })}
           onClose={closeDialog}
         />
       )}
       {dialog?.type === 'addLocation' && <AddLocationDialog app={app} onClose={closeDialog} />}
-      {dialog?.type === 'addContent' && <AddContentDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
-      {dialog?.type === 'addEvent' && <AddEventDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
+      {dialog?.type === 'addGroup' && <AddGroupDialog app={app} locationId={dialog.locationId} onClose={closeDialog} />}
+      {dialog?.type === 'uploadContent' && <UploadContentDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'addContent' && (
+        <AddContentDialog
+          app={app}
+          alreadyIncludedIds={app.groups.find((g) => g.id === dialog.groupId)?.defaultPlaylist ?? []}
+          onConfirm={(ids) => app.addToDefaultPlaylist(dialog.groupId, ids)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'addEvent' && (
+        <AddEventDialog app={app} onConfirm={(event) => app.addEvent(dialog.groupId, event)} onClose={closeDialog} />
+      )}
+      {dialog?.type === 'addContentDevice' && (
+        <AddContentDialog
+          app={app}
+          alreadyIncludedIds={app.devices.find((d) => d.id === dialog.deviceId)?.defaultPlaylist ?? []}
+          onConfirm={(ids) => app.addToDeviceDefaultPlaylist(dialog.deviceId, ids)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'addEventDevice' && (
+        <AddEventDialog app={app} onConfirm={(event) => app.addDeviceEvent(dialog.deviceId, event)} onClose={closeDialog} />
+      )}
       {dialog?.type === 'addAnnouncement' && <AddAnnouncementDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'addNdiSource' && <AddNdiSourceDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'addTflStatus' && <AddTflStatusDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'addTflArrivals' && <AddTflArrivalsDialog app={app} onClose={closeDialog} />}
+      {dialog?.type === 'configureTfl' && dialog.item.type === 'ndi' && (
+        <AddNdiSourceDialog app={app} editItem={dialog.item} onClose={closeDialog} />
+      )}
+      {dialog?.type === 'configureTfl' && dialog.item.type === 'tfl-status' && (
+        <AddTflStatusDialog app={app} editItem={dialog.item} onClose={closeDialog} />
+      )}
+      {dialog?.type === 'configureTfl' && dialog.item.type === 'tfl-arrivals' && (
+        <AddTflArrivalsDialog app={app} editItem={dialog.item} onClose={closeDialog} />
+      )}
       {dialog?.type === 'announcementPicker' && <AnnouncementPickerDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'moveDevice' && <MoveDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'forceContent' && (
         <ForceContentDialog
           app={app}
-          scopeLabel={dialog.groupId ? 'this location' : 'every screen'}
-          currentId={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.forcedContentId ?? null) : null}
-          onConfirm={(libId) => (dialog.groupId ? app.setForcedContent(dialog.groupId, libId) : app.forceContentAllScreens(libId))}
+          scopeLabel={dialog.groupId ? 'this group' : 'every screen'}
+          isGlobal={dialog.groupId === null}
+          currentIds={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.forcedPlaylist ?? []) : []}
+          onConfirm={(libIds) => (dialog.groupId ? app.setForcedPlaylist(dialog.groupId, libIds) : app.forceContentAllScreens(libIds))}
           onClose={closeDialog}
         />
       )}
       {dialog?.type === 'forceAnnouncement' && (
         <ForceAnnouncementDialog
           app={app}
-          scopeLabel={dialog.groupId ? 'this location' : 'every screen'}
+          scopeLabel={dialog.groupId ? 'this group' : 'every screen'}
+          isGlobal={dialog.groupId === null}
           currentId={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.forcedAnnouncementId ?? null) : null}
           onConfirm={(announcementId) =>
             dialog.groupId ? app.setForcedAnnouncement(dialog.groupId, announcementId) : app.forceAnnouncementAllScreens(announcementId)
@@ -117,8 +274,69 @@ export default function App() {
           onClose={closeDialog}
         />
       )}
+      {dialog?.type === 'blackout' && (
+        <BlackoutDialog
+          scopeLabel={dialog.groupId ? 'this group' : 'every screen'}
+          current={dialog.groupId ? (app.groups.find((g) => g.id === dialog.groupId)?.blackout ?? false) : false}
+          onConfirm={(blackout) => (dialog.groupId ? app.setGroupBlackout(dialog.groupId, blackout) : app.blackoutAllScreens(blackout))}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'forceContentDevice' && (
+        <ForceContentDialog
+          app={app}
+          scopeLabel="this screen"
+          isGlobal={false}
+          currentIds={app.devices.find((d) => d.id === dialog.deviceId)?.forcedPlaylist ?? []}
+          onConfirm={(libIds) => app.setDeviceForcedPlaylist(dialog.deviceId, libIds)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'forceAnnouncementDevice' && (
+        <ForceAnnouncementDialog
+          app={app}
+          scopeLabel="this screen"
+          isGlobal={false}
+          currentId={app.devices.find((d) => d.id === dialog.deviceId)?.announcementId ?? null}
+          onConfirm={(announcementId) => app.setDeviceAnnouncement(dialog.deviceId, announcementId)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'blackoutDevice' && (
+        <BlackoutDialog
+          scopeLabel="this screen"
+          current={app.devices.find((d) => d.id === dialog.deviceId)?.blackout ?? false}
+          onConfirm={(blackout) => app.setDeviceBlackout(dialog.deviceId, blackout)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'forceContentDevices' && (
+        <ForceContentDialog
+          app={app}
+          scopeLabel={`${dialog.deviceIds.length} selected screens`}
+          isGlobal={false}
+          // Each selected screen may already have its own different forced playlist
+          // (or none) — starting the dialog empty rather than guessing at one of
+          // theirs means "Apply" always sets the exact same thing on every one of
+          // them, which is the whole point of a bulk action.
+          currentIds={[]}
+          onConfirm={(libIds) => app.forceContentForDevices(dialog.deviceIds, libIds)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === 'blackoutDevices' && (
+        <BlackoutDialog
+          scopeLabel={`${dialog.deviceIds.length} selected screens`}
+          current={false}
+          onConfirm={(blackout) => app.blackoutForDevices(dialog.deviceIds, blackout)}
+          onClose={closeDialog}
+        />
+      )}
       {dialog?.type === 'addAnnouncementSchedule' && <AddAnnouncementScheduleDialog app={app} groupId={dialog.groupId} onClose={closeDialog} />}
       {dialog?.type === 'preview' && <ContentPreviewDialog item={dialog.item} onClose={closeDialog} />}
+      {dialog?.type === 'previewDevice' && <DevicePreviewDialog app={app} device={dialog.device} onClose={closeDialog} />}
+      {dialog?.type === 'updateDevice' && <UpdateDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
+      {dialog?.type === 'updateResults' && <UpdateResultsDialog results={dialog.results} kind={dialog.kind} onClose={closeDialog} />}
 
       <Toast message={app.toast} />
     </>

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Icon } from '../icons/Icon';
 
 interface DialogShellProps {
@@ -8,6 +8,17 @@ interface DialogShellProps {
 }
 
 export function DialogShell({ title, onClose, children }: DialogShellProps) {
+  // Every dialog in the app renders through this shell, so this one listener covers
+  // all of them — only one dialog is ever open at a time (see App.tsx's single
+  // DialogState), so there's no stacking order to worry about.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
     <div className="dialog-backdrop" style={{ zIndex: 60 }} onClick={onClose}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
