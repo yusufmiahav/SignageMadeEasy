@@ -136,6 +136,27 @@ export interface Device {
   /** Captured once at pairing time from the Pi's own /identify response. Null for a screen paired before this existed, or one paired manually/offline that couldn't be reached to ask. */
   mac: string | null;
   status: DeviceStatus;
+  /**
+   * 1 (the default, and the only value for every screen paired before this existed)
+   * or 2 — which of a dual-output Pi 4/5 or PC's two physical outputs this row
+   * represents. Both outputs of one physical unit pair at the SAME ip, addressed by
+   * this field alone (see hub/src/piAgent.ts's outputQuery) — never a second port.
+   * Two Device rows sharing an ip are two independently manageable screens (own
+   * group, own schedule, own forced content/blackout — the existing machinery,
+   * nothing new) that happen to be the same physical box; see dualOutputCapable
+   * below for how the control app knows to offer pairing a second one at all.
+   */
+  outputIndex: 1 | 2;
+  /**
+   * Reported by the Pi alongside every heartbeat (see pi-player/src/diagnostics.ts) —
+   * true once provision.sh has detected two connected display outputs AND set up the
+   * second one's kiosk/render loop; a Pi 3B+, or a Pi 4/5/PC with only one display
+   * connected at provision time, always reports false. Gates the control app's "Pair
+   * second output" action (see Device.outputIndex) to hardware that can actually use
+   * it — never shown for a screen that reports false here. False until the first
+   * heartbeat ever arrives.
+   */
+  dualOutputCapable: boolean;
   /** Null for a screen not assigned to any group yet ("standalone" screens, whether or not they're filed under a Location) — see forcedPlaylist/blackout below, which fill in for the group-level controls it doesn't have, and still take priority over the group's own once it has one. */
   groupId: string | null;
   /** Which Location this screen is filed under when it's standalone (groupId is null) — purely organizational, same as Group.locationId. Meaningless while groupId is set: a grouped screen's Location comes from its Group instead, not set directly here. */

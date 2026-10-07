@@ -488,7 +488,7 @@ export function useAppState() {
   }, [refreshGroups]);
 
   // ---- Devices ----
-  const pairDevice = useCallback(async (input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus; hubUrl?: string }) => {
+  const pairDevice = useCallback(async (input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus; hubUrl?: string; outputIndex?: 1 | 2 }) => {
     const device = await api.pairDevice(input);
     await Promise.all([refreshDevices(), refreshGroups()]);
     return device;

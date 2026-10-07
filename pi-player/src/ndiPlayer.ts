@@ -24,6 +24,16 @@ interface CurrentPlayback {
   respawned: boolean;
 }
 
+// Deliberately NOT output-scoped (unlike config.ts/poller.ts/identifyFlash.ts/
+// preview.ts) — a single global playback slot, same as before dual-output existed.
+// Getting two independent GStreamer waylandsink surfaces each reliably routed to
+// their own physical connector (the same for_window-by-app_id trick provision.sh
+// uses for the two Chromium windows) isn't something that could be verified without
+// real dual-output hardware, so this is an explicit v1 scope cut: if both outputs
+// try to play a native NDI source, the second call's play() below stops the
+// first's via the same single-slot behavior this already had — only one output can
+// show live NDI at a time. Every other content type (image/video/pdf/etc., each
+// rendered inside its own output's independent Chromium page) has no such limit.
 let current: CurrentPlayback | null = null;
 let nextToken = 1;
 

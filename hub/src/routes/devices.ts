@@ -40,8 +40,8 @@ devicesRouter.post('/:id/heartbeat', (req, res) => {
   const device = store.getDevice(req.params.id);
   if (!device) return res.status(404).json({ error: 'not found' });
   const ip = (req.body?.ip as string | undefined) ?? req.ip ?? device.ip;
-  const { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, usbOverrideActive, playerStartedAt, version } = req.body ?? {};
-  store.recordHeartbeat(req.params.id, ip, { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, usbOverrideActive, playerStartedAt, version });
+  const { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, usbOverrideActive, playerStartedAt, version, dualOutputCapable } = req.body ?? {};
+  store.recordHeartbeat(req.params.id, ip, { tempC, throttled, uptimeSec, diskFreeMb, diskTotalMb, usbOverrideActive, playerStartedAt, version, dualOutputCapable });
   res.status(204).end();
 });
 
@@ -73,7 +73,7 @@ devicesRouter.put('/reorder', (req, res) => {
 });
 
 devicesRouter.post('/pair', async (req, res) => {
-  const { name, ip, groupId, locationId, skipHandshake, hubUrl } = req.body ?? {};
+  const { name, ip, groupId, locationId, skipHandshake, hubUrl, outputIndex } = req.body ?? {};
   if (typeof ip !== 'string' || (typeof groupId !== 'string' && groupId !== null)) {
     return res.status(400).json({ error: 'ip is required; groupId must be a string or null (no group)' });
   }
@@ -83,8 +83,15 @@ devicesRouter.post('/pair', async (req, res) => {
   if (hubUrl !== undefined && typeof hubUrl !== 'string') {
     return res.status(400).json({ error: 'hubUrl must be a string' });
   }
-  if (store.listDevices().some((d) => d.ip === ip)) {
-    return res.status(409).json({ error: `A screen is already paired at ${ip}` });
+  if (outputIndex !== undefined && outputIndex !== 1 && outputIndex !== 2) {
+    return res.status(400).json({ error: 'outputIndex must be 1 or 2' });
+  }
+  const resolvedOutput: 1 | 2 = outputIndex === 2 ? 2 : 1;
+  // Two Device rows CAN share an ip now — a dual-output Pi/PC's two outputs — but
+  // never the same ip AND the same output: that would be re-pairing the one screen
+  // the hub already knows about, not adding a new one.
+  if (store.listDevices().some((d) => d.ip === ip && d.outputIndex === resolvedOutput)) {
+    return res.status(409).json({ error: resolvedOutput === 2 ? `Output 2 at ${ip} is already paired` : `A screen is already paired at ${ip}` });
   }
 
   let resolvedName = typeof name === 'string' && name.trim() ? name.trim() : 'Display';
@@ -95,7 +102,7 @@ devicesRouter.post('/pair', async (req, res) => {
   // manual entries that don't have a real agent running still create a device record.
   if (!skipHandshake) {
     try {
-      const identity = await piAgent.identify(ip);
+      const identity = await piAgent.identify(ip, undefined, resolvedOutput);
       resolvedName = resolvedName === 'Display' ? identity.hostname : resolvedName;
       status = 'online';
       mac = identity.mac ?? null;
@@ -105,13 +112,13 @@ devicesRouter.post('/pair', async (req, res) => {
     }
   }
 
-  const device = store.pairDevice({ name: resolvedName, ip, mac, groupId, locationId: locationId ?? null, status });
+  const device = store.pairDevice({ name: resolvedName, ip, mac, groupId, locationId: locationId ?? null, status, outputIndex: resolvedOutput });
 
   if (!skipHandshake && status === 'online') {
     try {
       // An explicit hubUrl from the pairing request always wins over the
       // env-var/req.get('host') guess — see publicHubUrl's own comment.
-      await piAgent.configure(ip, device.id, hubUrl || publicHubUrl(req));
+      await piAgent.configure(ip, device.id, hubUrl || publicHubUrl(req), resolvedOutput);
     } catch {
       // Non-fatal — the Pi will show its unpaired screen until it can be reconfigured.
     }
@@ -168,7 +175,7 @@ devicesRouter.patch('/:id', async (req, res) => {
     }
     let reconfigured = false;
     try {
-      await piAgent.configure(trimmedIp, device.id, (typeof hubUrl === 'string' && hubUrl) || publicHubUrl(req));
+      await piAgent.configure(trimmedIp, device.id, (typeof hubUrl === 'string' && hubUrl) || publicHubUrl(req), device.outputIndex);
       reconfigured = true;
     } catch {
       // Non-fatal — see this block's own comment above.
@@ -190,7 +197,7 @@ devicesRouter.delete('/:id', (req, res) => {
   // Best-effort and fire-and-forget: don't make "delete" feel slow waiting on a Pi
   // that might be offline. If this doesn't land, the Pi's own poller notices within
   // one cycle anyway (its next /api/player/:id/state call 404s and it self-unpairs).
-  if (device) piAgent.unpair(device.ip).catch(() => {});
+  if (device) piAgent.unpair(device.ip, device.outputIndex).catch(() => {});
 });
 
 devicesRouter.post('/:id/restart', async (req, res) => {
@@ -224,7 +231,7 @@ devicesRouter.post('/:id/identify-flash', async (req, res) => {
   const device = store.getDevice(req.params.id);
   if (!device) return res.status(404).json({ error: 'not found' });
   try {
-    await piAgent.identifyFlash(device.ip);
+    await piAgent.identifyFlash(device.ip, device.outputIndex);
     res.status(204).end();
   } catch {
     res.status(502).json({ error: 'could not reach device' });
@@ -243,7 +250,7 @@ devicesRouter.get('/:id/preview', async (req, res) => {
   if (!device) return res.status(404).json({ error: 'not found' });
   const cachePath = previewCachePath(device.id);
   try {
-    const jpeg = await piAgent.preview(device.ip);
+    const jpeg = await piAgent.preview(device.ip, device.outputIndex);
     fs.writeFile(cachePath, jpeg, () => {});
     res.set('X-Preview-Stale', 'false');
     res.type('image/jpeg').send(jpeg);

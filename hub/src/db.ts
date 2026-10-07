@@ -427,6 +427,16 @@ if (!libraryColsPoster.includes('posterUrl')) db.exec('ALTER TABLE library ADD C
 const deviceColsAlertMute = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
 if (!deviceColsAlertMute.includes('offlineAlertsMuted')) db.exec('ALTER TABLE devices ADD COLUMN offlineAlertsMuted INTEGER NOT NULL DEFAULT 0');
 
+// Same reasoning, for hubs deployed before a dual-output Pi 4/5/PC's second output
+// could be paired as its own independent screen (see types.ts's Device.outputIndex/
+// dualOutputCapable and hub/src/piAgent.ts's outputQuery). 1 for every existing
+// screen — the only value that ever existed before this shipped. dualOutputCapable
+// starts false and is kept current by every heartbeat (see recordHeartbeat) rather
+// than needing its own migration default beyond "false until proven otherwise."
+const deviceColsOutput = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceColsOutput.includes('outputIndex')) db.exec('ALTER TABLE devices ADD COLUMN outputIndex INTEGER NOT NULL DEFAULT 1');
+if (!deviceColsOutput.includes('dualOutputCapable')) db.exec('ALTER TABLE devices ADD COLUMN dualOutputCapable INTEGER NOT NULL DEFAULT 0');
+
 // A generic key/value store for hub-wide settings (currently just "safety hold" —
 // see store.ts's getSafetyHold/setSafetyHold) that need to be readable by a Pi
 // (via GET /api/player/:id/state), not just the control app — unlike the frontend's

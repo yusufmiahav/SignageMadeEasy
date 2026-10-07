@@ -145,6 +145,17 @@ export interface Device {
   /** Captured once at pairing time from the Pi's own agent. Null for a screen paired before this existed, one paired while offline, or any device in standalone/localStorage mode (no real Pi to ask). */
   mac: string | null;
   status: DeviceStatus;
+  /**
+   * 1 (default — every screen paired before this existed, and every standalone-mode
+   * device) or 2 — which of a dual-output Pi 4/5 or PC's two physical outputs this
+   * row represents. Both outputs pair at the SAME ip; see SignageApiClient.pairDevice
+   * and dualOutputCapable below. Two rows sharing an ip are two fully independent
+   * screens (own group, own schedule, own forced content) using the existing
+   * machinery — nothing new there, just two devices that happen to share a box.
+   */
+  outputIndex: 1 | 2;
+  /** Reported by the Pi alongside every heartbeat — true once it's been provisioned with a second, independently usable output (a Pi 3B+, or hardware with only one display connected, always reports false). Gates the "Pair second output" action. Always false in standalone/localStorage mode. */
+  dualOutputCapable: boolean;
   /** Null for a screen not assigned to any group yet ("standalone" screens, whether or not they're filed under a Location) — see forcedPlaylist/blackout below, which fill in for the group-level controls it doesn't have, and still take priority over the group's own once it has one. */
   groupId: string | null;
   /** Which Location this screen is filed under when it's standalone (groupId is null) — purely organizational, same as Group.locationId. Meaningless while groupId is set: a grouped screen's Location comes from its Group instead, not set directly here. */

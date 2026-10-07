@@ -10,6 +10,16 @@
 const AGENT_PORT = 8088;
 const TIMEOUT_MS = 4000;
 
+// Dual-output Pi 4/5s and PCs (see pi-player/src/agent.ts's own output-routing
+// comment) run ONE agent process on this same well-known port for both outputs —
+// never a second port to open/firewall — distinguished purely by this query
+// string, read by agent.ts and threaded into config.ts/poller.ts/identifyFlash.ts/
+// preview.ts's own per-output state. Omitted entirely for output 1 (not just set
+// to "1") so a single-output Pi's logs/requests look exactly as they always have.
+function outputQuery(output: 1 | 2): string {
+  return output === 2 ? '?output=2' : '';
+}
+
 async function agentFetch(ip: string, path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -26,14 +36,14 @@ export interface PiIdentity {
   mac: string | null;
 }
 
-export async function identify(ip: string, timeoutMs?: number): Promise<PiIdentity> {
-  const res = await agentFetch(ip, '/identify', undefined, timeoutMs);
+export async function identify(ip: string, timeoutMs?: number, output: 1 | 2 = 1): Promise<PiIdentity> {
+  const res = await agentFetch(ip, `/identify${outputQuery(output)}`, undefined, timeoutMs);
   if (!res.ok) throw new Error(`Pi agent at ${ip} responded ${res.status}`);
   return (await res.json()) as PiIdentity;
 }
 
-export async function configure(ip: string, deviceId: string, hubUrl: string): Promise<void> {
-  const res = await agentFetch(ip, '/configure', {
+export async function configure(ip: string, deviceId: string, hubUrl: string, output: 1 | 2 = 1): Promise<void> {
+  const res = await agentFetch(ip, `/configure${outputQuery(output)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ deviceId, hubUrl }),
@@ -41,13 +51,17 @@ export async function configure(ip: string, deviceId: string, hubUrl: string): P
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected configure: ${res.status}`);
 }
 
+// Reboots the whole physical unit — there's no such thing as "restart just one
+// output" on real hardware, so this is deliberately NOT output-scoped: triggering
+// it from either output's row in the control app does the exact same thing (and
+// doing so from both in quick succession is harmless, not a double-reboot).
 export async function restart(ip: string): Promise<void> {
   const res = await agentFetch(ip, '/restart', { method: 'POST' });
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected restart: ${res.status}`);
 }
 
-export async function unpair(ip: string): Promise<void> {
-  const res = await agentFetch(ip, '/unpair', { method: 'POST' });
+export async function unpair(ip: string, output: 1 | 2 = 1): Promise<void> {
+  const res = await agentFetch(ip, `/unpair${outputQuery(output)}`, { method: 'POST' });
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected unpair: ${res.status}`);
 }
 
@@ -62,8 +76,10 @@ export async function listNdiSources(ip: string): Promise<string[]> {
 }
 
 // Settings screen's "Identify" button (bulb icon) — see pi-player/src/identifyFlash.ts.
-export async function identifyFlash(ip: string): Promise<void> {
-  const res = await agentFetch(ip, '/identify-flash', { method: 'POST' });
+// Output-scoped: blinks just that one physical screen, so a dual-output unit's two
+// rows in the control app can each be matched to the right port on the wall.
+export async function identifyFlash(ip: string, output: 1 | 2 = 1): Promise<void> {
+  const res = await agentFetch(ip, `/identify-flash${outputQuery(output)}`, { method: 'POST' });
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected identify-flash: ${res.status}`);
 }
 
@@ -73,9 +89,10 @@ export async function identifyFlash(ip: string): Promise<void> {
 // pi-player/src/preview.ts) — keeps all hub->Pi traffic on this one well-known
 // port/protocol instead of two. Longer timeout than the other calls here: capturing
 // and JPEG-encoding a full-screen frame on a Pi 3B+ is real work, not just an
-// instant local read.
-export async function preview(ip: string): Promise<Buffer> {
-  const res = await agentFetch(ip, '/preview', undefined, 8000);
+// instant local read. Output-scoped like identifyFlash above — each output runs its
+// own Chromium with its own DevTools port (see preview.ts), so this has to say which.
+export async function preview(ip: string, output: 1 | 2 = 1): Promise<Buffer> {
+  const res = await agentFetch(ip, `/preview${outputQuery(output)}`, undefined, 8000);
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected preview: ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }

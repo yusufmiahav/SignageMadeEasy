@@ -120,7 +120,8 @@ export interface SignageApiClient {
    * or a hub with more than one network interface where the screen and the
    * browser doing the pairing sit on different ones).
    */
-  pairDevice(input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus; hubUrl?: string }): Promise<Device>;
+  /** outputIndex 2 pairs the second output of a dual-output Pi/PC at the same `ip` as an existing output-1 device — see Device.outputIndex. Omitted/1 for every normal pairing. */
+  pairDevice(input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus; hubUrl?: string; outputIndex?: 1 | 2 }): Promise<Device>;
   renameDevice(id: string, name: string): Promise<void>;
   /** Persists a reorder of screens shown under one group (or the standalone/no-group list) on Settings/Home/Schedule — the complete new display order for that one scope, not a global list. */
   reorderDevices(ids: string[]): Promise<void>;

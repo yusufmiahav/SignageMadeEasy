@@ -40,6 +40,15 @@ const VERSION: string | null = (() => {
   }
 })();
 
+// Written by provision.sh only when it detected two connected display outputs AND
+// set up the second one's own kiosk/render loop (see its own comment) — never on a
+// Pi 3B+, which only has one HDMI port to begin with. Read once at module load, same
+// "can't change without a restart anyway" reasoning as VERSION above (changing this
+// means re-provisioning, which always restarts this process). See
+// hub/src/types.ts's Device.dualOutputCapable for how the hub/control app use it.
+const DUAL_OUTPUT_MARKER = process.env.SIGNAGE_DUAL_OUTPUT_MARKER ?? '/opt/signage/dual-output-enabled';
+const DUAL_OUTPUT_CAPABLE = fsSync.existsSync(DUAL_OUTPUT_MARKER);
+
 export interface Diagnostics {
   tempC: number | null;
   /** Raw hex string from `vcgencmd get_throttled`, e.g. "0x50000" — bits 0-3 are current-state (under-voltage/freq-capped/throttled/soft-temp-limit), bits 16-19 are "has happened since boot" versions of the same. */
@@ -53,6 +62,8 @@ export interface Diagnostics {
   playerStartedAt: number;
   /** Plain version number this screen last updated/re-provisioned from — see VERSION above. Null for a screen never updated since this shipped. */
   version: string | null;
+  /** See DUAL_OUTPUT_CAPABLE above. */
+  dualOutputCapable: boolean;
 }
 
 async function measureTemp(): Promise<number | null> {
@@ -92,5 +103,6 @@ export async function collect(): Promise<Diagnostics> {
   return {
     tempC, throttled, uptimeSec: Math.round(os.uptime()), diskFreeMb: disk.freeMb, diskTotalMb: disk.totalMb,
     usbOverrideActive: usbOverride.isActive(), playerStartedAt: PROCESS_STARTED_AT, version: VERSION,
+    dualOutputCapable: DUAL_OUTPUT_CAPABLE,
   };
 }

@@ -498,9 +498,10 @@ interface DeviceRow {
   tempC: number | null; throttled: string | null; uptimeSec: number | null; baseUptimeSec: number; diskFreeMb: number | null; diskTotalMb: number | null;
   forcedPlaylist: string | null; forcedContentId: string | null; blackout: number; defaultPlaylist: string; usbOverrideActive: number;
   playerStartedAt: number | null; version: string | null; offlineAlertsMuted: number;
+  outputIndex: 1 | 2; dualOutputCapable: number;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive, playerStartedAt, version, offlineAlertsMuted';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive, playerStartedAt, version, offlineAlertsMuted, outputIndex, dualOutputCapable';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -604,6 +605,7 @@ function rowToDevice(r: DeviceRow): Device {
     defaultPlaylist: JSON.parse(r.defaultPlaylist), events: eventsForDevice(r.id),
     usbOverrideActive: !!r.usbOverrideActive, updateStatus: currentUpdateStatus(r.id), version: r.version,
     offlineAlertsMuted: !!r.offlineAlertsMuted,
+    outputIndex: r.outputIndex, dualOutputCapable: !!r.dualOutputCapable,
   };
 }
 
@@ -622,21 +624,23 @@ export function getDevice(id: string): Device | null {
   return row ? rowToDevice(row) : null;
 }
 
-export function pairDevice(input: { name: string; ip: string; mac?: string | null; groupId: string | null; locationId?: string | null; status?: DeviceStatus }): Device {
+export function pairDevice(input: { name: string; ip: string; mac?: string | null; groupId: string | null; locationId?: string | null; status?: DeviceStatus; outputIndex?: 1 | 2 }): Device {
   const id = uid('d');
   const lastSeenAt = input.status === 'offline' ? null : Date.now();
   const mac = input.mac ?? null;
   const locationId = input.locationId ?? null;
+  const outputIndex = input.outputIndex ?? 1;
   // Scoped to this device's own group (or the standalone/no-group bucket, via IS —
   // SQLite's null-safe equality — for a null groupId) since sortOrder is only ever
   // compared within that scope; MAX ignores other groups' devices entirely, so a
   // new screen always lands last in ITS list, not last globally.
   const nextOrder = (db.prepare('SELECT COALESCE(MAX(sortOrder), -1) + 1 as n FROM devices WHERE groupId IS ?').get(input.groupId) as { n: number }).n;
-  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, sortOrder) VALUES (?,?,?,?,?,?,?,0,?,?,?)').run(id, input.name, input.ip, mac, input.groupId, locationId, null, 'auto', lastSeenAt, nextOrder);
+  db.prepare('INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, sortOrder, outputIndex) VALUES (?,?,?,?,?,?,?,0,?,?,?,?)').run(id, input.name, input.ip, mac, input.groupId, locationId, null, 'auto', lastSeenAt, nextOrder, outputIndex);
   return {
     id, name: input.name, ip: input.ip, mac, groupId: input.groupId, locationId, announcementId: null, announcementOn: false,
     videoQuality: 'auto', status: statusFor(lastSeenAt), forcedPlaylist: [], forcedContentId: null, blackout: false,
     defaultPlaylist: [], events: [], offlineAlertsMuted: false,
+    outputIndex, dualOutputCapable: false,
   };
 }
 
@@ -807,6 +811,8 @@ export interface HeartbeatDiagnostics {
   playerStartedAt?: number;
   /** See pi-player/src/diagnostics.ts's VERSION and version.ts's HUB_VERSION. */
   version?: string | null;
+  /** See pi-player/src/diagnostics.ts's own comment and types.ts's Device.dualOutputCapable — true only once provision.sh has detected and set up a second physical output (never true for a Pi 3B+, which only has one HDMI port to begin with). */
+  dualOutputCapable?: boolean;
 }
 
 export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnostics): void {
@@ -822,9 +828,10 @@ export function recordHeartbeat(id: string, ip: string, diag?: HeartbeatDiagnost
       db.prepare('UPDATE devices SET baseUptimeSec = baseUptimeSec + ? WHERE id = ?').run(prev.uptimeSec, id);
     }
   }
-  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ?, usbOverrideActive = ?, playerStartedAt = ?, version = ? WHERE id = ?').run(
+  db.prepare('UPDATE devices SET lastSeenAt = ?, ip = ?, tempC = ?, throttled = ?, uptimeSec = ?, diskFreeMb = ?, diskTotalMb = ?, usbOverrideActive = ?, playerStartedAt = ?, version = ?, dualOutputCapable = ? WHERE id = ?').run(
     Date.now(), ip,
     diag?.tempC ?? null, diag?.throttled ?? null, newUptime, diag?.diskFreeMb ?? null, diag?.diskTotalMb ?? null, diag?.usbOverrideActive ? 1 : 0, diag?.playerStartedAt ?? null, diag?.version ?? null,
+    diag?.dualOutputCapable ? 1 : 0,
     id,
   );
   // Resolves an in-progress Update/Re-provision — see markUpdateTriggered's comment.
@@ -1165,8 +1172,8 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   });
 
   const insertDevice = db.prepare(
-    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, baseUptimeSec, sortOrder, offlineAlertsMuted) ' +
-    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedPlaylist,@forcedContentId,@blackout,@defaultPlaylist,@baseUptimeSec,@sortOrder,@offlineAlertsMuted)',
+    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, baseUptimeSec, sortOrder, offlineAlertsMuted, outputIndex) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedPlaylist,@forcedContentId,@blackout,@defaultPlaylist,@baseUptimeSec,@sortOrder,@offlineAlertsMuted,@outputIndex)',
   );
   backup.devices.forEach((device, i) => {
     // Same pre-migration fallback as the group loop above.
@@ -1177,6 +1184,11 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       forcedPlaylist: JSON.stringify(forcedPlaylist), forcedContentId: forcedPlaylist[0] ?? null, blackout: device.blackout ? 1 : 0,
       defaultPlaylist: JSON.stringify(device.defaultPlaylist ?? []),
       offlineAlertsMuted: device.offlineAlertsMuted ? 1 : 0,
+      // dualOutputCapable is NOT restored from the backup — it's live hardware
+      // telemetry (see HeartbeatDiagnostics.dualOutputCapable), not configuration;
+      // it starts false again like any other liveness field and the next heartbeat
+      // fills in the real answer, same reasoning as uptimeSec resetting to NULL below.
+      outputIndex: device.outputIndex ?? 1,
       // uptimeSec itself resets to NULL like the rest of this device's live
       // diagnostics (see this function's own doc comment) until its Pi heartbeats
       // again — but the lifetime total leading up to the backup is real history,

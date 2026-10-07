@@ -38,10 +38,17 @@ export function createApp() {
 
   // The player page polls this locally rather than hitting the hub itself — keeps
   // "talk to the hub" and "render the page" decoupled, and means the page always has
-  // something to show even mid-reconnect.
-  app.get('/state', (_req, res) => {
-    const config = loadConfig();
-    const { state, error } = getCachedState();
+  // something to show even mid-reconnect. Output 2's kiosk window (see
+  // provision.sh's dual-output sway config) polls this exact same route with
+  // ?output=2 — player.js reads its own URL's output param and passes it straight
+  // through (see its own pollOnce). localContent/usbOverride/wifi-hotspot-setup
+  // stay whole-machine/shared below: the same physical Pi either way, so both
+  // outputs seeing the same fallback content or override is the correct behavior,
+  // not an oversight.
+  app.get('/state', (req, res) => {
+    const output = req.query.output === '2' ? 2 : 1;
+    const config = loadConfig(output);
+    const { state, error } = getCachedState(output);
     // Points the page at locally cached media where available (see mediaCache.ts) —
     // falls back to the hub's own URL for anything not downloaded yet, so playback
     // never blocks waiting on a cache warm-up.
@@ -61,7 +68,7 @@ export function createApp() {
       usbOverride: usbOverride.get(),
       // Settings screen's "Identify" button — see identifyFlash.ts. player.js triggers
       // its blink overlay whenever this changes from the previous poll's value.
-      flashToken: identifyFlash.getToken(),
+      flashToken: identifyFlash.getToken(output),
     });
   });
 

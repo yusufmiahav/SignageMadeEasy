@@ -530,6 +530,10 @@ class LocalStoreClient implements SignageApiClient {
       defaultPlaylist: [],
       events: [],
       offlineAlertsMuted: false,
+      // No real Pi in standalone mode to ever report a second output — every
+      // device here is permanently output 1, not dual-output-capable.
+      outputIndex: 1,
+      dualOutputCapable: false,
     };
     this.data.devices.push(device);
     this.persist();

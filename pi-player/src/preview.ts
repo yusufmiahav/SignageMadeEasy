@@ -7,7 +7,12 @@
 // and would need extra packaging just for this.
 import WebSocket from 'ws';
 
-const DEVTOOLS_PORT = 9222;
+// A dual-output unit runs a SECOND Chromium kiosk window for output 2, pinned to
+// its own physical connector (see provision.sh's sway-kiosk.config generation) —
+// it needs its own --remote-debugging-port too, since two separate Chromium
+// processes can't share one. Output 1's port is unchanged from before dual-output
+// existed.
+const DEVTOOLS_PORTS: Record<1 | 2, number> = { 1: 9222, 2: 9223 };
 const CAPTURE_TIMEOUT_MS = 5000;
 
 interface DevtoolsTarget {
@@ -15,8 +20,8 @@ interface DevtoolsTarget {
   webSocketDebuggerUrl: string;
 }
 
-export async function captureScreenshot(): Promise<Buffer> {
-  const listRes = await fetch(`http://localhost:${DEVTOOLS_PORT}/json/list`);
+export async function captureScreenshot(output: 1 | 2 = 1): Promise<Buffer> {
+  const listRes = await fetch(`http://localhost:${DEVTOOLS_PORTS[output]}/json/list`);
   if (!listRes.ok) throw new Error(`DevTools target list failed: ${listRes.status}`);
   const targets = (await listRes.json()) as DevtoolsTarget[];
   // The kiosk is a single full-screen page (see sway-kiosk.config's --kiosk
