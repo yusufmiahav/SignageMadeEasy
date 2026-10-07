@@ -22,6 +22,7 @@ interface HomeScreenProps {
   onForceAnnouncementForDevice: (deviceId: string) => void;
   onOpenBlackoutForDevice: (deviceId: string) => void;
   onMoveDevice: (device: Device) => void;
+  onPairSecondOutput: (device: Device) => void;
   onPickAnnouncement: (device: Device) => void;
   onPreviewContent: (item: LibraryItem) => void;
   advancedDeviceInfo: boolean;
@@ -54,6 +55,7 @@ export function HomeScreen({
   onForceAnnouncementForDevice,
   onOpenBlackoutForDevice,
   onMoveDevice,
+  onPairSecondOutput,
   onPickAnnouncement,
   onPreviewContent,
   advancedDeviceInfo,
@@ -72,6 +74,11 @@ export function HomeScreen({
     setForcedPlaylist, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedPlaylist, setDeviceBlackout, clearUsbOverride,
   } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
+  // "Pair second output" (DeviceCard) only makes sense on output 1 of a unit that
+  // actually reports dual-output hardware, and only until its sibling exists — once
+  // paired, the second output is just another Device row (same ip, outputIndex 2)
+  // with its own card, not a special case of this one's.
+  const hasSecondOutput = (device: Device) => devices.some((d) => d.ip === device.ip && d.outputIndex === 2);
   // A locationId pointing at a Location that no longer exists (e.g. a hand-edited or
   // partial backup import) is treated the same as no locationId at all — otherwise a
   // group/device like that would render in neither its (nonexistent) Location's
@@ -199,6 +206,8 @@ export function HomeScreen({
                 onFlash={flashDevice}
                 onRestart={restartDevice}
                 onMove={onMoveDevice}
+                onPairSecondOutput={onPairSecondOutput}
+                hasSecondOutput={hasSecondOutput(device)}
                 onRemove={removeDevice}
                 onPickAnnouncement={onPickAnnouncement}
                 onToggleAnnouncement={toggleDeviceAnnouncement}
@@ -234,6 +243,8 @@ export function HomeScreen({
           onFlash={flashDevice}
           onRestart={restartDevice}
           onMove={onMoveDevice}
+          onPairSecondOutput={onPairSecondOutput}
+          hasSecondOutput={hasSecondOutput(device)}
           onRemove={removeDevice}
           onPickAnnouncement={onPickAnnouncement}
           onToggleAnnouncement={toggleDeviceAnnouncement}

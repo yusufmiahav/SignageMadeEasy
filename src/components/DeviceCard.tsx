@@ -32,6 +32,9 @@ interface DeviceCardProps {
   onFlash: (device: Device) => void;
   onRestart: (device: Device) => void;
   onMove: (device: Device) => void;
+  /** Opens PairSecondOutputDialog — only rendered for an outputIndex-1 device that reports dualOutputCapable and has no outputIndex-2 sibling yet at the same IP (see HomeScreen's hasSecondOutput). Never shown on a Pi 3B+ or any screen that hasn't reported this via heartbeat. */
+  onPairSecondOutput: (device: Device) => void;
+  hasSecondOutput: boolean;
   onRemove: (id: string) => void;
   onPickAnnouncement: (device: Device) => void;
   onToggleAnnouncement: (id: string) => void;
@@ -69,6 +72,8 @@ export function DeviceCard({
   onFlash,
   onRestart,
   onMove,
+  onPairSecondOutput,
+  hasSecondOutput,
   onRemove,
   onPickAnnouncement,
   onToggleAnnouncement,
@@ -187,6 +192,11 @@ export function DeviceCard({
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Move to another group" onClick={() => onMove(device)}>
             <Icon name="mapPin" size={14} />
           </button>
+          {device.dualOutputCapable && device.outputIndex === 1 && !hasSecondOutput && (
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Pair second output" title="This screen has a second output — pair it to show separate content" onClick={() => onPairSecondOutput(device)}>
+              <Icon name="copy" size={14} />
+            </button>
+          )}
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => onRemove(device.id)}>
             <Icon name="trash" size={14} />
           </button>
@@ -203,6 +213,9 @@ export function DeviceCard({
         >
           {device.ip}
         </a>
+        {device.outputIndex === 2 && (
+          <span className="tag tag-neutral" title="The second output of a dual-output unit — shares its IP with another screen's card">Output 2</span>
+        )}
         {advancedInfo && device.mac && <span className="tag tag-neutral">{device.mac}</span>}
         <span className="tag tag-neutral">{device.status === 'online' ? 'Online' : 'Offline'}</span>
         {device.updateStatus === 'updating' && (

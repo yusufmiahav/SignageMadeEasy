@@ -21,6 +21,7 @@ import { AnnouncementPickerDialog } from './components/dialogs/AnnouncementPicke
 import { ForceAnnouncementDialog } from './components/dialogs/ForceAnnouncementDialog';
 import { AddAnnouncementScheduleDialog } from './components/dialogs/AddAnnouncementScheduleDialog';
 import { MoveDeviceDialog } from './components/dialogs/MoveDeviceDialog';
+import { PairSecondOutputDialog } from './components/dialogs/PairSecondOutputDialog';
 import { ForceContentDialog } from './components/dialogs/ForceContentDialog';
 import { BlackoutDialog } from './components/dialogs/BlackoutDialog';
 import { UploadContentDialog } from './components/dialogs/UploadContentDialog';
@@ -55,6 +56,8 @@ type DialogState =
   | { type: 'configureTfl'; item: LibraryItem }
   | { type: 'announcementPicker'; device: Device }
   | { type: 'moveDevice'; device: Device }
+  /** DeviceCard's "Pair second output" action — only shown for a dualOutputCapable, outputIndex-1 device with no outputIndex-2 sibling yet at the same IP. */
+  | { type: 'pairSecondOutput'; device: Device }
   /** `groupId: null` means the global "force on every screen" action from the Home tab. */
   | { type: 'forceContent'; groupId: string | null }
   | { type: 'forceAnnouncement'; groupId: string | null }
@@ -138,6 +141,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onForceAnnouncementForDevice={(deviceId) => setDialog({ type: 'forceAnnouncementDevice', deviceId })}
             onOpenBlackoutForDevice={(deviceId) => setDialog({ type: 'blackoutDevice', deviceId })}
             onMoveDevice={(device) => setDialog({ type: 'moveDevice', device })}
+            onPairSecondOutput={(device) => setDialog({ type: 'pairSecondOutput', device })}
             onPickAnnouncement={(device) => setDialog({ type: 'announcementPicker', device })}
             onPreviewContent={(item) => setDialog({ type: 'preview', item })}
             advancedDeviceInfo={uiSettings.advancedDeviceInfo}
@@ -252,6 +256,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       )}
       {dialog?.type === 'announcementPicker' && <AnnouncementPickerDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'moveDevice' && <MoveDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
+      {dialog?.type === 'pairSecondOutput' && <PairSecondOutputDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'forceContent' && (
         <ForceContentDialog
           app={app}
