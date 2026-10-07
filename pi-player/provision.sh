@@ -71,6 +71,32 @@ if [[ "$IS_PI" -eq 0 ]] || { [[ -f /proc/device-tree/model ]] && grep -qiE 'rasp
   SUPPORTS_NDI=1
 fi
 
+# Dual-output capability — a Pi 4/5's two micro-HDMI ports, or a PC with two monitors
+# plugged in (a Pi 3B+ has only one HDMI port, so this is never true there). Detected
+# by counting DRM/KMS connectors the GPU driver reports as actually "connected" under
+# /sys/class/drm, not just how many connector nodes exist — the sway config built below
+# launches a second Chromium kiosk window pinned to a real second display, so this needs
+# an actual second monitor present at provision time, not merely board capability for
+# one that might be plugged in later (re-running this script after plugging one in
+# picks it up, same as any other re-provision). Queryable without X/Wayland/any
+# compositor running, same as every other hardware check in this script.
+DUAL_OUTPUT_CONNECTORS=()
+if [[ -d /sys/class/drm ]]; then
+  for f in /sys/class/drm/card*-*/status; do
+    [[ -f "$f" ]] || continue
+    [[ "$(cat "$f" 2>/dev/null)" == "connected" ]] || continue
+    # e.g. /sys/class/drm/card1-HDMI-A-2/status -> HDMI-A-2, which is also exactly
+    # how sway's own `swaymsg -t get_outputs` names this same connector — used
+    # verbatim below in the generated sway config's `move to output <name>`.
+    CONNECTOR_NAME="$(basename "$(dirname "$f")")"
+    DUAL_OUTPUT_CONNECTORS+=("${CONNECTOR_NAME#card*-}")
+  done
+fi
+DUAL_OUTPUT_CAPABLE=0
+if [[ "${#DUAL_OUTPUT_CONNECTORS[@]}" -ge 2 ]]; then
+  DUAL_OUTPUT_CAPABLE=1
+fi
+
 # ---------------------------------------------------------------------------
 log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -410,6 +436,56 @@ fi
 # The sway config (not the systemd unit itself) is where chromium's binary path
 # and flags live — see sway-kiosk.config's own header comment.
 sed "$KIOSK_SED" "$APP_DIR/systemd/sway-kiosk.config" > "$INSTALL_DIR/sway-kiosk.config"
+
+if [[ "$DUAL_OUTPUT_CAPABLE" -eq 1 ]]; then
+  log "Configuring the second output (${DUAL_OUTPUT_CONNECTORS[0]} + ${DUAL_OUTPUT_CONNECTORS[1]}) — see pi-player/README.md's dual-output section"
+  # Appended, never merged into the base sway-kiosk.config above — that file ships
+  # untouched for every single-output install. Pins BOTH windows to an explicit
+  # output rather than leaving output 1 to sway's default placement: with two
+  # monitors connected, which one sway would pick for an unpinned window isn't
+  # something to leave to chance. Matched by title, not app_id/--class — see
+  # app.ts's '/' route for why (Chromium's --class under
+  # --ozone-platform=wayland wasn't confirmed reliable enough to depend on).
+  # Output 1's title is anchored (^...$) so it can't also match output 2's title,
+  # which contains it as a substring ("SignageMadeEasy Player Output 2").
+  #
+  # --user-data-dir is mandatory here, not optional — two Chromium processes
+  # sharing the default profile directory collide on its singleton lock, so the
+  # second `exec` below would either fail to start its own window at all or just
+  # hand its URL to the first process's existing window instead of opening a
+  # second one.
+  SIGNAGE_HOME="$(getent passwd "$SIGNAGE_USER" | cut -d: -f6)"
+  {
+    echo ""
+    echo "# --- Dual-output addendum, appended by provision.sh — see its own comment ---"
+    echo "for_window [title=\"^SignageMadeEasy Player\$\"] move to output ${DUAL_OUTPUT_CONNECTORS[0]}"
+    echo "for_window [title=\"SignageMadeEasy Player Output 2\"] move to output ${DUAL_OUTPUT_CONNECTORS[1]}"
+    echo ""
+    echo "exec /usr/bin/chromium \\"
+    echo "  --user-data-dir=${SIGNAGE_HOME}/.config/chromium-output2 \\"
+    echo "  --kiosk http://localhost:8088/?output=2 \\"
+    echo "  --ozone-platform=wayland \\"
+    echo "  --disable-accelerated-video-decode \\"
+    echo "  --remote-debugging-port=9223 \\"
+    echo "  --remote-debugging-address=0.0.0.0 \\"
+    echo "  --noerrdialogs \\"
+    echo "  --disable-infobars \\"
+    echo "  --disable-session-crashed-bubble \\"
+    echo "  --disable-translate \\"
+    echo "  --no-first-run \\"
+    echo "  --check-for-update-interval=31536000 \\"
+    echo "  --overscroll-history-navigation=0 \\"
+    echo "  --autoplay-policy=no-user-gesture-required"
+  } | sed "$KIOSK_SED" >> "$INSTALL_DIR/sway-kiosk.config"
+  # See pi-player/src/diagnostics.ts's DUAL_OUTPUT_MARKER — only ever created here,
+  # once the second output's own kiosk window above is actually configured.
+  touch "$INSTALL_DIR/dual-output-enabled"
+else
+  # Re-running this script on a unit that lost its second monitor (or never had
+  # dual-output set up) must not leave a stale marker claiming it still does.
+  rm -f "$INSTALL_DIR/dual-output-enabled"
+fi
+
 cp "$APP_DIR/systemd/signage-kiosk.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now signage-player.service

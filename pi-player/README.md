@@ -554,6 +554,37 @@ configured duration (same "Plays for Ns" control as images/clocks) before rotati
 the next item. If the named source isn't currently reachable, the screen just holds
 on the last frame it had (or a black screen if it never connected) until it is.
 
+## Dual-output screens (Pi 4/5 or a PC with two displays)
+
+A Pi 4/5's two micro-HDMI ports, or a PC with two monitors plugged in, can each show
+**independent content** — a completely separate group/schedule/playlist per output, or
+the same content duplicated on both. A Pi 3B+ only has one HDMI port and never offers
+this. There's still exactly one player process and one port (8088) per physical
+unit — the two outputs are told apart by a `?output=2` query string, never a second
+port, and each is paired in the control app as its own Device row.
+
+**Setup**: plug both monitors in *before* running `provision.sh`. It detects actually-
+connected displays via `/sys/class/drm` and, if it finds two, appends a second Chromium
+kiosk window (pinned to the second connector) to the generated `sway-kiosk.config`, then
+writes `/opt/signage/dual-output-enabled`. If you plug in a second monitor after
+already provisioning, re-run `provision.sh` to pick it up. A single-output install's
+`sway-kiosk.config` is completely unaffected by any of this.
+
+Once provisioned, pair the second output from the control app the same way you paired
+the first — it shows up as a second Device at the same IP, with its own group,
+schedule, and force-content/blackout state. The easiest path is to put it in the same
+group as the first output for simple duplication; put it in a different group (or
+leave it standalone) for independent content.
+
+**Known limitation**: native NDI playback (the previous section) is NOT independently
+dual-output-capable in this version — it's a single global playback slot shared by
+both outputs, so if both try to play a live NDI source at the same time, the second
+one to start wins and the first stops. Every other content type (image/video/PDF/
+clock/TfL board/etc.) has no such limit, since each output runs its own independent
+Chromium page. Orientation, display-resolution, and underclock settings also apply to
+the whole physical unit, not per output, since there's only one CPU/GPU/boot
+configuration regardless of how many screens are attached.
+
 ## Local development / testing (not on real Pi hardware)
 
 ```bash

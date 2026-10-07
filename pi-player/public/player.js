@@ -4,6 +4,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.mjs';
 
 const POLL_INTERVAL_MS = 2000;
 
+// Dual-output unit's second Chromium kiosk window is launched against this exact URL
+// (see provision.sh's dual-output sway-kiosk.config addendum) — a single-output screen
+// never has this param, so STATE_URL is just '/state' there, unchanged from before
+// dual-output existed. The window's own distinguishing title (for sway's output
+// targeting) is set server-side instead of here — see app.ts's '/' route — since a
+// title only set by this script after load could lose the race against sway's
+// once-at-map-time for_window matching.
+const STATE_URL = new URLSearchParams(window.location.search).get('output') === '2' ? '/state?output=2' : '/state';
+
 const screens = {
   networkSetup: document.getElementById('network-setup-screen'),
   unpaired: document.getElementById('unpaired-screen'),
@@ -698,7 +707,7 @@ function usbOverrideState(usbOverride) {
 
 async function pollOnce() {
   try {
-    const res = await fetch('/state');
+    const res = await fetch(STATE_URL);
     const data = await res.json();
     const localUrl = data.ip ? `http://${data.ip}:8088/network-setup.html` : null;
 

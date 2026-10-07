@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'node:path';
+import fsSync from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
 import { agentRouter } from './agent.js';
@@ -295,6 +296,25 @@ export function createApp() {
   // Vendored (not CDN-loaded) so PDF playback keeps working with no internet access —
   // the Pi only needs the LAN to reach the hub, matching the rest of this design.
   app.use('/vendor/pdfjs', express.static(path.resolve(__dirname, '../node_modules/pdfjs-dist/build')));
+
+  // Templates <title> from the request's own ?output= BEFORE any JS runs — registered
+  // ahead of the static middleware below so it wins over that middleware's own default
+  // handling of "/". This is how a dual-output unit's second Chromium kiosk window gets
+  // told apart from the first (see provision.sh's dual-output sway-kiosk.config
+  // addendum, which matches on window title since --ozone-platform=wayland left
+  // Chromium's --class flag unconfirmed as reliable). Baking the title into the first
+  // HTML bytes rather than setting document.title from player.js matters because sway's
+  // for_window match happens once, when the window maps — a title only set after the
+  // page's own JS has run could lose that race on a cold-started kiosk. Output 1's title
+  // is unchanged from before dual-output existed, so a single-output install's sway
+  // config (no for_window title rules at all) still works with zero changes.
+  app.get('/', (req, res) => {
+    const indexHtml = fsSync.readFileSync(path.resolve(__dirname, '../public/index.html'), 'utf8');
+    const html = req.query.output === '2'
+      ? indexHtml.replace('<title>SignageMadeEasy Player</title>', '<title>SignageMadeEasy Player Output 2</title>')
+      : indexHtml;
+    res.type('html').send(html);
+  });
 
   app.use(express.static(path.resolve(__dirname, '../public')));
 
