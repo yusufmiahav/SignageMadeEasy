@@ -570,12 +570,26 @@ license-acceptance prompt are easy to get stuck on if you haven't done either be
    ```
 
 5. Build the discovery helper from this repo (`pi-player/native/`) — this one *does*
-   need the SDK's headers, since it's a small C program calling the NDI API directly:
+   need the SDK's headers, since it's a small C program calling the NDI API directly.
+   **If you provisioned normally (no separate `git clone` of your own beforehand),
+   there's no copy of this repo in your home directory to `cd` into** —
+   `provision.sh` always checks this project out to `/opt/signage/src` instead, so
+   that's the path to use regardless of how you first ran `provision.sh` (the
+   one-line `curl | sudo bash` command or a local `sudo ./provision.sh`):
    ```bash
-   cd ~/SignageMadeEasy/pi-player/native   # wherever this repo is checked out on the Pi
-   make NDI_INCLUDE="$HOME/NDI SDK for Linux/include"
+   cd /opt/signage/src/pi-player/native
+   ```
+   That directory stays root-owned (`provision.sh` keeps it that way so it can
+   `git pull` it on future re-runs without ownership conflicts — see its own
+   comments), so the compile step needs `sudo` too here, not just the install
+   step below:
+   ```bash
+   sudo make NDI_INCLUDE="$HOME/NDI SDK for Linux/include"
    sudo make install
    ```
+   (`$HOME` here still means *your* home directory, not root's — your shell
+   substitutes it before `sudo` ever runs, since it's part of the command line
+   you typed, not something `sudo` re-reads from root's own environment.)
    Installs to `/opt/signage/bin/ndi-find` (override with `PREFIX=...` at build time,
    or the `SIGNAGE_NDI_FIND_BIN` env var on `signage-player.service` at runtime, if
    you'd rather put it somewhere else). Test it directly — it should print any
