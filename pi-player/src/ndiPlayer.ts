@@ -48,6 +48,16 @@ function pipelineArgs(ndiSourceName: string): string[] {
     // demuxed file's would. Rendering each frame as it arrives instead of pacing to a
     // clock is the standard fix for this class of live network source.
     'd.video', '!', 'queue', '!', 'videoconvert', '!', 'waylandsink', 'fullscreen=true', 'sync=false',
+    // The audio branch is not optional cosmetic polish — confirmed on real hardware
+    // (a Canon CR-N500 NDI|HX2 source) that ndisrcdemux creating an audio pad with
+    // nothing downstream to consume it fails the WHOLE pipeline with a "not-linked"
+    // Internal data stream error within milliseconds, well before a single video
+    // frame arrives — so a source with no audio track never hit this (nothing to
+    // leave dangling), but any source WITH one went instantly black. Routed to a
+    // real sink rather than a fakesink to match this player's existing behavior for
+    // every other content type — player.js's <video> elements already play with
+    // audio on by default (muted = false).
+    'd.audio', '!', 'queue', '!', 'audioconvert', '!', 'audioresample', '!', 'autoaudiosink',
   ];
 }
 

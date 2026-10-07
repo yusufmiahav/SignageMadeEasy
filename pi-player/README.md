@@ -602,6 +602,71 @@ license-acceptance prompt are easy to get stuck on if you haven't done either be
    Pi 4/5 or x86 device and prints a reminder if either is still missing, but doesn't
    fail the rest of provisioning if they are.
 
+### Troubleshooting: "Video decoder not found" (NDI|HX / NDI|HX2 sources)
+
+A plain, full-bandwidth NDI source works with everything above as-is. Some
+devices — notably PTZ cameras like the Canon CR-N500, and plenty of other
+budget HDMI-to-NDI converters — only ever broadcast the **compressed**
+NDI|HX/HX2 variant (H.264/HEVC) to save bandwidth, never full NDI. If you add
+one of those as a source, the screen shows NDI's own blue-and-white "Video
+decoder not found. Please visit ndi.video/formats" placeholder instead of
+your video.
+
+This is confirmed, on real Pi 5 hardware, to be `libndi.so` failing to
+`dlopen()` a system H.264/HEVC decoder it needs only for this compressed
+case (full NDI never needs it, which is why it doesn't show up otherwise).
+Checked directly against the actual SDK binary (`libndi.so.6.3.2`, NDI SDK
+v6):
+```bash
+strings "$HOME/NDI SDK for Linux/lib/aarch64-rpi4-linux-gnueabi/libndi.so.6.3.2" | grep -i avcodec
+```
+prints `libavcodec.so.61` as the library it's looking for — a newer ffmpeg
+than Raspberry Pi OS Bookworm ships by default (`apt install ffmpeg` there
+gives you `.so.59`, not `.so.61`). The fix is a small, self-contained
+ffmpeg build that produces just that `.so.61` and installs it alongside
+`libndi.so`, without touching or replacing the system's own ffmpeg package:
+
+```bash
+# Build tools (one-time)
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config git
+
+# ffmpeg 7.1 source (a release whose libavcodec SONAME is 61, matching libndi's request)
+cd ~
+git clone --branch n7.1 --depth 1 https://github.com/FFmpeg/FFmpeg.git ffmpeg-ndi-codec
+cd ffmpeg-ndi-codec
+
+# A minimal decode-only build — libndi only calls the raw avcodec_* decode API
+# directly (confirmed via the same `strings` check above), never avformat/
+# avdevice/avfilter, so those are skipped to cut build time.
+./configure \
+  --prefix=/tmp/ffmpeg-ndi-build \
+  --enable-shared \
+  --disable-static \
+  --disable-programs \
+  --disable-doc \
+  --disable-avformat \
+  --disable-avdevice \
+  --disable-avfilter \
+  --disable-network
+
+make -j$(nproc)   # several minutes on a Pi 5
+make install
+
+# Install just the built .so files (does not touch/replace the system ffmpeg package)
+sudo cp -a /tmp/ffmpeg-ndi-build/lib/lib*.so* /usr/local/lib/
+sudo ldconfig
+ldconfig -p | grep -E "libavcodec.so.61|libavutil|libswresample"   # should list all three
+
+sudo systemctl restart signage-player.service
+```
+
+This is a one-time build, and it's local to this one Pi — it isn't part of
+`provision.sh` (building ffmpeg from source on every single Pi, most of
+which will never see an HX-only source, isn't a reasonable default), so
+repeat it on any other screen that specifically needs to display an
+NDI|HX/HX2 source.
+
 ### Adding an NDI source from the control app
 
 Library screen → **Add NDI source**. Either:
