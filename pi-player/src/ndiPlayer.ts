@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
 import { waitForWaylandDisplay, XDG_RUNTIME_DIR } from './waylandDisplay.js';
 
 // Pi 4/5 or an x86 device only (see provision.sh's SUPPORTS_NDI) — not a Pi 3B+. NDI
@@ -15,6 +16,15 @@ const GST_LAUNCH_BIN = process.env.SIGNAGE_GST_LAUNCH_BIN ?? 'gst-launch-1.0';
 const NDI_FIND_BIN = process.env.SIGNAGE_NDI_FIND_BIN ?? '/opt/signage/bin/ndi-find';
 const WAYLAND_WAIT_MS = 10_000;
 const NDI_FIND_TIMEOUT_MS = 4_000;
+// gst-launch-1.0's own stderr (where every GStreamer ERROR/WARNING line we've ever
+// needed to diagnose a real NDI failure actually shows up) — truncated fresh on each
+// spawn, so this always holds just the most recent attempt rather than growing
+// unbounded. Previously silenced entirely (stdio: 'ignore'), which meant every real
+// NDI failure could only ever be diagnosed by reproducing it manually over SSH with
+// the right Wayland env vars — exactly what made the "video decoder not found" /
+// not-linked audio-pad / autoaudiosink-PipeWire / alsasink-device-busy failures each
+// take a live debugging session to even see, instead of a log read.
+const NDI_GST_STDERR_LOG = process.env.SIGNAGE_NDI_GST_STDERR_LOG ?? '/opt/signage/ndi-gst-stderr.log';
 
 interface CurrentPlayback {
   token: number;
@@ -79,10 +89,15 @@ async function spawnProcess(playback: CurrentPlayback): Promise<void> {
     return;
   }
 
+  // 'w' (not 'a') — each spawn attempt starts this log fresh, so it always shows
+  // exactly what the most recent attempt did, not an ever-growing history. Opened
+  // fresh per spawn (not reused across the bounded respawn) for the same reason.
+  const stderrFd = fs.openSync(NDI_GST_STDERR_LOG, 'w');
   const proc = spawn(GST_LAUNCH_BIN, pipelineArgs(playback.ndiSourceName), {
     env: { ...process.env, XDG_RUNTIME_DIR, WAYLAND_DISPLAY: waylandDisplay },
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', stderrFd],
   });
+  fs.closeSync(stderrFd); // the child has its own fd table entry now; this one's done
   playback.proc = proc;
   playback.alive = true;
 
