@@ -4,7 +4,12 @@ import * as store from '../store.js';
 export const settingsRouter = Router();
 
 settingsRouter.get('/', (_req, res) => {
-  res.json({ safetyHold: store.getSafetyHold(), savedHubNetworks: store.listSavedHubNetworks(), offlineAlertMinutes: store.getOfflineAlertMinutes() });
+  res.json({
+    safetyHold: store.getSafetyHold(),
+    savedHubNetworks: store.listSavedHubNetworks(),
+    offlineAlertMinutes: store.getOfflineAlertMinutes(),
+    blackoutAllActive: store.isBlackoutAllActive(),
+  });
 });
 
 // Settings screen's action history — see store.ts's listActionEvents. Lives here
@@ -26,6 +31,19 @@ settingsRouter.patch('/', (req, res) => {
     }
     store.setOfflineAlertMinutes(offlineAlertMinutes);
   }
+  res.status(204).end();
+});
+
+// "Blackout (all screens)" as a toggle — see store.ts's engageBlackoutAll/
+// restoreFromBlackoutAll for why this needs its own endpoint rather than just
+// looping PUT /api/groups/:id/blackout + PUT /api/devices/:id/blackout from the
+// control app (the old client-side-loop approach): only the hub can snapshot
+// everyone's prior state atomically before clobbering it.
+settingsRouter.put('/blackout-all', (req, res) => {
+  const { active } = req.body ?? {};
+  if (typeof active !== 'boolean') return res.status(400).json({ error: 'active must be a boolean' });
+  if (active) store.engageBlackoutAll();
+  else store.restoreFromBlackoutAll();
   res.status(204).end();
 });
 

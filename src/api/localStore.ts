@@ -52,20 +52,38 @@ function save(data: AppData): void {
 // UI consistency with the hub-backed client.
 const SETTINGS_KEY = 'signagemadeeasy.settings.v1';
 
-function loadSettings(): { safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number } {
+interface BlackoutAllSnapshot {
+  groups: Record<string, boolean>;
+  devices: Record<string, boolean>;
+}
+
+interface StoredSettings {
+  safetyHold: boolean;
+  savedHubNetworks: SavedHubNetwork[];
+  offlineAlertMinutes: number;
+  /** null when no "Blackout (all screens)" is currently engaged — see setBlackoutAllActive. */
+  blackoutAllSnapshot: BlackoutAllSnapshot | null;
+}
+
+function loadSettings(): StoredSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number }>;
-      return { safetyHold: parsed.safetyHold ?? true, savedHubNetworks: parsed.savedHubNetworks ?? [], offlineAlertMinutes: parsed.offlineAlertMinutes ?? 15 };
+      const parsed = JSON.parse(raw) as Partial<StoredSettings>;
+      return {
+        safetyHold: parsed.safetyHold ?? true,
+        savedHubNetworks: parsed.savedHubNetworks ?? [],
+        offlineAlertMinutes: parsed.offlineAlertMinutes ?? 15,
+        blackoutAllSnapshot: parsed.blackoutAllSnapshot ?? null,
+      };
     }
   } catch {
     // Fall through to the default below.
   }
-  return { safetyHold: true, savedHubNetworks: [], offlineAlertMinutes: 15 };
+  return { safetyHold: true, savedHubNetworks: [], offlineAlertMinutes: 15, blackoutAllSnapshot: null };
 }
 
-function saveSettings(settings: { safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number }): void {
+function saveSettings(settings: StoredSettings): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
@@ -773,8 +791,9 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   // ---- Settings ----
-  async getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number }> {
-    return loadSettings();
+  async getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number; blackoutAllActive: boolean }> {
+    const settings = loadSettings();
+    return { ...settings, blackoutAllActive: settings.blackoutAllSnapshot != null };
   }
 
   async setSafetyHold(enabled: boolean): Promise<void> {
@@ -787,6 +806,31 @@ class LocalStoreClient implements SignageApiClient {
 
   async setOfflineAlertMinutes(minutes: number): Promise<void> {
     saveSettings({ ...loadSettings(), offlineAlertMinutes: Math.max(0, Math.round(minutes)) });
+  }
+
+  // Mirrors hub/src/store.ts's engageBlackoutAll/restoreFromBlackoutAll — same
+  // snapshot-then-restore reasoning, just against this.data.groups/devices directly
+  // instead of SQL. No real Pi to actually blank in standalone mode, but the groups'/
+  // devices' own blackout fields still drive what the Home screen shows either way.
+  async setBlackoutAllActive(active: boolean): Promise<void> {
+    const settings = loadSettings();
+    if (active) {
+      if (settings.blackoutAllSnapshot) return; // already engaged — don't clobber the real snapshot
+      const snapshot: BlackoutAllSnapshot = {
+        groups: Object.fromEntries(this.data.groups.map((g) => [g.id, g.blackout])),
+        devices: Object.fromEntries(this.data.devices.filter((d) => !d.groupId).map((d) => [d.id, d.blackout])),
+      };
+      for (const group of this.data.groups) group.blackout = true;
+      for (const device of this.data.devices) if (!device.groupId) device.blackout = true;
+      saveSettings({ ...settings, blackoutAllSnapshot: snapshot });
+    } else {
+      const snapshot = settings.blackoutAllSnapshot;
+      if (!snapshot) return;
+      for (const group of this.data.groups) group.blackout = snapshot.groups[group.id] ?? false;
+      for (const device of this.data.devices) if (!device.groupId) device.blackout = snapshot.devices[device.id] ?? false;
+      saveSettings({ ...settings, blackoutAllSnapshot: null });
+    }
+    this.persist();
   }
 
   // ---- Pairing helpers ----

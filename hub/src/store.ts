@@ -883,6 +883,60 @@ export function setOfflineAlertMinutes(minutes: number): void {
   setSetting('offlineAlertMinutes', String(Math.max(0, Math.round(minutes))));
 }
 
+// "Blackout (all screens)" as a toggle — see HomeScreen.tsx's button. The naive
+// version (write `true` to every group/device, then later write `false` to every
+// group/device) loses information: it clobbers whatever a group/device's blackout
+// already was before the bulk action ran, so un-doing it would incorrectly clear a
+// screen that was individually blacked out beforehand. Snapshotting each one's
+// value first means "undo" restores exactly what was there, not just "off".
+interface BlackoutAllSnapshot {
+  groups: Record<string, boolean>;
+  devices: Record<string, boolean>;
+}
+
+export function isBlackoutAllActive(): boolean {
+  return !!getSetting('blackoutAllSnapshot');
+}
+
+// No-op if already active — re-snapshotting over an existing one would overwrite the
+// real pre-blackout state with "everything was already true", which is exactly what
+// a second engage call would otherwise see (since the first call just set it all to
+// true). Reuses setGroupBlackout/setDeviceBlackout rather than writing the columns
+// directly so this keeps recording the same per-group/per-device action-log entries
+// the Settings screen's history already shows for any other blackout change.
+export function engageBlackoutAll(): void {
+  if (isBlackoutAllActive()) return;
+  const snapshot: BlackoutAllSnapshot = {
+    groups: Object.fromEntries(listGroups().map((g) => [g.id, g.blackout])),
+    devices: Object.fromEntries(listDevices().filter((d) => !d.groupId).map((d) => [d.id, d.blackout])),
+  };
+  setSetting('blackoutAllSnapshot', JSON.stringify(snapshot));
+  for (const id of Object.keys(snapshot.groups)) setGroupBlackout(id, true);
+  for (const id of Object.keys(snapshot.devices)) setDeviceBlackout(id, true);
+}
+
+// Restores each group/standalone device to its snapshotted prior value, not a blind
+// `false` — see engageBlackoutAll's own comment for why. A group/device paired or
+// created while the blackout was active has no snapshot entry (it never had a
+// "previous" state to restore), so it's just turned off; one deleted in the meantime
+// is simply absent from listGroups()/listDevices() now and skipped.
+export function restoreFromBlackoutAll(): void {
+  const raw = getSetting('blackoutAllSnapshot');
+  if (!raw) return;
+  let snapshot: BlackoutAllSnapshot;
+  try {
+    snapshot = JSON.parse(raw) as BlackoutAllSnapshot;
+  } catch {
+    snapshot = { groups: {}, devices: {} };
+  }
+  for (const group of listGroups()) setGroupBlackout(group.id, snapshot.groups[group.id] ?? false);
+  for (const device of listDevices()) {
+    if (device.groupId) continue;
+    setDeviceBlackout(device.id, snapshot.devices[device.id] ?? false);
+  }
+  setSetting('blackoutAllSnapshot', '');
+}
+
 export interface SavedHubNetwork {
   id: string;
   name: string;

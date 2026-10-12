@@ -184,8 +184,9 @@ export const httpClient: SignageApiClient = {
   importBackup: (backup) => request<void>('/api/backup/restore', { method: 'POST', ...json(backup) }),
 
   // Settings
-  getSettings: () => request<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number }>('/api/settings'),
+  getSettings: () => request<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number; blackoutAllActive: boolean }>('/api/settings'),
   setSafetyHold: (safetyHold) => request<void>('/api/settings', { method: 'PATCH', ...json({ safetyHold }) }),
   setSavedHubNetworks: (networks) => request<void>('/api/settings/hub-networks', { method: 'PUT', ...json({ networks }) }),
   setOfflineAlertMinutes: (offlineAlertMinutes) => request<void>('/api/settings', { method: 'PATCH', ...json({ offlineAlertMinutes }) }),
+  setBlackoutAllActive: (active) => request<void>('/api/settings/blackout-all', { method: 'PUT', ...json({ active }) }),
 };

@@ -22,6 +22,10 @@ export function useAppState() {
   // Defaults 15 (see hub/src/store.ts's getOfflineAlertMinutes) until the initial
   // load below overwrites it with the hub's real value — see OfflineAlertBanner.tsx.
   const [offlineAlertMinutes, setOfflineAlertMinutesState] = useState(15);
+  // Whether "Blackout (all screens)" is currently engaged — see hub/src/store.ts's
+  // isBlackoutAllActive. Drives HomeScreen's button showing "Blackout (all screens)"
+  // vs. "Restore all screens" (see blackoutAllScreens below).
+  const [blackoutAllActive, setBlackoutAllActiveState] = useState(false);
   // Null in standalone/localStorage mode, or if the hub itself can't tell what
   // commit it's running (see hub/src/version.ts) — either way, Settings just shows
   // each screen's raw version with nothing to compare it to. Fetched once, not
@@ -93,6 +97,7 @@ export function useAppState() {
     setSafetyHoldState(settings.safetyHold);
     setSavedHubNetworksState(settings.savedHubNetworks);
     setOfflineAlertMinutesState(settings.offlineAlertMinutes);
+    setBlackoutAllActiveState(settings.blackoutAllActive);
   }, []);
 
   const setSafetyHold = useCallback(async (enabled: boolean) => {
@@ -444,19 +449,21 @@ export function useAppState() {
     await Promise.all([refreshGroups(), refreshActionLog()]);
   }, [refreshGroups, refreshActionLog]);
 
-  // "Blackout all screens": same client-side-loop-over-the-per-group-call pattern
-  // as forceContentAllScreens/forceAnnouncementAllScreens above — no dedicated bulk
-  // endpoint needed for an emergency action this rare. Also covers standalone screens
-  // (no group) via their own blackout field.
-  const blackoutAllScreens = useCallback(async (blackout: boolean) => {
-    const misc = devices.filter((d) => !d.groupId);
-    await Promise.all([
-      ...groups.map((g) => api.setGroupBlackout(g.id, blackout)),
-      ...misc.map((d) => api.setDeviceBlackout(d.id, blackout)),
-    ]);
+  // "Blackout all screens" as a toggle, not a one-way action — unlike
+  // forceContentAllScreens/forceAnnouncementAllScreens below (which just overwrite N
+  // targets with one new value and have nothing to "undo" back to), turning this off
+  // needs to restore each group's/device's own prior blackout value, not blindly
+  // clear everyone — a screen that was already individually blacked out before this
+  // ran must stay blacked out after. That needs an atomic snapshot taken hub-side
+  // (see hub/src/store.ts's engageBlackoutAll/restoreFromBlackoutAll), so this calls
+  // one dedicated endpoint instead of the client-side-loop-over-per-group-calls
+  // pattern used elsewhere on this screen.
+  const blackoutAllScreens = useCallback(async (active: boolean) => {
+    await api.setBlackoutAllActive(active);
+    setBlackoutAllActiveState(active);
     await Promise.all([refreshGroups(), refreshDevices(), refreshActionLog()]);
-    showToast(blackout ? 'Every screen blacked out' : 'Blackout cleared on every screen');
-  }, [groups, devices, refreshGroups, refreshDevices, refreshActionLog, showToast]);
+    showToast(active ? 'Every screen blacked out' : 'Blackout restored to how it was before');
+  }, [refreshGroups, refreshDevices, refreshActionLog, showToast]);
 
   // Search screen's multi-select toolbar — same client-side-loop-over-the-per-device-
   // call pattern as forceContentAllScreens/blackoutAllScreens above, just scoped to
@@ -784,6 +791,7 @@ export function useAppState() {
     actionLog,
     safetyHold,
     setSafetyHold,
+    blackoutAllActive,
     offlineAlertMinutes,
     setOfflineAlertMinutes,
     savedHubNetworks,

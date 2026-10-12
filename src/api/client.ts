@@ -248,7 +248,7 @@ export interface SignageApiClient {
   // preference: safetyHold needs to be known by every Pi too, and offlineAlertMinutes
   // should alert the same way for everyone looking at this hub, not just whoever
   // configured it).
-  getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number }>;
+  getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number; blackoutAllActive: boolean }>;
   /**
    * Defaults to true (see hub/src/store.ts's getSafetyHold): a Pi already caches its
    * last-resolved content and keeps showing it through a disconnect from the hub.
@@ -263,6 +263,15 @@ export interface SignageApiClient {
    * (unlike safetyHold above). 0 turns alerting off entirely.
    */
   setOfflineAlertMinutes(minutes: number): Promise<void>;
+  /**
+   * "Blackout (all screens)" as a toggle, not a one-way action — `true` snapshots
+   * every group's/standalone device's current blackout value and forces them all on;
+   * `false` restores each one to its snapshotted prior value (not just "off"), so a
+   * screen that was already individually blacked out beforehand stays that way once
+   * the bulk blackout is undone. See hub/src/store.ts's engageBlackoutAll/
+   * restoreFromBlackoutAll.
+   */
+  setBlackoutAllActive(active: boolean): Promise<void>;
 }
 
 // Setting VITE_API_BASE_URL at build time (even to an empty string, for a same-origin

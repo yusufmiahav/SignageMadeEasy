@@ -72,6 +72,7 @@ export function HomeScreen({
   const {
     groups, devices, locations, library, renameDevice, flashDevice, restartDevice, removeDevice, toggleDeviceAnnouncement, setDeviceVideoQuality,
     setForcedPlaylist, setForcedAnnouncement, setGroupBlackout, reorderGroups, setDeviceForcedPlaylist, setDeviceBlackout, clearUsbOverride,
+    blackoutAllActive, blackoutAllScreens,
   } = app;
   const libraryById = new Map(library.map((item) => [item.id, item]));
   // "Pair second output" (DeviceCard) only makes sense on output 1 of a unit that
@@ -277,10 +278,21 @@ export function HomeScreen({
             <Icon name="messageCircle" size={16} />
           </button>
           <button type="button" className="btn btn-warning desktop-only" onClick={onForceAnnouncementAllScreens}>Force announcement (all screens)</button>
-          <button type="button" className="btn btn-warning btn-icon mobile-only" aria-label="Blackout every screen" onClick={onOpenBlackoutAllScreens}>
-            <Icon name="moon" size={16} />
-          </button>
-          <button type="button" className="btn btn-warning desktop-only" onClick={onOpenBlackoutAllScreens}>Blackout (all screens)</button>
+          {blackoutAllActive ? (
+            <>
+              <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Restore every screen" onClick={() => void blackoutAllScreens(false)}>
+                <Icon name="moon" size={16} />
+              </button>
+              <button type="button" className="btn btn-secondary desktop-only" onClick={() => void blackoutAllScreens(false)}>Restore all screens</button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="btn btn-warning btn-icon mobile-only" aria-label="Blackout every screen" onClick={onOpenBlackoutAllScreens}>
+                <Icon name="moon" size={16} />
+              </button>
+              <button type="button" className="btn btn-warning desktop-only" onClick={onOpenBlackoutAllScreens}>Blackout (all screens)</button>
+            </>
+          )}
           <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="Add a location" onClick={onAddLocation}>
             <Icon name="mapPin" size={16} />
           </button>
