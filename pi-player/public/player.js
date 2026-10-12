@@ -121,15 +121,21 @@ async function playPdf(item, myGeneration) {
     const scale = Math.min(window.innerWidth / viewport.width, window.innerHeight / viewport.height);
     const scaledViewport = page.getViewport({ scale });
 
+    // Rendered fully BEFORE it ever touches the visible stage, not after — a complex
+    // page can take a visible moment to paint, and the old order (append a blank
+    // canvas, then render into it) showed that gap as a flash of the stage's black
+    // background through the still-empty canvas on every single page turn. Same
+    // "don't show it until it's ready" principle preloadUpcoming() already applies to
+    // image items, just applied per-page here instead of per-item.
     const canvas = document.createElement('canvas');
     canvas.width = scaledViewport.width;
     canvas.height = scaledViewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledViewport }).promise;
+    if (myGeneration !== generation) return;
+
     teardownStage();
     if (myGeneration !== generation) return;
     stage.appendChild(canvas);
-
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledViewport }).promise;
-    if (myGeneration !== generation) return;
 
     await new Promise((resolve) => {
       advanceTimer = setTimeout(resolve, perPageSeconds * 1000);
