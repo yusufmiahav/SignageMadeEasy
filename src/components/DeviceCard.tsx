@@ -121,6 +121,7 @@ export function DeviceCard({
         {device.forcedPlaylist.length > 0 ? (
           <>
             <span className="tag tag-accent">Forced: {forcedContentName ?? '—'}</span>
+            <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onForceContent(device.id)}>Edit</button>
             <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => onStopForcedContent(device.id)}>Stop</button>
           </>
         ) : (
