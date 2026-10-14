@@ -1,9 +1,47 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { DialogShell } from './DialogShell';
 import { Icon } from '../icons/Icon';
+import { QrScanner } from '../QrScanner';
 import type { AppState } from '../../hooks/useAppState';
 
 type PairMode = 'scan' | 'qr' | 'manual';
+
+const NO_GROUP = '__none__';
+const LAST_GROUP_KEY = 'signagemadeeasy.lastPairLocation';
+
+function lastPairedGroup(): string {
+  try {
+    return localStorage.getItem(LAST_GROUP_KEY) ?? NO_GROUP;
+  } catch {
+    return NO_GROUP;
+  }
+}
+
+function rememberPairedGroup(groupId: string): void {
+  try {
+    localStorage.setItem(LAST_GROUP_KEY, groupId);
+  } catch {
+    // Best-effort — next pairing just won't default to this choice.
+  }
+}
+
+const CUSTOM_HUB_NETWORK = '__custom__';
+
+// Display-only — pulls a `a.b.c` /24 prefix out of the current hub-address field so
+// the "Scanning…" status names the real subnet instead of a stale hardcoded one.
+// Returns null for anything that isn't a dotted-quad host (a domain name); the scan
+// itself still goes ahead either way, this just can't describe it as precisely.
+function subnetPrefixForDisplay(input: string): string | null {
+  let host = input.trim();
+  try {
+    host = new URL(input).hostname;
+  } catch {
+    host = host.split(':')[0];
+  }
+  const octets = host.split('.');
+  if (octets.length < 3 || !octets.slice(0, 3).every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255)) return null;
+  return octets.slice(0, 3).join('.');
+}
 
 interface PairDeviceDialogProps {
   app: AppState;
@@ -11,26 +49,64 @@ interface PairDeviceDialogProps {
 }
 
 export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
-  const { groups, addGroup, pairDevice, scanNetwork, showToast } = app;
-  const [groupId, setGroupId] = useState(groups[0]?.id ?? '__new__');
+  const { groups, locations, addGroup, pairDevice, scanNetwork, showToast, savedHubNetworks } = app;
+  // Remembers whatever was picked last time (including "no group") rather than
+  // always defaulting to the first group — a group shouldn't be forced on a screen
+  // just because it's the first one in the list; "no group, assign later" is the
+  // actual default until someone chooses something else.
+  const [groupId, setGroupId] = useState(() => {
+    const last = lastPairedGroup();
+    return last === NO_GROUP || groups.some((g) => g.id === last) ? last : NO_GROUP;
+  });
   const [newGroupName, setNewGroupName] = useState('');
+  // Only meaningful for a standalone screen (no group chosen above) — see
+  // Device.locationId's comment; purely organizational, same as the group picker's
+  // "+ New group" option but for filing this screen under a Location instead.
+  const [locationId, setLocationId] = useState<string>('');
   const [mode, setMode] = useState<PairMode>('scan');
   const [scanning, setScanning] = useState(false);
   const [discovered, setDiscovered] = useState<{ id: string; name: string; ip: string }[]>([]);
   const [manualIp, setManualIp] = useState('');
+  // Which address this screen is told to poll from now on — the hub otherwise
+  // guesses from whatever host this browser used to reach it, which is wrong
+  // whenever that's not an address the screen itself can reach: pairing remotely
+  // (a tunnel/VPN) while the hub and screen are genuinely on one LAN, or a hub with
+  // more than one fixed network address where different screens sit on different
+  // ones. Pre-filled with this browser's own address as a reasonable starting
+  // guess — correct for same-network pairing, needs overriding otherwise.
+  const [hubUrl, setHubUrl] = useState(() => window.location.origin);
+  // Once one or more networks are saved (Settings → Network), the hub-address field
+  // above becomes a dropdown of them instead of a plain text box — defaulting to
+  // whichever saved network matches this browser's own current address, or to the
+  // "+ Custom address" option (which reveals the same free-text input as before)
+  // when none match. No saved networks at all: skip the dropdown entirely and keep
+  // the original always-editable, autofilled-from-this-connection text box.
+  const [hubNetworkSelection, setHubNetworkSelection] = useState(() => {
+    const match = savedHubNetworks.find((n) => n.url === window.location.origin);
+    return match ? match.id : CUSTOM_HUB_NETWORK;
+  });
   // Pairing can take a few seconds when the target IP is unreachable (the hub's own
   // identify() call waits out a timeout before giving up and pairing offline — see
   // hub/src/piAgent.ts) - most noticeable trying to pair a screen on a separate,
   // unroutable IP network. Without this the button just sits there with no feedback,
   // which reads as the UI having hung rather than as a normal, if slow, wait.
   const [pairingIp, setPairingIp] = useState<string | null>(null);
+  // QrScanner calls onScan on every frame the code is still in view, not just once —
+  // this ref (synchronous, unlike the pairingIp state) stops a burst of frames
+  // decoded before the first pairFound() call's state update lands from firing
+  // pairDevice() more than once for the same scan.
+  const qrScanLockRef = useRef(false);
 
   const isNewGroup = groupId === '__new__';
 
-  const resolveGroupId = async (): Promise<string> => {
-    if (!isNewGroup) return groupId;
-    const group = await addGroup(newGroupName);
-    return group.id;
+  const resolveGroupId = async (): Promise<string | null> => {
+    if (isNewGroup) {
+      const group = await addGroup(newGroupName);
+      rememberPairedGroup(group.id);
+      return group.id;
+    }
+    rememberPairedGroup(groupId);
+    return groupId === NO_GROUP ? null : groupId;
   };
 
   const changeMode = (m: PairMode) => {
@@ -42,7 +118,11 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   const startScan = () => {
     setScanning(true);
     setDiscovered([]);
-    scanNetwork().then((found) => {
+    // Passes whatever hub address is currently selected/entered as a subnet hint —
+    // the hub unions its own auto-detected subnets with this one, so a genuinely
+    // multi-homed hub or a remote-pairing session still finds displays on the
+    // network this screen is actually meant to reach.
+    scanNetwork(hubUrl).then((found) => {
       setScanning(false);
       setDiscovered(found);
     });
@@ -52,7 +132,7 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     setPairingIp(found.ip);
     try {
       const gid = await resolveGroupId();
-      await pairDevice({ name: found.name, ip: found.ip, groupId: gid });
+      await pairDevice({ name: found.name, ip: found.ip, groupId: gid, locationId: locationId || null, hubUrl: hubUrl.trim() || undefined });
       showToast(`Paired ${found.name}`);
       onClose();
     } catch (err) {
@@ -62,9 +142,12 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     }
   };
 
-  const simulateQrScan = () => {
-    const ip = `192.168.1.${20 + Math.floor(Math.random() * 200)}`;
-    void pairFound({ id: 'qr', name: 'Scanned Display', ip });
+  const handleQrScan = (ip: string) => {
+    if (qrScanLockRef.current) return;
+    qrScanLockRef.current = true;
+    void pairFound({ id: 'qr', name: 'Scanned Display', ip }).finally(() => {
+      qrScanLockRef.current = false;
+    });
   };
 
   const connectManual = async () => {
@@ -72,7 +155,7 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     setPairingIp(manualIp);
     try {
       const gid = await resolveGroupId();
-      await pairDevice({ name: 'Display', ip: manualIp, groupId: gid });
+      await pairDevice({ name: 'Display', ip: manualIp, groupId: gid, locationId: locationId || null, hubUrl: hubUrl.trim() || undefined });
       showToast(`Connected to ${manualIp}`);
       onClose();
     } catch (err) {
@@ -85,18 +168,77 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
   return (
     <DialogShell title="Add a screen" onClose={onClose}>
       <div className="field">
-        <label htmlFor="pair-location">Location</label>
-        <select className="input" id="pair-location" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+        <label htmlFor="pair-group">Group</label>
+        <select className="input" id="pair-group" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+          <option value={NO_GROUP}>No group (can be assigned later)</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>{g.name}</option>
           ))}
-          <option value="__new__">+ New location</option>
+          <option value="__new__">+ New group</option>
         </select>
       </div>
       {isNewGroup && (
         <div className="field">
-          <label htmlFor="new-loc-name">New location name</label>
-          <input className="input" id="new-loc-name" placeholder="e.g. Reception" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+          <label htmlFor="new-loc-name">New group name</label>
+          <input className="input" id="new-loc-name" placeholder="e.g. Lobby screens" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+        </div>
+      )}
+      {groupId === NO_GROUP && locations.length > 0 && (
+        <div className="field">
+          <label htmlFor="pair-location">Location</label>
+          <select className="input" id="pair-location" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+            <option value="">No location</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      {savedHubNetworks.length > 0 ? (
+        <div className="field">
+          <label htmlFor="pair-hub-network">Hub address for this screen</label>
+          <select
+            className="input"
+            id="pair-hub-network"
+            value={hubNetworkSelection}
+            onChange={(e) => {
+              const value = e.target.value;
+              setHubNetworkSelection(value);
+              if (value !== CUSTOM_HUB_NETWORK) {
+                const network = savedHubNetworks.find((n) => n.id === value);
+                if (network) setHubUrl(network.url);
+              }
+            }}
+          >
+            {savedHubNetworks.map((n) => (
+              <option key={n.id} value={n.id}>{n.name} ({n.url})</option>
+            ))}
+            <option value={CUSTOM_HUB_NETWORK}>+ Custom address</option>
+          </select>
+          {hubNetworkSelection === CUSTOM_HUB_NETWORK && (
+            <input
+              className="input"
+              style={{ marginTop: 6 }}
+              value={hubUrl}
+              onChange={(e) => setHubUrl(e.target.value)}
+              placeholder="http://192.168.1.47:4000"
+            />
+          )}
+          <p className="text-muted" style={{ fontSize: 11, margin: '2px 0 0' }}>
+            It needs to be one this specific screen can actually reach, not just one you can.
+            Manage the saved list under Settings → Network.
+          </p>
+        </div>
+      ) : (
+        <div className="field">
+          <label htmlFor="pair-hub-url">Hub address for this screen</label>
+          <input className="input" id="pair-hub-url" value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} />
+          <p className="text-muted" style={{ fontSize: 11, margin: '2px 0 0' }}>
+            Auto-filled from your current connection. Change this if you're pairing remotely (a
+            tunnel/VPN) or this hub has more than one network address — it needs to be one this
+            specific screen can actually reach, not just one you can. Save it under Settings →
+            Network to pick it from a dropdown next time.
+          </p>
         </div>
       )}
 
@@ -116,7 +258,12 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
       {mode === 'scan' && scanning && (
         <div style={{ textAlign: 'center', padding: '20px 0', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
           <div className="scan-pulse" />
-          <p className="text-muted" style={{ margin: 0 }}>Searching 192.168.1.0/24…</p>
+          <p className="text-muted" style={{ margin: 0 }}>
+            {(() => {
+              const prefix = subnetPrefixForDisplay(hubUrl);
+              return prefix ? `Searching ${prefix}.0/24…` : 'Searching your network…';
+            })()}
+          </p>
         </div>
       )}
       {mode === 'scan' && !scanning && discovered.length > 0 && (
@@ -138,16 +285,10 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
 
       {mode === 'qr' && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '6px 0' }}>
-          <div className="qr-viewfinder">
-            <span className="qr-corner tl" />
-            <span className="qr-corner tr" />
-            <span className="qr-corner bl" />
-            <span className="qr-corner br" />
-          </div>
-          <p className="text-muted" style={{ margin: 0, textAlign: 'center', fontSize: 13 }}>Point your camera at the code shown on the display when it boots.</p>
-          <button type="button" className="btn btn-secondary" disabled={pairingIp !== null} onClick={simulateQrScan}>
-            {pairingIp !== null ? 'Pairing…' : 'Simulate scan'}
-          </button>
+          <QrScanner onScan={handleQrScan} />
+          <p className="text-muted" style={{ margin: 0, textAlign: 'center', fontSize: 13 }}>
+            {pairingIp !== null ? 'Pairing…' : 'Point your camera at the code shown on the display when it boots.'}
+          </p>
         </div>
       )}
 

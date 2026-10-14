@@ -1,10 +1,23 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
-import type { AppState } from '../hooks/useAppState';
-import type { Backup } from '../api/types';
+import type { AppState, UpdateResult } from '../hooks/useAppState';
+import type { Theme } from '../hooks/useTheme';
+import type { Backup, Device, Group, SavedHubNetwork } from '../api/types';
+import { copyText } from '../utils/clipboard';
+import { authGateEnabled, logout } from '../api/auth';
 
 interface SettingsScreenProps {
   app: AppState;
+  onLogout: () => void;
+  theme: Theme;
+  onSetTheme: (theme: Theme) => void;
+  advancedDeviceInfo: boolean;
+  onSetAdvancedDeviceInfo: (value: boolean) => void;
+  hideAnnouncementRow: boolean;
+  onSetHideAnnouncementRow: (value: boolean) => void;
+  onOpenDevicePreview: (device: Device) => void;
+  onOpenDeviceUpdate: (device: Device) => void;
+  onOpenUpdateResults: (results: UpdateResult[], kind: 'update' | 'reprovision' | 'restart') => void;
 }
 
 function isBackup(value: unknown): value is Backup {
@@ -13,22 +26,145 @@ function isBackup(value: unknown): value is Backup {
   return Array.isArray(v.library) && Array.isArray(v.groups) && Array.isArray(v.devices);
 }
 
-export function SettingsScreen({ app }: SettingsScreenProps) {
-  const { groups, devices, renameGroup, deleteGroup, showToast, exportBackup, importBackup } = app;
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+export function SettingsScreen({
+  app,
+  onLogout,
+  theme,
+  onSetTheme,
+  advancedDeviceInfo,
+  onSetAdvancedDeviceInfo,
+  hideAnnouncementRow,
+  onSetHideAnnouncementRow,
+  onOpenDevicePreview,
+  onOpenDeviceUpdate,
+  onOpenUpdateResults,
+}: SettingsScreenProps) {
+  const {
+    groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation, setDeviceIp,
+    reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
+    safetyHold, setSafetyHold, offlineAlertMinutes, setOfflineAlertMinutes, setDeviceOfflineAlertsMuted, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, reprovisionAllDevices, restartAllDevices, hubVersion, updateLog, actionLog,
+  } = app;
+  const mutedDevices = devices.filter((d) => d.offlineAlertsMuted);
+  const [offlineAlertDraft, setOfflineAlertDraft] = useState(String(offlineAlertMinutes));
+  useEffect(() => setOfflineAlertDraft(String(offlineAlertMinutes)), [offlineAlertMinutes]);
+  // 0 is how "disabled" is actually stored (see hub/src/store.ts's getOfflineAlertMinutes)
+  // — this just remembers the last real threshold so flipping the toggle back on
+  // restores it instead of landing on 0 again. Not persisted; worst case (a reload
+  // between turning it off and back on) just falls back to the 15-minute default.
+  const [lastOfflineAlertMinutes, setLastOfflineAlertMinutes] = useState(offlineAlertMinutes > 0 ? offlineAlertMinutes : 15);
+  useEffect(() => {
+    if (offlineAlertMinutes > 0) setLastOfflineAlertMinutes(offlineAlertMinutes);
+  }, [offlineAlertMinutes]);
+  const offlineAlertsEnabled = offlineAlertMinutes > 0;
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [hubNetworkDrafts, setHubNetworkDrafts] = useState<SavedHubNetwork[]>(savedHubNetworks);
+  useEffect(() => setHubNetworkDrafts(savedHubNetworks), [savedHubNetworks]);
+  const [newNetworkName, setNewNetworkName] = useState('');
+  const [newNetworkUrl, setNewNetworkUrl] = useState('');
+  const updateNetworkDraft = (id: string, field: 'name' | 'url', value: string) =>
+    setHubNetworkDrafts((prev) => prev.map((n) => (n.id === id ? { ...n, [field]: value } : n)));
+  const commitNetworkDrafts = () => void setSavedHubNetworks(hubNetworkDrafts);
+  const removeNetwork = (id: string) => {
+    const next = hubNetworkDrafts.filter((n) => n.id !== id);
+    setHubNetworkDrafts(next);
+    void setSavedHubNetworks(next);
+  };
+  const addNetwork = () => {
+    if (!newNetworkName.trim() || !newNetworkUrl.trim()) return;
+    const next = [...hubNetworkDrafts, { id: crypto.randomUUID(), name: newNetworkName.trim(), url: newNetworkUrl.trim() }];
+    setHubNetworkDrafts(next);
+    void setSavedHubNetworks(next);
+    setNewNetworkName('');
+    setNewNetworkUrl('');
+  };
+  const [editing, setEditing] = useState<{ id: string; kind: 'group' | 'device' | 'location' } | null>(null);
   const [editingName, setEditingName] = useState('');
+  // Device-only — a group/location has no IP of its own. Lets a screen whose IP
+  // drifted (no DHCP reservation) or was re-flashed/factory-reset be pointed
+  // back at its existing configuration instead of needing a fresh re-pair —
+  // see app/useAppState.ts's setDeviceIp comment.
+  const [editingIp, setEditingIp] = useState('');
+  // Groups/screens filed under a Location render inside that Location's own section
+  // below instead of at the top level — same split as HomeScreen.tsx. A locationId
+  // pointing at a since-deleted Location (e.g. a hand-edited backup import) is
+  // treated as unfiled too, so it doesn't silently disappear from both buckets.
+  const locationIds = new Set(locations.map((l) => l.id));
+  const isUnfiled = (locationId: string | null) => !locationId || !locationIds.has(locationId);
+  const topLevelGroups = groups.filter((g) => isUnfiled(g.locationId));
+  const fullyUnassignedDevices = devices.filter((d) => !d.groupId && isUnfiled(d.locationId));
   const [restoring, setRestoring] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [newLocationName, setNewLocationName] = useState('');
+  const addNewLocation = async () => {
+    if (!newLocationName.trim()) return;
+    const location = await addLocation(newLocationName);
+    showToast(`Added ${location.name}`);
+    setNewLocationName('');
+  };
+  const moveLocation = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= locations.length) return;
+    const reordered = [...locations];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    void reorderLocations(reordered.map((l) => l.id));
+  };
+
+  // Batch-move: select screens across any group (or the fully-unassigned list) and
+  // move them all to one target at once — same underlying moveDevice as the
+  // single-screen move arrows/dialog, just applied to the whole selection in one go.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [moveTarget, setMoveTarget] = useState('');
+  const [newGroupName, setNewGroupName] = useState('');
+  const isNewGroupTarget = moveTarget === '__new__';
+  // Separate batch action from the group move above — filing several screens under
+  // one Location at once is the main "import multiple screens onto a location" use
+  // case, and is independent of which group (if any) each one is in.
+  const [locationTarget, setLocationTarget] = useState('');
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setMoveTarget('');
+    setNewGroupName('');
+    setLocationTarget('');
+  };
+  const moveSelected = async () => {
+    if (!moveTarget) return;
+    let targetId: string | null = moveTarget === '__none__' ? null : moveTarget;
+    if (isNewGroupTarget) {
+      if (!newGroupName.trim()) return;
+      const group = await addGroup(newGroupName);
+      targetId = group.id;
+    }
+    const ids = [...selectedIds];
+    await Promise.all(ids.map((id) => moveDevice(id, targetId)));
+    showToast(`Moved ${ids.length} screen${ids.length === 1 ? '' : 's'}`);
+    exitSelectMode();
+  };
+  const fileSelectedInLocation = async () => {
+    if (!locationTarget) return;
+    const targetId = locationTarget === '__none__' ? null : locationTarget;
+    const ids = [...selectedIds];
+    await Promise.all(ids.map((id) => setDeviceLocation(id, targetId)));
+    showToast(`Filed ${ids.length} screen${ids.length === 1 ? '' : 's'}`);
+    exitSelectMode();
+  };
 
   const devicesWithMac = devices.filter((d): d is typeof d & { mac: string } => !!d.mac);
   const copyMacAddresses = async () => {
-    const text = devicesWithMac.map((d) => `${d.name}\t${d.mac}`).join('\n');
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast(`Copied ${devicesWithMac.length} MAC address${devicesWithMac.length === 1 ? '' : 'es'}`);
-    } catch {
-      showToast('Could not copy — clipboard access denied');
-    }
+    const text = devicesWithMac
+      .map((d) => `(Screen Name: "${d.name}" - IP: "${d.ip}" - MAC: "${d.mac}")`)
+      .join(',');
+    const ok = await copyText(text);
+    showToast(ok ? `Copied ${devicesWithMac.length} MAC address${devicesWithMac.length === 1 ? '' : 'es'}` : 'Could not copy — clipboard access denied');
   };
 
   const downloadBackup = async () => {
@@ -68,13 +204,253 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
     }
   };
 
-  const startEdit = (id: string, name: string) => {
-    setEditingGroupId(id);
+  const startEdit = (id: string, name: string, kind: 'group' | 'device' | 'location', ip?: string) => {
+    setEditing({ id, kind });
     setEditingName(name);
+    setEditingIp(ip ?? '');
   };
   const save = () => {
-    if (editingGroupId) renameGroup(editingGroupId, editingName);
-    setEditingGroupId(null);
+    if (editing) {
+      if (editing.kind === 'group') renameGroup(editing.id, editingName);
+      else if (editing.kind === 'location') void renameLocation(editing.id, editingName);
+      else {
+        renameDevice(editing.id, editingName);
+        const device = devices.find((d) => d.id === editing.id);
+        const trimmedIp = editingIp.trim();
+        // Pushes even when trimmedIp === device.ip — see api/client.ts's
+        // setDeviceIp comment: that's also how a stale hubUrl on the Pi gets
+        // force-corrected, since the IP it's stored under may not have
+        // changed at all.
+        if (device && trimmedIp) void setDeviceIp(device, trimmedIp);
+      }
+    }
+    setEditing(null);
+  };
+
+  // `scopeDevices` is one group's (or the fully-unassigned list's) screens in their
+  // current display order — reorderDevices expects the complete reordered set for
+  // that one scope, so this swaps within the scope's own id list and sends the whole
+  // thing back.
+  const moveDeviceInScope = (scopeDevices: Device[], deviceId: string, direction: 'up' | 'down') => {
+    const idx = scopeDevices.findIndex((d) => d.id === deviceId);
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || swapWith < 0 || swapWith >= scopeDevices.length) return;
+    const ids = scopeDevices.map((d) => d.id);
+    [ids[idx], ids[swapWith]] = [ids[swapWith], ids[idx]];
+    void reorderDevices(ids);
+  };
+
+  // Shared row renderer for a screen nested under its group (or the fully-unassigned
+  // list) — `scope` is that one group's/list's screens in display order, used both to
+  // know whether the up/down arrows are at a boundary and as the reorder payload.
+  // `showLocationPicker` only applies to a standalone screen (no group of its own) —
+  // a grouped screen's location comes from its group instead, see Device.locationId.
+  const renderScreenRow = (device: Device, scope: Device[], idx: number, showLocationPicker = false) => {
+    const isEditing = editing?.kind === 'device' && editing.id === device.id;
+    return (
+      <div
+        key={device.id}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px', borderTop: '1px solid var(--color-divider)', flexWrap: 'wrap' }}
+      >
+        {selectMode && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${device.name}`}
+            checked={selectedIds.has(device.id)}
+            onChange={() => toggleSelect(device.id)}
+          />
+        )}
+        {isEditing ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 140px' }}>
+            <input
+              className="input"
+              value={editingName}
+              onChange={(e) => setEditingName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              autoFocus
+            />
+            {/* No DHCP reservation, or the Pi was re-flashed/factory-reset and got a
+                fresh lease — saving a new IP here re-links this existing device's
+                config to whatever's at that address instead of needing a re-pair.
+                Saving the SAME IP still re-pushes it, which is also how a stale
+                hubUrl on the Pi gets force-corrected. See api/client.ts's
+                setDeviceIp comment for the full story. */}
+            <input
+              className="input"
+              placeholder="IP address"
+              value={editingIp}
+              onChange={(e) => setEditingIp(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              style={{ fontSize: 11 }}
+            />
+          </div>
+        ) : (
+          // A fixed flex-basis (rather than plain flex: 1) so a narrow row wraps this
+          // whole name block onto its own line instead of squeezing it thin enough
+          // that the device's own name wraps mid-word around the trailing controls.
+          <div style={{ flex: '1 1 140px' }}>
+            <div style={{ fontSize: 13 }}>{device.name}</div>
+            {/* The Update/Re-provision buttons below used to leave no lasting sign
+                anything had happened once their initial toast faded — this is the
+                one place both buttons live, so it's the natural spot for a status
+                that sticks around until the hub confirms the screen actually
+                restarted (or gives up — see hub/src/store.ts's markUpdateTriggered).
+                Falls back to plain Online/Offline the rest of the time — e.g. right
+                after editing a screen's IP (see startEdit's own comment above), this
+                is the only place that shows whether it actually came back. */}
+            {device.updateStatus === 'updating' ? (
+              <div style={{ fontSize: 11, color: 'var(--color-accent-800)' }} title="Pulling the latest code and restarting — can take up to a minute, longer for a re-provision/reboot">Updating…</div>
+            ) : device.updateStatus === 'done' ? (
+              <div className="text-muted" style={{ fontSize: 11 }}>Updated</div>
+            ) : device.updateStatus === 'failed' ? (
+              <div style={{ fontSize: 11, color: 'var(--color-danger, #c0392b)' }} title="This screen hasn't come back since an update/re-provision was triggered — check it over SSH">Update may have failed</div>
+            ) : device.status === 'online' ? (
+              <div className="text-muted" style={{ fontSize: 11 }}>Online</div>
+            ) : (
+              <div style={{ fontSize: 11, color: 'var(--color-danger, #c0392b)' }} title={device.lastSeenAt ? `Last heard from ${new Date(device.lastSeenAt).toLocaleString()}` : "Hasn't sent a heartbeat yet"}>Offline</div>
+            )}
+            {/* Compares this screen's last-reported version against the hub's own
+                (see app/client.ts's getHubVersion comment) — lets you spot screens
+                that haven't picked up the latest code without having to update
+                every screen "just in case." Omitted entirely for a screen that's
+                never reported a version (not updated since this shipped) or when
+                the hub itself can't tell its own version. */}
+            {device.version && hubVersion && device.version !== hubVersion ? (
+              <div style={{ fontSize: 11, color: 'var(--color-accent-800)' }} title={`This screen is on ${device.version}; the hub is on ${hubVersion}`}>Update available ({device.version})</div>
+            ) : device.version ? (
+              <div className="text-muted" style={{ fontSize: 11 }}>v{device.version}</div>
+            ) : null}
+          </div>
+        )}
+        {showLocationPicker && !selectMode && !isEditing && (
+          <select
+            className="input"
+            style={{ width: 'auto', fontSize: 11, padding: '2px 4px' }}
+            value={device.locationId ?? ''}
+            onChange={(e) => void setDeviceLocation(device.id, e.target.value || null)}
+            aria-label={`Location for ${device.name}`}
+          >
+            <option value="">No location</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+        )}
+        {selectMode ? null : isEditing ? (
+          <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
+            <Icon name="check" size={13} />
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon"
+              aria-label="Move up"
+              disabled={idx === 0}
+              onClick={() => moveDeviceInScope(scope, device.id, 'up')}
+            >
+              <Icon name="chevronUp" size={13} />
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon"
+              aria-label="Move down"
+              disabled={idx === scope.length - 1}
+              onClick={() => moveDeviceInScope(scope, device.id, 'down')}
+            >
+              <Icon name="chevronDown" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Identify" title="Blink this screen's display" onClick={() => void flashDevice(device)}>
+              <Icon name="lightbulb" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Preview" title="See what's currently on this screen" onClick={() => onOpenDevicePreview(device)}>
+              <Icon name="eye" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Restart" title="Reboot this screen" onClick={() => void restartDevice(device)}>
+              <Icon name="restart" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Update" title="Update or re-provision this screen" onClick={() => onOpenDeviceUpdate(device)}>
+              <Icon name="download" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Edit name or IP" title="Rename, or change this screen's saved IP address" onClick={() => startEdit(device.id, device.name, 'device', device.ip)}>
+              <Icon name="pencil" size={13} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeDevice(device.id)}>
+              <Icon name="trash" size={13} />
+            </button>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // Shared row renderer for a group, nested under its Location (or top-level) — shows
+  // its own screens via renderScreenRow and a Location picker to file/refile it.
+  const renderGroupRow = (group: Group) => {
+    const screens = devices.filter((d) => d.groupId === group.id);
+    const isEditing = editing?.kind === 'group' && editing.id === group.id;
+    const cannotDelete = screens.length > 0;
+    return (
+      <div key={group.id}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', flexWrap: 'wrap' }}>
+          {isEditing ? (
+            <input
+              className="input"
+              style={{ flex: '1 1 140px' }}
+              value={editingName}
+              onChange={(e) => setEditingName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              autoFocus
+            />
+          ) : (
+            // A fixed flex-basis (rather than plain flex: 1) so a narrow row wraps this
+            // whole name block onto its own line instead of squeezing it thin enough
+            // that the group's own name wraps mid-word around the trailing controls.
+            <div style={{ flex: '1 1 140px' }}>
+              <div style={{ fontSize: 13 }}>{group.name}</div>
+              <div className="text-muted" style={{ fontSize: 11 }}>Group</div>
+            </div>
+          )}
+          {!isEditing && <span className="tag tag-neutral">{screens.length} screen{screens.length === 1 ? '' : 's'}</span>}
+          {!isEditing && locations.length > 0 && (
+            <select
+              className="input"
+              style={{ width: 'auto', fontSize: 11, padding: '2px 4px' }}
+              value={group.locationId ?? ''}
+              onChange={(e) => void setGroupLocation(group.id, e.target.value || null)}
+              aria-label={`Location for ${group.name}`}
+            >
+              <option value="">No location</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          )}
+          {isEditing ? (
+            <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
+              <Icon name="check" size={13} />
+            </button>
+          ) : (
+            <>
+              <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(group.id, group.name, 'group')}>
+                <Icon name="pencil" size={13} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                aria-label="Delete"
+                disabled={cannotDelete}
+                title={cannotDelete ? 'Remove its screens first' : 'Delete group'}
+                onClick={() => deleteGroup(group.id)}
+              >
+                <Icon name="trash" size={13} />
+              </button>
+            </>
+          )}
+        </div>
+        {screens.map((device, idx) => renderScreenRow(device, screens, idx))}
+      </div>
+    );
   };
 
   return (
@@ -82,44 +458,202 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
       <h1 style={{ margin: 0 }}>Settings</h1>
 
       <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Appearance</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>Dark mode</span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={theme === 'dark'}
+              onChange={(e) => onSetTheme(e.target.checked ? 'dark' : 'light')}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Device cards</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>
+            Show advanced device info
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>Temperature, throttling, uptime, and disk space — off shows just IP and online/offline</span>
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={advancedDeviceInfo}
+              onChange={(e) => onSetAdvancedDeviceInfo(e.target.checked)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>
+            Show announcement row on each screen
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>The per-screen announcement picker and on/off toggle under each device card</span>
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={!hideAnnouncementRow}
+              onChange={(e) => onSetHideAnnouncementRow(!e.target.checked)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Reliability</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>
+            Safety hold
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
+              Assigned by the hub: every screen keeps caching and showing its last-known content if it loses touch
+              with the hub, instead of going blank. On by default — turn off to have a disconnected screen show
+              nothing instead.
+            </span>
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={safetyHold}
+              onChange={(e) => void setSafetyHold(e.target.checked)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px solid var(--color-divider)', paddingTop: 12, marginTop: 4 }}>
+          <span style={{ fontSize: 13 }}>
+            Offline alerts
+            <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
+              Shows a banner (on every tab) once a screen's been offline longer than a set number of minutes.
+            </span>
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={offlineAlertsEnabled}
+              onChange={(e) => void setOfflineAlertMinutes(e.target.checked ? lastOfflineAlertMinutes : 0)}
+            />
+            <span className="toggle-track">
+              <span className="toggle-dot" />
+            </span>
+          </label>
+        </div>
+        {offlineAlertsEnabled && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingLeft: 4 }}>
+            <span className="text-muted" style={{ fontSize: 12 }}>Alert after this many minutes offline</span>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              step={1}
+              style={{ width: 70, textAlign: 'right', flexShrink: 0 }}
+              value={offlineAlertDraft}
+              onChange={(e) => setOfflineAlertDraft(e.target.value)}
+              onBlur={() => {
+                const n = Number(offlineAlertDraft);
+                if (Number.isFinite(n) && n >= 1) void setOfflineAlertMinutes(n);
+                else setOfflineAlertDraft(String(offlineAlertMinutes));
+              }}
+            />
+          </div>
+        )}
+        {mutedDevices.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 12, marginTop: 4 }}>
+            <span style={{ fontSize: 13 }}>
+              Muted screens
+              <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
+                Excluded from offline alerts entirely — e.g. a spare or intentionally powered-off screen. Muted from the alert banner itself, or unmuted here.
+              </span>
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', marginTop: 6 }}>
+              {mutedDevices.map((d) => (
+                <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)' }}>
+                  <span style={{ flex: 1, fontSize: 13 }}>{d.name}</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12, padding: '2px 8px' }}
+                    onClick={() => void setDeviceOfflineAlertsMuted(d.id, false, d.name)}
+                  >
+                    Unmute
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
         <div className="card-kicker">Locations</div>
-        {groups.map((group) => {
-          const count = devices.filter((d) => d.groupId === group.id).length;
-          const isEditing = group.id === editingGroupId;
-          const cannotDelete = count > 0;
+        <p className="card-body" style={{ margin: 0 }}>
+          Purely organizational areas for browsing/managing a whole site at once — e.g. "Warehouse
+          Building". A location has no content of its own: file groups and/or standalone screens
+          under it below.
+        </p>
+        {locations.map((location, index) => {
+          const isEditing = editing?.kind === 'location' && editing.id === location.id;
+          const count = groups.filter((g) => g.locationId === location.id).length + devices.filter((d) => !d.groupId && d.locationId === location.id).length;
           return (
-            <div key={group.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+            <div key={location.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)', flexWrap: 'wrap' }}>
               {isEditing ? (
                 <input
                   className="input"
-                  style={{ flex: 1 }}
+                  style={{ flex: '1 1 140px' }}
                   value={editingName}
                   onChange={(e) => setEditingName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && save()}
                   autoFocus
                 />
               ) : (
-                <>
-                  <span style={{ flex: 1, fontSize: 13 }}>{group.name}</span>
-                  <span className="tag tag-neutral">{count} screen{count === 1 ? '' : 's'}</span>
-                </>
+                <div style={{ flex: '1 1 140px', fontSize: 13 }}>{location.name}</div>
               )}
+              {!isEditing && <span className="tag tag-neutral">{count} item{count === 1 ? '' : 's'}</span>}
               {isEditing ? (
                 <button type="button" className="btn btn-secondary btn-icon" aria-label="Save" onClick={save}>
                   <Icon name="check" size={13} />
                 </button>
               ) : (
                 <>
-                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(group.id, group.name)}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon"
+                    aria-label="Move up"
+                    disabled={index === 0}
+                    onClick={() => moveLocation(index, -1)}
+                  >
+                    <Icon name="chevronUp" size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon"
+                    aria-label="Move down"
+                    disabled={index === locations.length - 1}
+                    onClick={() => moveLocation(index, 1)}
+                  >
+                    <Icon name="chevronDown" size={13} />
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Rename" onClick={() => startEdit(location.id, location.name, 'location')}>
                     <Icon name="pencil" size={13} />
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-icon"
                     aria-label="Delete"
-                    disabled={cannotDelete}
-                    title={cannotDelete ? 'Remove its screens first' : 'Delete location'}
-                    onClick={() => deleteGroup(group.id)}
+                    title="Delete location — its groups/screens are kept, just un-filed"
+                    onClick={() => void deleteLocation(location.id)}
                   >
                     <Icon name="trash" size={13} />
                   </button>
@@ -128,31 +662,369 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
             </div>
           );
         })}
+        <div style={{ display: 'flex', gap: 8, paddingTop: locations.length > 0 ? 4 : 0 }}>
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            placeholder="e.g. Reception"
+            value={newLocationName}
+            onChange={(e) => setNewLocationName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void addNewLocation()}
+          />
+          <button type="button" className="btn btn-secondary" disabled={!newLocationName.trim()} onClick={() => void addNewLocation()}>
+            Add location
+          </button>
+        </div>
       </div>
 
       <div className="card" style={{ gap: 8 }}>
-        <div className="card-kicker">Network</div>
-        <div className="card-title">This computer's Wi-Fi</div>
-        <p className="card-body">Screens must be on the same network to appear here.</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="card-kicker">Groups & Screens</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {devices.length > 1 && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: 12, padding: '4px 8px' }}
+                onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              >
+                {selectMode ? 'Cancel select' : 'Select screens'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {selectMode && (
+          <div className="select-toolbar">
+            <span style={{ fontSize: 13 }}>{selectedIds.size} selected</span>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ fontSize: 12 }}
+              onClick={() => setSelectedIds(new Set(devices.map((d) => d.id)))}
+            >
+              Select all
+            </button>
+            <select
+              className="input"
+              style={{ width: 'auto', fontSize: 12 }}
+              value={moveTarget}
+              onChange={(e) => setMoveTarget(e.target.value)}
+              aria-label="Move selected screens to"
+            >
+              <option value="" disabled>Move to…</option>
+              <option value="__none__">No group</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+              <option value="__new__">+ New group</option>
+            </select>
+            {isNewGroupTarget && (
+              <input
+                className="input"
+                style={{ width: 140, fontSize: 12 }}
+                placeholder="e.g. Lobby screens"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                autoFocus
+              />
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: 12 }}
+              disabled={selectedIds.size === 0 || !moveTarget || (isNewGroupTarget && !newGroupName.trim())}
+              onClick={() => void moveSelected()}
+            >
+              Move
+            </button>
+            {locations.length > 0 && (
+              <>
+                <select
+                  className="input"
+                  style={{ width: 'auto', fontSize: 12 }}
+                  value={locationTarget}
+                  onChange={(e) => setLocationTarget(e.target.value)}
+                  aria-label="File selected screens in location"
+                >
+                  <option value="" disabled>File in location…</option>
+                  <option value="__none__">No location</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ fontSize: 12 }}
+                  disabled={selectedIds.size === 0 || !locationTarget}
+                  onClick={() => void fileSelectedInLocation()}
+                >
+                  File
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {locations.map((location) => {
+          const locationGroups = groups.filter((g) => g.locationId === location.id);
+          const locationDevices = devices.filter((d) => !d.groupId && d.locationId === location.id);
+          if (locationGroups.length === 0 && locationDevices.length === 0) return null;
+          return (
+            <div key={location.id} style={{ padding: '6px 0 6px 8px', borderLeft: '2px solid var(--color-divider)' }}>
+              <div className="text-muted" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="mapPin" size={11} /> {location.name}
+              </div>
+              {locationGroups.map((group) => renderGroupRow(group))}
+              {locationDevices.length > 0 && (
+                <>
+                  {/* renderScreenRow always indents as if nested under the group row
+                      above it — without this label, a standalone screen filed directly
+                      under this Location (sitting right after a group's own rows) reads
+                      as though it belongs to that group instead of being its sibling. */}
+                  <div className="text-muted" style={{ fontSize: 11, padding: '4px 0 0 20px' }}>Standalone screens</div>
+                  {locationDevices.map((device, idx) => renderScreenRow(device, locationDevices, idx, true))}
+                </>
+              )}
+            </div>
+          );
+        })}
+        {topLevelGroups.map((group) => renderGroupRow(group))}
+        {fullyUnassignedDevices.length > 0 && (
+          <div>
+            <div style={{ padding: '4px 0' }}>
+              <div className="text-muted" style={{ fontSize: 11 }}>No group</div>
+            </div>
+            {fullyUnassignedDevices.map((device, idx) => renderScreenRow(device, fullyUnassignedDevices, idx, true))}
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ gap: 8 }}>
-        <div className="card-kicker">IT</div>
-        <div className="card-title">Device inventory</div>
-        <p className="card-body">
-          Copies every paired screen's name and MAC address (tab-separated, one per line) —
-          for network whitelisting, asset tracking, or handing off to IT.
-        </p>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          style={{ alignSelf: 'flex-start' }}
-          disabled={devicesWithMac.length === 0}
-          onClick={() => void copyMacAddresses()}
-        >
-          <Icon name="copy" size={14} />
-          Copy all MAC addresses{devicesWithMac.length > 0 ? ` (${devicesWithMac.length})` : ''}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="card-kicker">Advanced</div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon"
+            aria-label={advancedOpen ? 'Collapse' : 'Expand'}
+            onClick={() => setAdvancedOpen((v) => !v)}
+          >
+            <Icon name={advancedOpen ? 'chevronUp' : 'chevronDown'} size={14} />
+          </button>
+        </div>
+        {!advancedOpen && (
+          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
+            Fleet-wide update/restart/re-provision, the update log, device inventory, and saved hub networks.
+          </p>
+        )}
+        {advancedOpen && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <div className="card-title">Update all</div>
+              <p className="card-body">
+                Pulls the latest player code and restarts every online screen
+                (~10-30s each) — app code only, not system packages or boot
+                config (see "Re-provision all" below for that).
+              </p>
+              {devices.length === 0 ? (
+                <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>No screens paired yet.</p>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ alignSelf: 'flex-start' }}
+                  onClick={async () => {
+                    const results = await updateAllDevices();
+                    if (results) onOpenUpdateResults(results, 'update');
+                  }}
+                >
+                  <Icon name="download" size={14} />
+                  Update all
+                </button>
+              )}
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Restart all</div>
+              <p className="card-body">
+                Reboots every online screen at once — same as each row's own
+                Restart button, just all of them together. Each screen goes
+                black for a minute or so while it comes back up.
+              </p>
+              <button
+                type="button"
+                className="btn btn-warning"
+                style={{ alignSelf: 'flex-start' }}
+                disabled={devices.length === 0}
+                onClick={async () => {
+                  if (!window.confirm('Restart every online screen? Each one goes black for a minute or so while it reboots — this affects your whole fleet at once.')) return;
+                  const results = await restartAllDevices();
+                  if (results) onOpenUpdateResults(results, 'restart');
+                }}
+              >
+                <Icon name="restart" size={14} />
+                Restart all
+              </button>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Re-provision all</div>
+              <p className="card-body">
+                Re-runs the entire provisioning script on every online screen at
+                once — system packages, boot config, and systemd units, not just
+                the app (see "Update all" above for that). Each screen reboots
+                and is briefly blank; only needed when a system-level change
+                (e.g. the display-resolution or USB-override features) has to
+                reach the whole fleet at once instead of one screen at a time.
+              </p>
+              <button
+                type="button"
+                className="btn btn-warning"
+                style={{ alignSelf: 'flex-start' }}
+                disabled={devices.length === 0}
+                onClick={async () => {
+                  if (!window.confirm('Re-provision every online screen? Each one reboots and goes blank for a minute or two — this affects your whole fleet at once.')) return;
+                  const results = await reprovisionAllDevices();
+                  if (results) onOpenUpdateResults(results, 'reprovision');
+                }}
+              >
+                <Icon name="restart" size={14} />
+                Re-provision all
+              </button>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Update log</div>
+              <p className="card-body">
+                Every Update/Re-provision triggered from a screen's Settings row, newest
+                first — so you can tell at a glance which screens are on the same version
+                without checking each one.
+              </p>
+              {updateLog.length === 0 ? (
+                <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>Nothing triggered yet.</p>
+              ) : (
+                <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+                  {updateLog.map((e) => (
+                    <div key={e.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)', fontSize: 12 }}>
+                      <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <strong>{e.deviceName}</strong> — {e.action === 'reprovision' ? 'Re-provision' : 'Update'}
+                      </span>
+                      <span
+                        style={{ color: e.outcome === 'failed' ? 'var(--color-danger, #c0392b)' : e.outcome === 'updating' ? 'var(--color-accent-800)' : undefined }}
+                        className={e.outcome === 'done' ? 'text-muted' : undefined}
+                      >
+                        {e.outcome === 'updating' ? 'In progress' : e.outcome === 'failed' ? 'Failed' : 'Done'}
+                      </span>
+                      <span className="text-muted" style={{ flexShrink: 0 }}>{new Date(e.triggeredAt).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Action history</div>
+              <p className="card-body">
+                Every Force content/Blackout change — on a group or a single screen,
+                set or cleared — from any source (this app's own dialogs, Search's
+                bulk actions, the Companion module), newest first.
+              </p>
+              {actionLog.length === 0 ? (
+                <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>Nothing triggered yet.</p>
+              ) : (
+                <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+                  {actionLog.map((e) => (
+                    <div key={e.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', borderTop: '1px solid var(--color-divider)', fontSize: 12 }}>
+                      <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <strong>{e.targetName}</strong> ({e.scope === 'group' ? 'group' : 'screen'}) —{' '}
+                        {e.action === 'blackout' && 'Blackout'}
+                        {e.action === 'clearBlackout' && 'Blackout cleared'}
+                        {e.action === 'forceContent' && `Forced: ${e.detail}`}
+                        {e.action === 'clearForceContent' && 'Forced content cleared'}
+                      </span>
+                      <span className="text-muted" style={{ flexShrink: 0 }}>{new Date(e.triggeredAt).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Device inventory</div>
+              <p className="card-body">
+                Copies every paired screen's name, IP, and MAC address as{' '}
+                <code>(Screen Name: "" - IP: "" - MAC: "")</code>, one per screen — for network
+                whitelisting, asset tracking, or handing off to IT.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ alignSelf: 'flex-start' }}
+                disabled={devicesWithMac.length === 0}
+                onClick={() => void copyMacAddresses()}
+              >
+                <Icon name="copy" size={14} />
+                Copy all MAC addresses{devicesWithMac.length > 0 ? ` (${devicesWithMac.length})` : ''}
+              </button>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Saved hub networks</div>
+              <p className="card-body">
+                Named hub addresses for pairing screens across more than one network — a hub with more
+                than one fixed IP, or pairing remotely. Screens must be on the same network as the
+                address they're paired with to appear here. Once you save one or more below, "Add a
+                screen" offers them as a dropdown (with a "custom address" option) instead of a plain
+                text box that only defaults to whatever network you're currently on.
+              </p>
+              {hubNetworkDrafts.map((network) => (
+                <div key={network.id} style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="input"
+                    style={{ width: 140 }}
+                    placeholder="Name"
+                    value={network.name}
+                    onChange={(e) => updateNetworkDraft(network.id, 'name', e.target.value)}
+                    onBlur={commitNetworkDrafts}
+                  />
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    placeholder="http://192.168.1.47:4000"
+                    value={network.url}
+                    onChange={(e) => updateNetworkDraft(network.id, 'url', e.target.value)}
+                    onBlur={commitNetworkDrafts}
+                  />
+                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeNetwork(network.id)}>
+                    <Icon name="trash" size={13} />
+                  </button>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8, paddingTop: hubNetworkDrafts.length > 0 ? 4 : 0 }}>
+                <input
+                  className="input"
+                  style={{ width: 140 }}
+                  placeholder="e.g. Main office"
+                  value={newNetworkName}
+                  onChange={(e) => setNewNetworkName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addNetwork()}
+                />
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  placeholder="http://192.168.1.47:4000"
+                  value={newNetworkUrl}
+                  onChange={(e) => setNewNetworkUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addNetwork()}
+                />
+                <button type="button" className="btn btn-secondary" disabled={!newNetworkName.trim() || !newNetworkUrl.trim()} onClick={addNetwork}>
+                  Add network
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ gap: 8 }}>
@@ -215,6 +1087,19 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
             : 'Standalone mode — content is saved in this browser only. Deploy the hub to manage screens from any device on your network.'}
         </p>
         <p className="card-body text-muted" style={{ fontSize: 12 }}>Created by Yusuf Miah with Claude.</p>
+        {authGateEnabled && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ alignSelf: 'flex-start', marginTop: 4 }}
+            onClick={() => {
+              void logout();
+              onLogout();
+            }}
+          >
+            Log out
+          </button>
+        )}
       </div>
     </div>
   );

@@ -28,8 +28,8 @@
      inline style="display:flex" on the element itself would beat [hidden]'s
      display:none outright regardless of specificity rules, silently keeping it
      visible even while "hidden" is set. */
-  #ip-manual-fields, #underclock-reboot-prompt { display: flex; flex-direction: column; gap: 10px; }
-  #ip-manual-fields[hidden], #underclock-reboot-prompt[hidden] { display: none; }
+  #ip-manual-fields, #underclock-reboot-prompt, #boot-rotation-reboot-prompt, #resolution-reboot-prompt { display: flex; flex-direction: column; gap: 10px; }
+  #ip-manual-fields[hidden], #underclock-reboot-prompt[hidden], #boot-rotation-reboot-prompt[hidden], #resolution-reboot-prompt[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -98,6 +98,63 @@
 
     <hr />
 
+    <h2>USB override</h2>
+    <p>Plug a USB stick with a top-level folder named <code>signage</code> containing
+      images/videos into this display to force them on — no network needed for this
+      part either. Unlike the fail-safe above, this overrides the hub's own content
+      too, not just when the hub is unreachable, and stays forced until cleared here
+      or from the control app — pulling the stick back out doesn't undo it, since the
+      files are already copied onto this display.</p>
+    <p id="usb-override-current"></p>
+    <button type="button" id="usb-override-clear">Clear USB override</button>
+    <p id="usb-override-status"></p>
+
+    <hr />
+
+    <h2>Display orientation</h2>
+    <p>Rotates everything this screen shows — the pairing/QR screen included — to
+      match how this Pi is physically mounted relative to the panel. Takes effect
+      immediately, no reboot needed — except the brief boot splash shown before this
+      screen even starts, which needs a reboot to catch up (you'll be prompted below
+      when that applies).</p>
+    <div>
+      <label for="orientation-select">Rotation</label>
+      <select id="orientation-select">
+        <option value="0">0° (normal)</option>
+        <option value="90">90°</option>
+        <option value="180">180°</option>
+        <option value="270">270°</option>
+      </select>
+    </div>
+    <p id="orientation-status"></p>
+    <div id="boot-rotation-reboot-prompt" hidden>
+      <p style="color: #ffcf6e;">The boot splash (shown briefly before this screen starts) needs a reboot to catch up to this rotation.</p>
+      <button type="button" id="boot-rotation-reboot">Reboot now</button>
+    </div>
+
+    <hr />
+
+    <h2>Display resolution</h2>
+    <p>If this screen renders into a small box with black bars all the way around
+      instead of filling the panel, the TV negotiated the wrong mode on its own —
+      forcing 1080p here fixes it on every TV we've seen this happen on. Leave on
+      Auto unless you're actually seeing that. Takes effect on the next reboot
+      (you'll be prompted below).</p>
+    <div>
+      <label for="resolution-select">Resolution</label>
+      <select id="resolution-select">
+        <option value="auto">Auto (let the TV negotiate)</option>
+        <option value="1920x1080">Force 1920x1080</option>
+      </select>
+    </div>
+    <p id="resolution-status"></p>
+    <div id="resolution-reboot-prompt" hidden>
+      <p style="color: #ffcf6e;">Reboot required for this to take effect.</p>
+      <button type="button" id="resolution-reboot">Reboot now</button>
+    </div>
+
+    <hr />
+
     <h2>Performance</h2>
     <p>Caps the CPU's top speed to run cooler — worth trying if this Pi has no
       heatsink and is throttling from heat. Trades away some headroom, so only
@@ -110,6 +167,15 @@
       <p style="color: #ffcf6e;">Reboot required for this to take effect.</p>
       <button type="button" id="underclock-reboot">Reboot now</button>
     </div>
+
+    <hr />
+
+    <h2>Device</h2>
+    <p>Restarts this Pi — useful after changing a setting above that needs it, or
+      any time this display seems stuck. Playback resumes on its own once it's
+      back up, no re-pairing needed.</p>
+    <button type="button" id="device-reboot" style="background: transparent; border: 1px solid #444; font-weight: 600;">Reboot this display</button>
+    <p id="device-reboot-status"></p>
   </div>
   <script>
     const select = document.getElementById('ssid-select');
@@ -234,6 +300,128 @@
       }
     });
 
+    // --- Display orientation -------------------------------------------------
+    const orientationSelect = document.getElementById('orientation-select');
+    const orientationStatus = document.getElementById('orientation-status');
+    const bootRotationRebootPrompt = document.getElementById('boot-rotation-reboot-prompt');
+    const bootRotationReboot = document.getElementById('boot-rotation-reboot');
+
+    async function loadOrientation() {
+      try {
+        const res = await fetch('/orientation');
+        const data = await res.json();
+        orientationSelect.value = data.value;
+        // Only a hint the setting exists at load time, not "you need to reboot
+        // right now" — that only shows right after actually changing it below.
+        bootRotationRebootPrompt.hidden = true;
+      } catch {
+        orientationStatus.textContent = "Couldn't check the current setting.";
+        orientationStatus.className = 'err';
+      }
+    }
+    void loadOrientation();
+
+    orientationSelect.addEventListener('change', async () => {
+      orientationSelect.disabled = true;
+      orientationStatus.textContent = 'Applying…';
+      orientationStatus.className = '';
+      bootRotationRebootPrompt.hidden = true;
+      try {
+        const res = await fetch('/orientation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: orientationSelect.value }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          orientationStatus.textContent = data.applied
+            ? 'Applied.'
+            : "Saved, but couldn't apply it live right now (display still starting up?) — it'll apply the next time this Pi boots.";
+          orientationStatus.className = 'ok';
+          bootRotationRebootPrompt.hidden = !data.bootRotationRebootRequired;
+        } else {
+          orientationStatus.textContent = `Couldn't apply: ${data.error ?? 'unknown error'}.`;
+          orientationStatus.className = 'err';
+        }
+      } catch {
+        orientationStatus.textContent = 'Lost connection to the display — try again.';
+        orientationStatus.className = 'err';
+      } finally {
+        orientationSelect.disabled = false;
+      }
+    });
+
+    bootRotationReboot.addEventListener('click', async () => {
+      bootRotationReboot.disabled = true;
+      orientationStatus.textContent = 'Rebooting…';
+      orientationStatus.className = '';
+      try {
+        await fetch('/system/reboot', { method: 'POST' });
+      } catch {
+        // Expected — the Pi is going down.
+      }
+    });
+
+    // --- Display resolution ---------------------------------------------------
+    const resolutionSelect = document.getElementById('resolution-select');
+    const resolutionStatus = document.getElementById('resolution-status');
+    const resolutionRebootPrompt = document.getElementById('resolution-reboot-prompt');
+    const resolutionReboot = document.getElementById('resolution-reboot');
+
+    async function loadResolution() {
+      try {
+        const res = await fetch('/display-resolution');
+        const data = await res.json();
+        resolutionSelect.value = data.configured;
+        resolutionRebootPrompt.hidden = true;
+      } catch {
+        resolutionStatus.textContent = "Couldn't check the current setting.";
+        resolutionStatus.className = 'err';
+      }
+    }
+    void loadResolution();
+
+    resolutionSelect.addEventListener('change', async () => {
+      resolutionSelect.disabled = true;
+      resolutionStatus.textContent = 'Applying…';
+      resolutionStatus.className = '';
+      resolutionRebootPrompt.hidden = true;
+      try {
+        const res = await fetch('/display-resolution', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: resolutionSelect.value }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          resolutionStatus.textContent = data.supported
+            ? 'Saved — reboot to apply.'
+            : "Saved, but no connected display was found to apply this to right now (nothing plugged in yet?) — it'll apply the next time this Pi boots with one connected.";
+          resolutionStatus.className = 'ok';
+          resolutionRebootPrompt.hidden = !data.rebootRequired;
+        } else {
+          resolutionStatus.textContent = `Couldn't apply: ${data.error ?? 'unknown error'}.`;
+          resolutionStatus.className = 'err';
+        }
+      } catch {
+        resolutionStatus.textContent = 'Lost connection to the display — try again.';
+        resolutionStatus.className = 'err';
+      } finally {
+        resolutionSelect.disabled = false;
+      }
+    });
+
+    resolutionReboot.addEventListener('click', async () => {
+      resolutionReboot.disabled = true;
+      resolutionStatus.textContent = 'Rebooting…';
+      resolutionStatus.className = '';
+      try {
+        await fetch('/system/reboot', { method: 'POST' });
+      } catch {
+        // Expected — the Pi is going down.
+      }
+    });
+
     // --- Performance (underclock) -------------------------------------------
     const underclockToggle = document.getElementById('underclock-toggle');
     const underclockStatus = document.getElementById('underclock-status');
@@ -289,6 +477,25 @@
       underclockReboot.disabled = true;
       underclockStatus.textContent = 'Rebooting…';
       underclockStatus.className = '';
+      try {
+        await fetch('/system/reboot', { method: 'POST' });
+      } catch {
+        // Expected — the Pi is going down.
+      }
+    });
+
+    // --- Device (standalone reboot) -----------------------------------------
+    // Same /system/reboot endpoint the underclock section's own reboot prompt
+    // uses above — this one is just always visible, not tucked behind a specific
+    // setting change, for "this display seems stuck, restart it" without SSH.
+    const deviceReboot = document.getElementById('device-reboot');
+    const deviceRebootStatus = document.getElementById('device-reboot-status');
+
+    deviceReboot.addEventListener('click', async () => {
+      if (!confirm('Reboot this display now? It will go dark for a minute or so while it restarts.')) return;
+      deviceReboot.disabled = true;
+      deviceRebootStatus.textContent = 'Rebooting…';
+      deviceRebootStatus.className = '';
       try {
         await fetch('/system/reboot', { method: 'POST' });
       } catch {
@@ -361,6 +568,40 @@
         contentStatus.className = 'err';
       } finally {
         contentClear.disabled = false;
+      }
+    });
+
+    // --- USB override -------------------------------------------------------
+    const usbCurrent = document.getElementById('usb-override-current');
+    const usbClear = document.getElementById('usb-override-clear');
+    const usbStatus = document.getElementById('usb-override-status');
+
+    async function loadUsbOverride() {
+      try {
+        const res = await fetch('/state');
+        const data = await res.json();
+        const n = data.usbOverride ? data.usbOverride.items.length : 0;
+        usbCurrent.textContent = n > 0
+          ? `Active — forcing ${n} item${n === 1 ? '' : 's'} from a USB stick.`
+          : 'Not active — insert a USB stick with a top-level "signage" folder to force content.';
+        usbClear.disabled = n === 0;
+      } catch {
+        usbCurrent.textContent = '';
+      }
+    }
+    void loadUsbOverride();
+
+    usbClear.addEventListener('click', async () => {
+      usbClear.disabled = true;
+      try {
+        await fetch('/usb-override', { method: 'DELETE' });
+        usbStatus.textContent = 'USB override cleared.';
+        usbStatus.className = 'ok';
+        void loadUsbOverride();
+      } catch {
+        usbStatus.textContent = 'Lost connection to the display — try again.';
+        usbStatus.className = 'err';
+        usbClear.disabled = false;
       }
     });
   </script>

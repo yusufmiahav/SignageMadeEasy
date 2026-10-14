@@ -4,10 +4,10 @@
 // environment (no DRM/framebuffer exists in a sandbox), so it's written to minimize
 // the chance of a syntax/API mismatch rather than to be clever.
 
-Window.SetBackgroundTopColor(1, 1, 1);
-Window.SetBackgroundBottomColor(1, 1, 1);
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
 
-logo.image = Image.Text("SignageMadeEasy", 0, 0, 0, 1, "Sans Bold 48");
+logo.image = Image.Text("SignageMadeEasy", 1, 1, 1, 1, "Sans Bold 48");
 logo.sprite = Sprite(logo.image);
 logo.sprite.SetX(Window.GetWidth() / 2 - logo.image.GetWidth() / 2);
 logo.sprite.SetY(Window.GetHeight() / 2 - logo.image.GetHeight() / 2);
@@ -16,10 +16,10 @@ logo.sprite.SetZ(10);
 // Spinner: four quarter-shaded circle glyphs cycled in sequence in the bottom-right
 // corner — reads as a rotating circle without needing an image-rotation transform or
 // any bitmap assets, just swapping which pre-rendered text glyph is shown.
-spinner.frame_0 = Image.Text("◐", 0.5, 0.5, 0.5, 1, "Sans 32");
-spinner.frame_1 = Image.Text("◓", 0.5, 0.5, 0.5, 1, "Sans 32");
-spinner.frame_2 = Image.Text("◑", 0.5, 0.5, 0.5, 1, "Sans 32");
-spinner.frame_3 = Image.Text("◒", 0.5, 0.5, 0.5, 1, "Sans 32");
+spinner.frame_0 = Image.Text("◐", 0.6, 0.6, 0.6, 1, "Sans 32");
+spinner.frame_1 = Image.Text("◓", 0.6, 0.6, 0.6, 1, "Sans 32");
+spinner.frame_2 = Image.Text("◑", 0.6, 0.6, 0.6, 1, "Sans 32");
+spinner.frame_3 = Image.Text("◒", 0.6, 0.6, 0.6, 1, "Sans 32");
 spinner.sprite = Sprite(spinner.frame_0);
 spinner.sprite.SetX(Window.GetWidth() - 70);
 spinner.sprite.SetY(Window.GetHeight() - 70);

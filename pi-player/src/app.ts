@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'node:path';
+import fsSync from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
 import { agentRouter } from './agent.js';
@@ -10,8 +11,15 @@ import { loadConfig } from './config.js';
 import * as mediaCache from './mediaCache.js';
 import * as wifiManager from './wifiManager.js';
 import * as localContent from './localContent.js';
+import * as usbOverride from './usbOverride.js';
 import * as underclock from './underclock.js';
 import * as staticIp from './staticIp.js';
+import * as ndiPlayer from './ndiPlayer.js';
+import * as identifyFlash from './identifyFlash.js';
+import * as orientationConfig from './orientationConfig.js';
+import * as displayOrientation from './displayOrientation.js';
+import * as bootRotation from './bootRotation.js';
+import * as displayResolution from './displayResolution.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -31,10 +39,17 @@ export function createApp() {
 
   // The player page polls this locally rather than hitting the hub itself — keeps
   // "talk to the hub" and "render the page" decoupled, and means the page always has
-  // something to show even mid-reconnect.
-  app.get('/state', (_req, res) => {
-    const config = loadConfig();
-    const { state, error } = getCachedState();
+  // something to show even mid-reconnect. Output 2's kiosk window (see
+  // provision.sh's dual-output sway config) polls this exact same route with
+  // ?output=2 — player.js reads its own URL's output param and passes it straight
+  // through (see its own pollOnce). localContent/usbOverride/wifi-hotspot-setup
+  // stay whole-machine/shared below: the same physical Pi either way, so both
+  // outputs seeing the same fallback content or override is the correct behavior,
+  // not an oversight.
+  app.get('/state', (req, res) => {
+    const output = req.query.output === '2' ? 2 : 1;
+    const config = loadConfig(output);
+    const { state, error } = getCachedState(output);
     // Points the page at locally cached media where available (see mediaCache.ts) —
     // falls back to the hub's own URL for anything not downloaded yet, so playback
     // never blocks waiting on a cache warm-up.
@@ -47,7 +62,15 @@ export function createApp() {
     const networkSetup = wifiStatus.hotspotActive
       ? { ssid: wifiStatus.hotspotSsid, password: wifiStatus.hotspotPassword, url: `http://${getLocalIp()}:8088/network-setup.html` }
       : null;
-    res.json({ paired: config != null, ip: getLocalIp(), state: resolved, error, networkSetup, localContent: localContent.get() });
+    res.json({
+      paired: config != null, ip: getLocalIp(), state: resolved, error, networkSetup, localContent: localContent.get(),
+      // Checked ahead of everything else above in player.js's pollOnce — a manual
+      // override wins even over a live, working hub connection. See usbOverride.ts.
+      usbOverride: usbOverride.get(),
+      // Settings screen's "Identify" button — see identifyFlash.ts. player.js triggers
+      // its blink overlay whenever this changes from the previous poll's value.
+      flashToken: identifyFlash.getToken(output),
+    });
   });
 
   // Field fail-safe: reachable any time the hub can't be reached (unpaired, hub down,
@@ -72,6 +95,30 @@ export function createApp() {
 
   app.get('/local-content/file', (_req, res) => {
     const file = localContent.filePath();
+    if (!file) return res.status(404).end();
+    res.sendFile(file);
+  });
+
+  // Called by bin/usb-override-mount.sh (as root, via a udev-triggered systemd
+  // unit) right after it finishes copying files from an inserted USB stick onto
+  // this Pi's own disk — see usbOverride.ts's header comment for the full
+  // mechanism. Loopback-only in practice (the mount script calls 127.0.0.1), but
+  // not restricted to it here, same "no auth, LAN-trusted" model as agent.ts.
+  app.post('/usb-override/activate', (_req, res) => {
+    usbOverride.activate();
+    res.status(204).end();
+  });
+
+  // Clears the override — from this Pi's own local setup page, or relayed from the
+  // hub once it's reachable again (see hub/src/piAgent.ts's clearUsbOverride); both
+  // call this exact route, there's no separate hub-only endpoint for it.
+  app.delete('/usb-override', (_req, res) => {
+    usbOverride.clear();
+    res.status(204).end();
+  });
+
+  app.get('/usb-override/file/:name', (req, res) => {
+    const file = usbOverride.filePath(req.params.name);
     if (!file) return res.status(404).end();
     res.sendFile(file);
   });
@@ -150,6 +197,85 @@ export function createApp() {
     else res.status(502).json({ ok: false, error: result.error });
   });
 
+  // Screen rotation (see orientationConfig.ts/displayOrientation.ts) — Pi-local
+  // only, reachable whether or not this screen is paired, unlike the old hub-driven
+  // design that could never rotate the pairing/QR screen itself (no paired device
+  // row existed yet for the hub to attach a setting to).
+  app.get('/orientation', (_req, res) => {
+    res.json({ value: orientationConfig.loadOrientation(), bootRotation: bootRotation.getStatus() });
+  });
+
+  app.post('/orientation', async (req, res) => {
+    const { value } = req.body ?? {};
+    if (!orientationConfig.isOrientation(value)) {
+      return res.status(400).json({ error: "value must be '0', '90', '180', or '270'" });
+    }
+    orientationConfig.saveOrientation(value);
+    const applied = await displayOrientation.applyOrientation(value);
+    // Best-effort, same as the live sway transform above — a Pi with nothing
+    // connected yet to detect a DRM connector from just leaves this untouched
+    // rather than erroring the whole request (see bootRotation.ts's own comment).
+    await bootRotation.setOrientation(value).catch(() => {});
+    const status = bootRotation.getStatus();
+    // The boot splash is drawn once, at boot, before this process (or sway) even
+    // starts — there is no live way to make it catch up the way the sway
+    // transform above just did, so any non-'0' orientation always needs an
+    // explicit reboot to actually show correctly next time, same "write now,
+    // apply on reboot" shape as underclock.ts's own rebootRequired.
+    const bootRotationRebootRequired = value !== '0' && status.supported;
+    res.json({ ok: true, value, applied, bootRotation: status, bootRotationRebootRequired });
+  });
+
+  // Forces a specific HDMI output mode instead of trusting the connected
+  // display's own EDID negotiation — see displayResolution.ts's header comment
+  // for why. Pi-local only, same reasoning as /orientation above; only takes
+  // effect on reboot, same "write now, reboot later" shape too.
+  app.get('/display-resolution', (_req, res) => {
+    res.json(displayResolution.getStatus());
+  });
+
+  app.post('/display-resolution', async (req, res) => {
+    const { value } = req.body ?? {};
+    if (value !== 'auto' && value !== '1920x1080') {
+      return res.status(400).json({ error: "value must be 'auto' or '1920x1080'" });
+    }
+    await displayResolution.setResolution(value).catch(() => {});
+    const status = displayResolution.getStatus();
+    // Unlike orientation (which also live-applies via sway's own transform, so
+    // only a non-'0' value needs the boot splash to separately catch up),
+    // nothing here applies live at all — every change, including back to
+    // 'auto', needs a reboot to take effect.
+    const rebootRequired = status.supported;
+    res.json({ ok: true, ...status, rebootRequired });
+  });
+
+  // Native NDI playback (Pi 4/5 or an x86 device only — see ndiPlayer.ts). Mirrors the mpv-branch's own
+  // /native-<x>/play|status|stop shape: a native process spawned per item, controlled
+  // via a tiny HTTP surface the player page (player.js) drives instead of a <video>
+  // tag, since NDI has no browser decoder.
+  app.post('/native-ndi/play', (req, res) => {
+    const { ndiSourceName } = req.body ?? {};
+    if (typeof ndiSourceName !== 'string' || !ndiSourceName) return res.status(400).json({ error: 'ndiSourceName is required' });
+    res.json({ token: ndiPlayer.play(ndiSourceName) });
+  });
+
+  app.get('/native-ndi/status/:token', (req, res) => {
+    res.json({ playing: ndiPlayer.isPlaying(Number(req.params.token)) });
+  });
+
+  app.post('/native-ndi/stop', (_req, res) => {
+    ndiPlayer.stop();
+    res.json({ ok: true });
+  });
+
+  app.get('/native-ndi/sources', async (_req, res) => {
+    try {
+      res.json({ sources: await ndiPlayer.findSources() });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // Locally cached media (see mediaCache.ts) — served alongside the hub's own URL,
   // which /state falls back to for anything not cached yet.
   app.get('/media/:id', (req, res) => {
@@ -170,6 +296,25 @@ export function createApp() {
   // Vendored (not CDN-loaded) so PDF playback keeps working with no internet access —
   // the Pi only needs the LAN to reach the hub, matching the rest of this design.
   app.use('/vendor/pdfjs', express.static(path.resolve(__dirname, '../node_modules/pdfjs-dist/build')));
+
+  // Templates <title> from the request's own ?output= BEFORE any JS runs — registered
+  // ahead of the static middleware below so it wins over that middleware's own default
+  // handling of "/". This is how a dual-output unit's second Chromium kiosk window gets
+  // told apart from the first (see provision.sh's dual-output sway-kiosk.config
+  // addendum, which matches on window title since --ozone-platform=wayland left
+  // Chromium's --class flag unconfirmed as reliable). Baking the title into the first
+  // HTML bytes rather than setting document.title from player.js matters because sway's
+  // for_window match happens once, when the window maps — a title only set after the
+  // page's own JS has run could lose that race on a cold-started kiosk. Output 1's title
+  // is unchanged from before dual-output existed, so a single-output install's sway
+  // config (no for_window title rules at all) still works with zero changes.
+  app.get('/', (req, res) => {
+    const indexHtml = fsSync.readFileSync(path.resolve(__dirname, '../public/index.html'), 'utf8');
+    const html = req.query.output === '2'
+      ? indexHtml.replace('<title>SignageMadeEasy Player</title>', '<title>SignageMadeEasy Player Output 2</title>')
+      : indexHtml;
+    res.type('html').send(html);
+  });
 
   app.use(express.static(path.resolve(__dirname, '../public')));
 

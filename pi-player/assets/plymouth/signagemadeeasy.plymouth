@@ -1,6 +1,6 @@
 [Plymouth Theme]
 Name=SignageMadeEasy
-Description=SignageMadeEasy boot splash — white background, wordmark, small corner spinner
+Description=SignageMadeEasy boot splash — black background, white wordmark, small corner spinner
 ModuleName=script
 
 [script]
