@@ -13,7 +13,7 @@ interface LibraryCardProps {
   isDragging?: boolean;
   selectMode?: boolean;
   selected?: boolean;
-  onToggleSelect?: (id: string) => void;
+  onToggleSelect?: (id: string, shiftKey?: boolean) => void;
   /** 'ndi'/'tfl-status'/'tfl-arrivals' only — reopens the add dialog in edit mode to change the source name/modes/lines without deleting and re-adding the item. Omitted (button hidden) for every other type. */
   onConfigure?: (item: LibraryItem) => void;
   /** Every item type — opens the folder picker to file this item elsewhere (or back to the library root). Omitted (button hidden) when there are no folders yet, same as onConfigure's own pattern. */
@@ -62,7 +62,8 @@ export function LibraryCard({ item, onRemove, onRename, onSetTags, dragHandlePro
             className="card-select-checkbox"
             aria-label={`Select ${item.name}`}
             checked={!!selected}
-            onChange={() => onToggleSelect?.(item.id)}
+            onChange={() => {}}
+            onClick={(e) => onToggleSelect?.(item.id, e.shiftKey)}
           />
         )}
         {previewImage ? (
