@@ -28,7 +28,7 @@ interface RowHandlers {
       ('f'/'l' — see hub/src/store.ts's uid()) and never collide. */
   selectMode?: boolean;
   selectedIds?: Set<string>;
-  onToggleSelect?: (id: string) => void;
+  onToggleSelect?: (id: string, shiftKey?: boolean) => void;
 }
 
 function SelectCheckbox({ id, name, h }: { id: string; name: string; h: RowHandlers }) {
@@ -38,7 +38,8 @@ function SelectCheckbox({ id, name, h }: { id: string; name: string; h: RowHandl
       type="checkbox"
       aria-label={`Select ${name}`}
       checked={!!h.selectedIds?.has(id)}
-      onChange={() => h.onToggleSelect?.(id)}
+      onChange={() => {}}
+      onClick={(e) => h.onToggleSelect?.(id, e.shiftKey)}
       style={{ flexShrink: 0 }}
     />
   );
