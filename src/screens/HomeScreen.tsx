@@ -168,6 +168,9 @@ export function HomeScreen({
             {active.kind === 'forced' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="tag tag-accent">Forced: {forcedLabel}</span>
+                <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => onForceContent(group.id)}>
+                  Edit
+                </button>
                 <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => setForcedPlaylist(group.id, [])}>
                   Stop
                 </button>

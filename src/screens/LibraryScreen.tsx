@@ -86,17 +86,37 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   // belongs to rather than needing two separate selection sets.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const toggleSelect = (id: string) => {
+  // Anchor for shift-click range select — the last id toggled, regardless of
+  // whether that toggle was itself a plain click or a shift-click.
+  const lastSelectedIdRef = useRef<string | null>(null);
+  const toggleSelect = (id: string, shiftKey?: boolean) => {
+    if (shiftKey && lastSelectedIdRef.current) {
+      // Same flattened order "Select all" below uses, so "between" means what it
+      // visually looks like in whichever view (grid or tree) is on screen.
+      const ids = view === 'tree'
+        ? [...folders.map((f) => f.id), ...treeItems.map((i) => i.id)]
+        : [...childFolders.map((f) => f.id), ...filteredItems.map((i) => i.id)];
+      const from = ids.indexOf(lastSelectedIdRef.current);
+      const to = ids.indexOf(id);
+      if (from !== -1 && to !== -1) {
+        const [start, end] = from < to ? [from, to] : [to, from];
+        setSelectedIds(new Set(ids.slice(start, end + 1)));
+        lastSelectedIdRef.current = id;
+        return;
+      }
+    }
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    lastSelectedIdRef.current = id;
   };
   const exitSelectMode = () => {
     setSelectMode(false);
     setSelectedIds(new Set());
+    lastSelectedIdRef.current = null;
   };
   const deleteSelected = async () => {
     const folderIds = folders.filter((f) => selectedIds.has(f.id)).map((f) => f.id);

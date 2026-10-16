@@ -50,7 +50,7 @@ export function ForceContentDialog({ app, scopeLabel, isGlobal, currentIds, onCo
   );
 
   return (
-    <DialogShell title="Force content" onClose={onClose}>
+    <DialogShell title={currentIds.length > 0 ? 'Edit forced content' : 'Force content'} onClose={onClose}>
       <p className="dialog-body" style={{ margin: 0 }}>
         Stops the rolling schedule on {scopeLabel} and plays this fixed sequence — in order, looping — until you turn it off. Add more than one item to force a playlist instead of just one piece of content.
       </p>

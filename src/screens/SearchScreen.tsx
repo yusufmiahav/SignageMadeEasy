@@ -180,15 +180,26 @@ export function SearchScreen({ app, onOpenDevicePreview, onForceContentForDevice
                       </button>
                     )}
                     {forced ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        style={{ fontSize: 11, padding: '4px 8px' }}
-                        onClick={() => setDeviceForcedPlaylist(device.id, [])}
-                        title={`Stop forcing: ${forcedPlaylistLabel(device.forcedPlaylist, libraryById)}`}
-                      >
-                        Forced · Stop
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ fontSize: 11, padding: '4px 8px' }}
+                          onClick={() => onForceContentForDevice(device.id)}
+                          title={`Edit forced content: ${forcedPlaylistLabel(device.forcedPlaylist, libraryById)}`}
+                        >
+                          Forced · Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ fontSize: 11, padding: '4px 8px' }}
+                          onClick={() => setDeviceForcedPlaylist(device.id, [])}
+                          title={`Stop forcing: ${forcedPlaylistLabel(device.forcedPlaylist, libraryById)}`}
+                        >
+                          Stop
+                        </button>
+                      </>
                     ) : (
                       <button type="button" className="btn btn-secondary btn-icon" aria-label="Force content" title="Force content on this screen" onClick={() => onForceContentForDevice(device.id)}>
                         <Icon name="monitor" size={14} />

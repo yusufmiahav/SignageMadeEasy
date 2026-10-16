@@ -18,7 +18,7 @@ interface FolderCardProps {
   dragHandleProps?: HTMLAttributes<HTMLSpanElement>;
   selectMode?: boolean;
   selected?: boolean;
-  onToggleSelect?: (id: string) => void;
+  onToggleSelect?: (id: string, shiftKey?: boolean) => void;
 }
 
 // Same card shell/thumb-box treatment as LibraryCard, so folders and content sit
@@ -51,8 +51,8 @@ export function FolderCard({ folder, itemCount, onOpen, onRename, onDelete, onMo
             className="card-select-checkbox"
             aria-label={`Select ${folder.name}`}
             checked={!!selected}
-            onClick={(e) => e.stopPropagation()}
-            onChange={() => onToggleSelect?.(folder.id)}
+            onChange={() => {}}
+            onClick={(e) => { e.stopPropagation(); onToggleSelect?.(folder.id, e.shiftKey); }}
           />
         )}
         <div
