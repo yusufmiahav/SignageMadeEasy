@@ -27,15 +27,26 @@ interface PreviewContentProps {
 // (the Library tree view's inline split panel) so the per-type rendering logic
 // lives in exactly one place.
 export function PreviewContent({ item, autoPlay = true }: PreviewContentProps) {
+  // width: 100% alone forced a portrait (tall, narrow) image/video to stretch out
+  // to the full width of whatever dialog/panel it's in — on a container sized for
+  // landscape content, that made a portrait item's preview render far taller than
+  // it needed to, dominating the dialog instead of looking like a thumbnail.
+  // Bounding by max-height too (letting the browser pick whichever dimension
+  // actually constrains it) leaves landscape content unchanged — its width still
+  // fills the container the same as before — while portrait content now shrinks to
+  // a sensible size, centered rather than pinned to the left edge once it's
+  // narrower than its container.
+  const mediaStyle = { maxWidth: '100%', maxHeight: '60vh', width: 'auto', height: 'auto', display: 'block', margin: '0 auto' };
+
   return (
     <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
       {item.type === 'image' && item.thumb && (
-        <img src={item.thumb} alt={item.name} style={{ width: '100%', display: 'block' }} />
+        <img src={item.thumb} alt={item.name} style={mediaStyle} />
       )}
       {item.type === 'video' && (item.fullUrl ?? item.thumb) && (
         // The original upload, not whichever capped/full copy a given screen
         // happens to be playing — this is a content check, not a per-screen one.
-        <video src={item.fullUrl ?? item.thumb} controls autoPlay={autoPlay} style={{ width: '100%', display: 'block' }} />
+        <video src={item.fullUrl ?? item.thumb} controls autoPlay={autoPlay} style={mediaStyle} />
       )}
       {item.type === 'pdf' && item.thumb && (
         <iframe src={item.thumb} title={item.name} style={{ width: '100%', height: '70vh', border: 'none' }} />
