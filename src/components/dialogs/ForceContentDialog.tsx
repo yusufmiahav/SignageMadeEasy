@@ -3,8 +3,41 @@ import { DialogShell } from './DialogShell';
 import { Icon } from '../icons/Icon';
 import { FolderTreeList } from '../FolderTreeList';
 import { PlaylistRow } from '../PlaylistRow';
+import { PreviewContent } from '../PreviewContent';
 import type { AppState } from '../../hooks/useAppState';
 import type { LibraryItem } from '../../api/types';
+
+// Its own component (not a bare JSX-returning helper) so each row's preview toggle
+// gets independent, stable state via React's own per-element hook storage — the
+// addable list's length changes every time something is selected/deselected, which
+// would break a useState called directly inside a plain per-item render function.
+function AddableRow({ item, onAdd }: { item: LibraryItem; onAdd: () => void }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  return (
+    <div style={{ borderBottom: '1px solid var(--color-divider)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, cursor: 'pointer' }}>
+          <input type="checkbox" checked={false} onChange={onAdd} />
+          <span style={{ flex: 1, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+        </label>
+        <button
+          type="button"
+          className={`btn btn-icon ${previewOpen ? 'btn-secondary' : 'btn-ghost'}`}
+          aria-label={previewOpen ? 'Hide preview' : 'Preview'}
+          title="Check this is the right asset before it goes live"
+          onClick={() => setPreviewOpen((v) => !v)}
+        >
+          <Icon name="eye" size={13} />
+        </button>
+      </div>
+      {previewOpen && (
+        <div style={{ padding: '0 0 10px' }}>
+          <PreviewContent item={item} autoPlay={false} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ForceContentDialogProps {
   app: AppState;
@@ -43,10 +76,7 @@ export function ForceContentDialog({ app, scopeLabel, isGlobal, currentIds, onCo
   };
 
   const renderAddable = (item: LibraryItem) => (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
-      <input type="checkbox" checked={false} onChange={() => setSelected([...selected, item.id])} />
-      <span style={{ flex: 1, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
-    </label>
+    <AddableRow item={item} onAdd={() => setSelected([...selected, item.id])} />
   );
 
   return (
