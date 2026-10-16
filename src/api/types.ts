@@ -57,6 +57,8 @@ export interface LibraryItem {
    * the original, same as 'skipped'.
    */
   transcodeStatus?: 'processing' | 'done' | 'skipped' | 'failed';
+  /** PDFs only — real page count, extracted server-side (the frontend's local-storage mode has no way to do this). */
+  pageCount?: number;
   /** Free-form labels for search/filtering in the Library screen. Empty array, never undefined. */
   tags: string[];
   /** ms since epoch — when this item was added. Optional since a restored backup from before this field existed has nothing truthful to report here. */

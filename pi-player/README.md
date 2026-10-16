@@ -119,8 +119,19 @@ above once and they'll work from then on.
   platform this player runs on, Pi 3B+ included. A video that's the sole item in the
   active playlist (forced content, or a playlist/event with just one video)
   restarts itself in place instead of reloading via the rotation logic, so it plays
-  seamlessly with no reload between passes. An announcement, if one's turned on for
-  this device, overlays as a ticker regardless of what's in rotation.
+  seamlessly with no reload between passes. A sole PDF item loops back to its first
+  page the same way, in place, with no reload. An announcement, if one's turned on
+  for this device, overlays as a ticker regardless of what's in rotation.
+  - **Manual PDF page control**: a real USB keyboard plugged into the Pi navigates
+    a currently-showing PDF's pages with the arrow keys or Page Up/Page Down
+    (wraps at both ends, same as the automatic rotation's own looping). The control
+    app's device Preview dialog (Settings → Preview, or Home's eye icon) offers the
+    same control remotely — a "Jump to page" field next to the live screenshot, for
+    any device whose current item is a multi-page PDF. Either input pauses that
+    PDF's own automatic page timer (it stays on whatever page you leave it on)
+    until the hub actually pushes a real change to this screen — reassigning it to
+    a different group, editing its playlist, forcing different content, etc. —
+    rather than snapping back to automatic mid-read.
 - **Wi-Fi fallback hotspot** (`src/wifiManager.ts`) — if this Pi has no working
   network connection at all (no ethernet, no associated Wi-Fi — not just "can't
   reach the hub", which this can't fix anyway) for about a minute, it broadcasts

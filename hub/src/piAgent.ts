@@ -83,6 +83,19 @@ export async function identifyFlash(ip: string, output: 1 | 2 = 1): Promise<void
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected identify-flash: ${res.status}`);
 }
 
+// DevicePreviewDialog's remote page picker for a currently-showing PDF — see
+// pi-player/src/pdfJump.ts. Output-scoped like identifyFlash above: a dual-output
+// unit's two screens can show two different PDFs (or none), so a jump has to say
+// which physical output it's for.
+export async function jumpPdfPage(ip: string, page: number, output: 1 | 2 = 1): Promise<void> {
+  const res = await agentFetch(ip, `/pdf-jump${outputQuery(output)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page }),
+  });
+  if (!res.ok) throw new Error(`Pi agent at ${ip} rejected pdf-jump: ${res.status}`);
+}
+
 // Settings screen's "Preview" button — a live JPEG screenshot of exactly what's
 // currently rendering on this screen, relayed through the Pi's agent rather than the
 // hub reaching Chromium's DevTools port on the Pi directly (see

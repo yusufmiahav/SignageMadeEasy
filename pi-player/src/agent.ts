@@ -4,6 +4,7 @@ import { clearConfig, loadConfig, saveConfig } from './config.js';
 import { startPolling, stopPolling } from './poller.js';
 import { getLocalMac } from './localIp.js';
 import * as identifyFlash from './identifyFlash.js';
+import * as pdfJump from './pdfJump.js';
 import { captureScreenshot } from './preview.js';
 import * as selfUpdate from './selfUpdate.js';
 import * as underclock from './underclock.js';
@@ -68,6 +69,20 @@ agentRouter.post('/restart', async (_req, res) => {
 // a white/black blink overlay on that Pi's physical display.
 agentRouter.post('/identify-flash', (req, res) => {
   identifyFlash.trigger(outputFrom(req));
+  res.status(204).end();
+});
+
+// DevicePreviewDialog's remote page picker — only meaningful while a PDF is the
+// currently-showing item, but accepted unconditionally here same as identify-flash
+// above; player.js's own /state poll is what decides whether there's a PDF on
+// screen to actually act on this for. Same manual-mode takeover as the physical
+// keyboard (see player.js) — a deliberate human override either way.
+agentRouter.post('/pdf-jump', (req, res) => {
+  const { page } = req.body ?? {};
+  if (typeof page !== 'number' || !Number.isInteger(page) || page < 1) {
+    return res.status(400).json({ error: 'page must be a positive integer' });
+  }
+  pdfJump.trigger(page, outputFrom(req));
   res.status(204).end();
 });
 

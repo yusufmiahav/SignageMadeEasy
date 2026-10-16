@@ -650,6 +650,12 @@ export function useAppState() {
   // reasoning as listNdiSources above.
   const previewDevice = useCallback((id: string): Promise<DevicePreview> => api.previewDevice(id), []);
 
+  // Also a passthrough — DevicePreviewDialog.tsx calls this directly and handles
+  // its own errors/toast, the same way it already does for previewDevice above;
+  // there's no app state here to refresh either (the current page of a PDF is
+  // purely the Pi's own ephemeral runtime state, never reported back to the hub).
+  const jumpDevicePdfPage = useCallback((id: string, page: number): Promise<void> => api.jumpDevicePdfPage(id, page), []);
+
   // Unlike flashDevice/restartDevice above, these catch and toast their own
   // failures rather than leaving an unhandled rejection: the single most likely
   // failure — a screen that hasn't been re-provisioned since this capability
@@ -860,6 +866,7 @@ export function useAppState() {
     restartDevice,
     flashDevice,
     previewDevice,
+    jumpDevicePdfPage,
     updateDevice,
     reprovisionDevice,
     updateAllDevices,

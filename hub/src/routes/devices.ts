@@ -238,6 +238,25 @@ devicesRouter.post('/:id/identify-flash', async (req, res) => {
   }
 });
 
+// DevicePreviewDialog.tsx's remote page picker — only meaningful while a PDF is the
+// item currently showing on that device, but this route itself doesn't know or
+// care what's on screen (same as identify-flash above); the Pi's own /state poll
+// decides whether there's a PDF to actually act on this for.
+devicesRouter.post('/:id/pdf-jump', async (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  const { page } = req.body ?? {};
+  if (typeof page !== 'number' || !Number.isInteger(page) || page < 1) {
+    return res.status(400).json({ error: 'page must be a positive integer' });
+  }
+  try {
+    await piAgent.jumpPdfPage(device.ip, page, device.outputIndex);
+    res.status(204).end();
+  } catch {
+    res.status(502).json({ error: 'could not reach device' });
+  }
+});
+
 // Settings screen's "Preview" button — see pi-player/src/preview.ts. A successful
 // live fetch is cached to disk (fire-and-forget — a failed write here shouldn't fail
 // the request that already has a perfectly good image to return); a failed one falls

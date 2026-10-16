@@ -152,6 +152,14 @@ export interface SignageApiClient {
   /** Makes this screen's physical display blink white/black twice — helps identify which real screen an entry in Settings corresponds to. No-op in standalone/localStorage mode (no real Pi to ask). */
   flashDevice(id: string): Promise<void>;
   /**
+   * Jumps the PDF currently showing on this screen to a specific page — the remote
+   * equivalent of plugging a USB keyboard into the Pi and using the arrow/PgUp/PgDn
+   * keys (see pi-player/public/player.js's jumpToPdfPage). A no-op on the Pi if
+   * nothing it's showing right now happens to be that PDF; no-op here entirely in
+   * standalone/localStorage mode (no real Pi to ask).
+   */
+  jumpDevicePdfPage(id: string, page: number): Promise<void>;
+  /**
    * Fetches a live screenshot of exactly what's currently rendering on this screen —
    * via the paired Pi's own already-open Chromium DevTools port (see
    * hub/src/piAgent.ts's preview / pi-player/src/preview.ts). `url` is a `blob:` URL

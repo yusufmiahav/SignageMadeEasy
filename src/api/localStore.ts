@@ -706,6 +706,10 @@ class LocalStoreClient implements SignageApiClient {
     // No real Pi to flash in standalone mode.
   }
 
+  async jumpDevicePdfPage(): Promise<void> {
+    // No real Pi/player session to jump a page on in standalone mode.
+  }
+
   // Unlike flashDevice/restartDevice above, there's no silent no-op that makes sense
   // here — a preview has nothing to show at all in standalone mode, so this throws
   // and lets the dialog surface that instead of rendering a blank image.

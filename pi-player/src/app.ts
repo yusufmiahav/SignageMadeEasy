@@ -16,6 +16,7 @@ import * as underclock from './underclock.js';
 import * as staticIp from './staticIp.js';
 import * as ndiPlayer from './ndiPlayer.js';
 import * as identifyFlash from './identifyFlash.js';
+import * as pdfJump from './pdfJump.js';
 import * as orientationConfig from './orientationConfig.js';
 import * as displayOrientation from './displayOrientation.js';
 import * as bootRotation from './bootRotation.js';
@@ -70,6 +71,11 @@ export function createApp() {
       // Settings screen's "Identify" button — see identifyFlash.ts. player.js triggers
       // its blink overlay whenever this changes from the previous poll's value.
       flashToken: identifyFlash.getToken(output),
+      // DevicePreviewDialog's remote page picker — see pdfJump.ts. player.js jumps
+      // the currently-showing PDF to pdfJumpPage whenever pdfJumpToken changes from
+      // the previous poll's value, same "token changed" pattern as flashToken above.
+      pdfJumpToken: pdfJump.getState(output).token,
+      pdfJumpPage: pdfJump.getState(output).page,
     });
   });
 

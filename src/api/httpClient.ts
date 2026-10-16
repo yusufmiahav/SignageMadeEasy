@@ -141,6 +141,7 @@ export const httpClient: SignageApiClient = {
   removeDevice: (id) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
   flashDevice: (id) => request<void>(`/api/devices/${id}/identify-flash`, { method: 'POST' }),
+  jumpDevicePdfPage: (id, page) => request<void>(`/api/devices/${id}/pdf-jump`, { method: 'POST', ...json({ page }) }),
   previewDevice: async (id): Promise<DevicePreview> => {
     const res = await fetch(`${BASE_URL}/api/devices/${id}/preview`, { credentials: 'include' });
     if (!res.ok) {

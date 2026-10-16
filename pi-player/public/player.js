@@ -52,6 +52,21 @@ let tflBoardEl = null; // the currently-mounted 'tfl-status' board, if any — s
 let tflBoardItemId = null;
 let tflArrivalsBoardEl = null; // the currently-mounted 'tfl-arrivals' board, if any — see syncTflArrivals.
 let tflArrivalsBoardItemId = null;
+// The currently-showing PDF's loaded document + page position, or null whenever a
+// PDF isn't the item on screen — see playPdf/showPdfPage. Lets the keyboard
+// listener and the control app's remote page picker (jumpToPdfPage) both act on
+// "whatever PDF is up right now" without threading item/generation state through
+// to them directly.
+let pdfState = null;
+// Set the moment a physical keyboard press or a remote "jump to page" command
+// moves a PDF off its automatic rotation — from then on this item's own per-page
+// timer stays paused (pages only change on another manual command) until the hub
+// actually pushes a real change (a playlistKey change — see renderPlayerState),
+// not merely by the existing rotation continuing on its own. A deliberate human at
+// the keyboard (or an admin using the remote picker) stays in control until the
+// hub has something genuinely new to show, rather than snapping back to automatic
+// mid-read.
+let pdfManualMode = false;
 
 function teardownStage() {
   clearTimeout(advanceTimer);
@@ -64,6 +79,7 @@ function teardownStage() {
   tflBoardItemId = null;
   tflArrivalsBoardEl = null;
   tflArrivalsBoardItemId = null;
+  pdfState = null;
   // Unconditional and fire-and-forget: a no-op on the Pi if nothing native is playing,
   // but guarantees switching away from an NDI item always kills the GStreamer process
   // rather than leaving it running underneath whatever plays next.
@@ -107,47 +123,112 @@ function scheduleAdvance(seconds, myGeneration) {
   }, seconds * 1000);
 }
 
+// Renders one page and swaps it onto the visible stage, then schedules the next
+// automatic page turn — unless pdfManualMode is in effect, in which case this page
+// just stays up until the next keyboard press / remote jump (see jumpToPdfPage).
+// Shared by playPdf's own startup, its automatic rotation, and both manual-override
+// paths, so "render before swap" and the sole-item loop only need writing once.
+async function showPdfPage(pageNum, myGeneration) {
+  if (myGeneration !== generation || !pdfState) return;
+  const page = await pdfState.doc.getPage(Math.min(pageNum, pdfState.doc.numPages));
+  if (myGeneration !== generation || !pdfState) return;
+
+  const viewport = page.getViewport({ scale: 1 });
+  const scale = Math.min(window.innerWidth / viewport.width, window.innerHeight / viewport.height);
+  const scaledViewport = page.getViewport({ scale });
+
+  // Rendered fully BEFORE it ever touches the visible stage, not after — a complex
+  // page can take a visible moment to paint, and the old order (append a blank
+  // canvas, then render into it) showed that gap as a flash of the stage's black
+  // background through the still-empty canvas on every single page turn. Same
+  // "don't show it until it's ready" principle preloadUpcoming() already applies to
+  // image items, just applied per-page here instead of per-item.
+  const canvas = document.createElement('canvas');
+  canvas.width = scaledViewport.width;
+  canvas.height = scaledViewport.height;
+  canvas.dataset.pdfPage = String(pageNum); // not read by this file — just makes the currently-shown page inspectable (DevTools, automated tests) without guessing from pixels
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledViewport }).promise;
+  if (myGeneration !== generation || !pdfState) return;
+
+  // Just the stage's own children here, not the full teardownStage() — that also
+  // nulls out pdfState (see its own comment), which has to survive a page-to-page
+  // transition within this same document.
+  for (const child of [...stage.children]) {
+    if (child instanceof HTMLVideoElement) { child.pause(); child.removeAttribute('src'); child.load(); }
+    child.remove();
+  }
+  stage.appendChild(canvas);
+  pdfState.currentPage = pageNum;
+
+  if (pdfManualMode) return; // paused here until the next manual command or a real hub change — see renderPlayerState.
+
+  advanceTimer = setTimeout(() => {
+    if (myGeneration !== generation || !pdfState) return;
+    const next = pdfState.currentPage + 1;
+    if (next > pdfState.pageCount) {
+      if (pdfState.soleItem) {
+        // Nothing else in rotation to hand off to — loop back to page 1 in place
+        // (same loaded document, no reload) instead of going through playItem()
+        // again, which would tear the stage down and re-fetch/re-parse the whole
+        // PDF from scratch just to show the page it's already on — confirmed on
+        // real hardware as a visible black flash every time a sole PDF item
+        // wrapped around, the same class of problem video's own sole-item restart-
+        // in-place path exists to avoid.
+        void showPdfPage(1, myGeneration);
+      } else {
+        // Finished this item's pages in a multi-item rotation — hand off to the
+        // next DIFFERENT item, same as every other content type's own end-of-item
+        // advance. Only a sole item loops in place; a playlist keeps cycling
+        // through everything in it exactly as before.
+        currentIndex = (currentIndex + 1) % activeItems.length;
+        playItem(currentIndex);
+      }
+      return;
+    }
+    void showPdfPage(next, myGeneration);
+  }, pdfState.perPageSeconds * 1000);
+}
+
 async function playPdf(item, myGeneration) {
   const doc = await pdfjsLib.getDocument({ url: item.url }).promise;
+  if (myGeneration !== generation) return;
   const pageCount = Math.max(1, item.pageCount ?? doc.numPages);
   const perPageSeconds = item.duration ?? 8;
-
-  for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
-    if (myGeneration !== generation) return;
-    const page = await doc.getPage(Math.min(pageNum, doc.numPages));
-    if (myGeneration !== generation) return;
-
-    const viewport = page.getViewport({ scale: 1 });
-    const scale = Math.min(window.innerWidth / viewport.width, window.innerHeight / viewport.height);
-    const scaledViewport = page.getViewport({ scale });
-
-    // Rendered fully BEFORE it ever touches the visible stage, not after — a complex
-    // page can take a visible moment to paint, and the old order (append a blank
-    // canvas, then render into it) showed that gap as a flash of the stage's black
-    // background through the still-empty canvas on every single page turn. Same
-    // "don't show it until it's ready" principle preloadUpcoming() already applies to
-    // image items, just applied per-page here instead of per-item.
-    const canvas = document.createElement('canvas');
-    canvas.width = scaledViewport.width;
-    canvas.height = scaledViewport.height;
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledViewport }).promise;
-    if (myGeneration !== generation) return;
-
-    teardownStage();
-    if (myGeneration !== generation) return;
-    stage.appendChild(canvas);
-
-    await new Promise((resolve) => {
-      advanceTimer = setTimeout(resolve, perPageSeconds * 1000);
-    });
-    if (myGeneration !== generation) return;
-  }
-
-  if (myGeneration === generation) {
-    currentIndex = (currentIndex + 1) % activeItems.length;
-    playItem(currentIndex);
-  }
+  pdfState = { doc, pageCount, currentPage: 0, perPageSeconds, soleItem: activeItems.length === 1 };
+  void showPdfPage(1, myGeneration);
 }
+
+// --- PDF manual page navigation (USB keyboard + control app's remote page picker) --
+// Both inputs converge on this one function — a deliberate human override either
+// way, so they share the same manual-mode takeover. See pdfManualMode's own comment
+// for when control reverts to the automatic timer.
+function jumpToPdfPage(pageNum) {
+  if (!pdfState) return; // no PDF currently showing — nothing to act on
+  const myGeneration = generation;
+  clearTimeout(advanceTimer);
+  pdfManualMode = true;
+  // Wraps rather than clamps — consistent with this player's default "PDFs loop"
+  // behavior, and means holding the forward key past the last page just keeps
+  // cycling instead of getting stuck at the end.
+  const wrapped = (((pageNum - 1) % pdfState.pageCount) + pdfState.pageCount) % pdfState.pageCount + 1;
+  void showPdfPage(wrapped, myGeneration);
+}
+
+// A real USB keyboard plugged into the Pi — only acts while a PDF is the item
+// currently on screen (pdfState is null otherwise); every other key, and every
+// other content type, is left alone. preventDefault on the keys handled here stops
+// PageUp/PageDown's default browser-scroll behavior (which would otherwise do
+// nothing visible — nothing on #stage scrolls — but is still worth suppressing).
+document.addEventListener('keydown', (e) => {
+  if (!pdfState) return;
+  if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+    e.preventDefault();
+    jumpToPdfPage(pdfState.currentPage + 1);
+  } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+    e.preventDefault();
+    jumpToPdfPage(pdfState.currentPage - 1);
+  }
+});
 
 // Pi 4/5 or an x86 device only. NDI has no browser decoder, so there's nothing to mount on #stage —
 // the native GStreamer process this starts (see ndiPlayer.ts) renders its own
@@ -658,6 +739,11 @@ function renderPlayerState(state) {
   activeKind = state.kind;
   currentIndex = 0;
   generation++;
+  // The hub actually changed what this screen should show — any PDF manual-mode
+  // takeover (keyboard or remote jump) from before this point is now stale; see
+  // pdfManualMode's own comment for why this is the one thing that resets it,
+  // not just rotation continuing on its own.
+  pdfManualMode = false;
   playItem(0);
 }
 
@@ -671,6 +757,11 @@ function renderPlayerState(state) {
 // occludes this browser page entirely, so the flash won't be visible then — a known,
 // low-priority gap for what's still a rare content type.
 let lastFlashToken = null;
+// DevicePreviewDialog's remote page picker — see pdfJump.ts. Same "token changed
+// since last poll" pattern as lastFlashToken above, just handed off to
+// jumpToPdfPage (which already no-ops when no PDF is currently showing) instead of
+// a flash overlay.
+let lastPdfJumpToken = null;
 
 function triggerIdentifyFlash() {
   const overlay = document.createElement('div');
@@ -723,6 +814,12 @@ async function pollOnce() {
     // doesn't trigger a spurious flash.
     if (lastFlashToken !== null && data.flashToken !== lastFlashToken) triggerIdentifyFlash();
     lastFlashToken = data.flashToken;
+
+    // Same "skip the very first poll" reasoning as flashToken above — an old
+    // pdfJumpToken from before this page loaded shouldn't trigger a spurious jump.
+    // jumpToPdfPage itself no-ops if no PDF happens to be showing right now.
+    if (lastPdfJumpToken !== null && data.pdfJumpToken !== lastPdfJumpToken) jumpToPdfPage(data.pdfJumpPage);
+    lastPdfJumpToken = data.pdfJumpToken;
 
     if (data.networkSetup) {
       // Takes priority over everything else: while broadcasting its own fallback
