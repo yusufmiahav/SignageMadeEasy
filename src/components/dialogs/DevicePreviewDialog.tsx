@@ -89,7 +89,17 @@ export function DevicePreviewDialog({ app, device, onClose }: DevicePreviewDialo
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {imageUrl ? (
           <>
-            <img src={imageUrl} alt={`${capturedAt ? 'Last-seen' : 'Live'} preview of ${device.name}`} style={{ width: '100%', display: 'block', borderRadius: 6 }} />
+            {/* maxHeight, not just width: 100% — a portrait-mounted screen's screenshot
+                is tall and narrow (see Settings' per-screen orientation setting); without
+                a height cap it stretched to the dialog's full width regardless, rendering
+                far larger than a preview needs to. Same fix as PreviewContent.tsx's own
+                image/video sizing, applied here too since this is a different component
+                (a live screenshot, not library content). */}
+            <img
+              src={imageUrl}
+              alt={`${capturedAt ? 'Last-seen' : 'Live'} preview of ${device.name}`}
+              style={{ maxWidth: '100%', maxHeight: '60vh', width: 'auto', height: 'auto', display: 'block', margin: '0 auto', borderRadius: 6 }}
+            />
             {capturedAt && (
               <div className="dialog-warning">
                 <Icon name="alertTriangle" size={16} />
