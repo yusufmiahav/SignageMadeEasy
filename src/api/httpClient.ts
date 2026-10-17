@@ -62,6 +62,7 @@ export const httpClient: SignageApiClient = {
   addImage: (file, onProgress) => uploadFile('/api/library/image', file, onProgress),
   addVideo: (file, onProgress) => uploadFile('/api/library/video', file, onProgress),
   addPdf: (file, onProgress) => uploadFile('/api/library/pdf', file, onProgress),
+  addPptx: (file, onProgress) => uploadFile('/api/library/pptx', file, onProgress),
   addAnnouncement: (name, text) => request<LibraryItem>('/api/library/announcement', { method: 'POST', ...json({ name, text }) }),
   addClock: (name) => request<LibraryItem>('/api/library/clock', { method: 'POST', ...json({ name }) }),
   addNdiSource: (name, ndiSourceName) => request<LibraryItem>('/api/library/ndi', { method: 'POST', ...json({ name, ndiSourceName }) }),

@@ -28,6 +28,8 @@ export interface SignageApiClient {
   addImage(file: File, onProgress?: (pct: number) => void): Promise<LibraryItem>;
   addVideo(file: File, onProgress?: (pct: number) => void): Promise<LibraryItem>;
   addPdf(file: File, onProgress?: (pct: number) => void): Promise<LibraryItem>;
+  /** A .pptx/.ppt upload — the hub converts it to PDF (LibreOffice headless) and stores the result as a plain 'pdf' item, so it plays back exactly like an uploaded PDF. In standalone/localStorage mode (no server to convert it) this just records the item like addPdf does, with no real conversion. */
+  addPptx(file: File, onProgress?: (pct: number) => void): Promise<LibraryItem>;
   addAnnouncement(name: string, text: string): Promise<LibraryItem>;
   /** Current time of day on a black background, rendered live on the Pi — no file involved. */
   addClock(name: string): Promise<LibraryItem>;

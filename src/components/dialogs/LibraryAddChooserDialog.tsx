@@ -5,6 +5,7 @@ interface LibraryAddChooserDialogProps {
   onAddImage: () => void;
   onAddVideo: () => void;
   onAddPdf: () => void;
+  onAddPptx: () => void;
   onAddAnnouncement: () => void;
   onAddClock: () => void;
   onAddNdiSource: () => void;
@@ -19,12 +20,13 @@ interface LibraryAddChooserDialogProps {
 // dialog instead shows every option with its own icon and label, same pattern as
 // the Home tab's own AddChooserDialog.
 export function LibraryAddChooserDialog({
-  onAddImage, onAddVideo, onAddPdf, onAddAnnouncement, onAddClock, onAddNdiSource, onAddTflStatus, onAddTflArrivals, onClose,
+  onAddImage, onAddVideo, onAddPdf, onAddPptx, onAddAnnouncement, onAddClock, onAddNdiSource, onAddTflStatus, onAddTflArrivals, onClose,
 }: LibraryAddChooserDialogProps) {
   const options: { icon: IconName; label: string; onClick: () => void }[] = [
     { icon: 'image', label: 'Add image', onClick: onAddImage },
     { icon: 'video', label: 'Add video', onClick: onAddVideo },
     { icon: 'fileText', label: 'Add PDF', onClick: onAddPdf },
+    { icon: 'fileText', label: 'Add PowerPoint', onClick: onAddPptx },
     { icon: 'messageCircle', label: 'Add announcement', onClick: onAddAnnouncement },
     { icon: 'clock', label: 'Add clock', onClick: onAddClock },
     { icon: 'radio', label: 'Add NDI source', onClick: onAddNdiSource },

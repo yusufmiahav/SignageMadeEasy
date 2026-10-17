@@ -3,6 +3,7 @@ import { Icon, type IconName } from '../icons/Icon';
 
 interface LibraryMoreOptionsDialogProps {
   onAddPdf: () => void;
+  onAddPptx: () => void;
   onAddAnnouncement: () => void;
   onAddClock: () => void;
   onAddNdiSource: () => void;
@@ -19,10 +20,11 @@ interface LibraryMoreOptionsDialogProps {
 // the mobile Add chooser (LibraryAddChooserDialog.tsx) just scoped to the remaining
 // six types.
 export function LibraryMoreOptionsDialog({
-  onAddPdf, onAddAnnouncement, onAddClock, onAddNdiSource, onAddTflStatus, onAddTflArrivals, onClose,
+  onAddPdf, onAddPptx, onAddAnnouncement, onAddClock, onAddNdiSource, onAddTflStatus, onAddTflArrivals, onClose,
 }: LibraryMoreOptionsDialogProps) {
   const options: { icon: IconName; label: string; onClick: () => void }[] = [
     { icon: 'fileText', label: 'Add PDF', onClick: onAddPdf },
+    { icon: 'fileText', label: 'Add PowerPoint', onClick: onAddPptx },
     { icon: 'messageCircle', label: 'Add announcement', onClick: onAddAnnouncement },
     { icon: 'clock', label: 'Add clock', onClick: onAddClock },
     { icon: 'radio', label: 'Add NDI source', onClick: onAddNdiSource },

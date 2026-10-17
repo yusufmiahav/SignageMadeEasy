@@ -9,6 +9,7 @@ import { countPdfPages } from '../pdfPages.js';
 import { getVideoDuration } from '../videoDuration.js';
 import { needsCapping, transcodeToCapped } from '../videoTranscode.js';
 import { extractPosterFrame } from '../videoPoster.js';
+import { convertPptxToPdf } from '../pptxConvert.js';
 import * as tflArrivals from '../tflArrivals.js';
 
 export const libraryRouter = Router();
@@ -105,6 +106,33 @@ libraryRouter.post('/pdf', upload.single('file'), (req, res) => {
     type: 'pdf',
     size: formatBytes(req.file.size),
     thumb: `/uploads/${req.file.filename}`,
+    pageCount,
+  });
+  res.status(201).json(item);
+});
+
+// Converts the upload to PDF via LibreOffice headless (see pptxConvert.ts) and
+// stores it as a plain 'pdf' item — the Pi-side player, page navigation, and
+// countPdfPages below already handle a PDF generically, so a converted deck needs
+// no new item type or player code at all. Done inline (not backgrounded like
+// video's capping) since a typical presentation converts in a few seconds; the
+// upload progress bar's 100% simply holds a little longer while this runs. The
+// original .pptx/.ppt is discarded either way — only the converted PDF is ever
+// served, same as the raw source of an uploaded PDF isn't kept separately from itself.
+libraryRouter.post('/pptx', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'file is required' });
+  const pdfFilename = `${path.basename(req.file.filename, path.extname(req.file.filename))}.pdf`;
+  const pdfPath = path.join(UPLOADS_DIR, pdfFilename);
+  const ok = await convertPptxToPdf(req.file.path, pdfPath);
+  fs.rmSync(req.file.path, { force: true });
+  if (!ok) return res.status(422).json({ error: 'Could not convert this PowerPoint file to PDF' });
+  const buffer = fs.readFileSync(pdfPath);
+  const pageCount = countPdfPages(buffer);
+  const item = store.addLibraryItem({
+    name: req.file.originalname,
+    type: 'pdf',
+    size: formatBytes(fs.statSync(pdfPath).size),
+    thumb: `/uploads/${pdfFilename}`,
     pageCount,
   });
   res.status(201).json(item);

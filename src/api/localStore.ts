@@ -155,6 +155,15 @@ class LocalStoreClient implements SignageApiClient {
     return item;
   }
 
+  // No LibreOffice to convert with here — same as addPdf above, this just records
+  // the item (no thumb) rather than actually rendering it as a PDF.
+  async addPptx(file: File): Promise<LibraryItem> {
+    const item: LibraryItem = { id: uid('l'), name: file.name, type: 'pdf', size: formatBytes(file.size), tags: [], createdAt: Date.now() };
+    this.data.library.push(item);
+    this.persist();
+    return item;
+  }
+
   async addAnnouncement(name: string, text: string): Promise<LibraryItem> {
     const item: LibraryItem = { id: uid('l'), name: name.trim() || 'Announcement', type: 'announcement', text, tags: [], createdAt: Date.now() };
     this.data.library.push(item);

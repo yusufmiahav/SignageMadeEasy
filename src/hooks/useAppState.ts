@@ -170,6 +170,13 @@ export function useAppState() {
     return item;
   }, [refreshLibrary, showToast]);
 
+  const addPptx = useCallback(async (file: File, onProgress?: (pct: number) => void) => {
+    const item = await api.addPptx(file, onProgress);
+    await refreshLibrary();
+    showToast(`${item.name} added`);
+    return item;
+  }, [refreshLibrary, showToast]);
+
   const addAnnouncement = useCallback(async (name: string, text: string) => {
     const item = await api.addAnnouncement(name, text);
     await refreshLibrary();
@@ -807,6 +814,7 @@ export function useAppState() {
     addImage,
     addVideo,
     addPdf,
+    addPptx,
     addAnnouncement,
     addClock,
     addNdiSource,

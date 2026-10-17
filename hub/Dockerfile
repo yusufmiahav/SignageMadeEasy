@@ -28,7 +28,11 @@ FROM node:20-slim
 # matter what it is — see that script) and then safely drop to the non-root
 # "node" user for the actual server process; curl is only needed to fetch it and
 # isn't kept in the final layer. Pinned to an exact version/binary, not "latest".
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl ca-certificates \
+# libreoffice-impress (headless, via soffice) converts an uploaded .pptx/.ppt to
+# PDF at upload time (see pptxConvert.ts) — --no-install-recommends keeps this to
+# just the Impress component's own dependencies rather than the full office suite,
+# though it's still a meaningfully larger image than ffmpeg alone.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libreoffice-impress curl ca-certificates \
   && curl -fsSL -o /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/1.17/gosu-$(dpkg --print-architecture)" \
   && chmod +x /usr/local/bin/gosu \
   && gosu nobody true \

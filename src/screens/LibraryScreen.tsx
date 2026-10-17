@@ -30,13 +30,14 @@ interface InFlightUpload {
 
 export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOpenTflDialog, onOpenTflArrivalsDialog, onConfigureTflItem, onPreviewContent }: LibraryScreenProps) {
   const {
-    library, folders, addImage, addVideo, addPdf, addClock, removeLibraryItem, removeLibraryItems, renameLibraryItem, setLibraryItemTags,
+    library, folders, addImage, addVideo, addPdf, addPptx, addClock, removeLibraryItem, removeLibraryItems, renameLibraryItem, setLibraryItemTags,
     setLibraryItemFolder, addFolder, renameFolder, moveFolder, removeFolder, reorderLibrary, showToast,
   } = app;
   const dropzoneInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
+  const pptxInputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<InFlightUpload[]>([]);
   const [showAddChooser, setShowAddChooser] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
@@ -335,6 +336,17 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) void trackUpload(file, addPdf);
+          e.target.value = '';
+        }}
+      />
+      <input
+        ref={pptxInputRef}
+        type="file"
+        accept=".ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void trackUpload(file, addPptx);
           e.target.value = '';
         }}
       />
@@ -695,6 +707,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
           onAddImage={() => imageInputRef.current?.click()}
           onAddVideo={() => videoInputRef.current?.click()}
           onAddPdf={() => pdfInputRef.current?.click()}
+          onAddPptx={() => pptxInputRef.current?.click()}
           onAddAnnouncement={onOpenAnnounceDialog}
           onAddClock={() => void addClock('Clock')}
           onAddNdiSource={onOpenNdiDialog}
@@ -706,6 +719,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
       {showMoreOptions && (
         <LibraryMoreOptionsDialog
           onAddPdf={() => pdfInputRef.current?.click()}
+          onAddPptx={() => pptxInputRef.current?.click()}
           onAddAnnouncement={onOpenAnnounceDialog}
           onAddClock={() => void addClock('Clock')}
           onAddNdiSource={onOpenNdiDialog}

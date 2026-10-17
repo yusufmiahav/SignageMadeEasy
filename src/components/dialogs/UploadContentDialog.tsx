@@ -21,9 +21,10 @@ interface InFlightUpload {
  * just the upload path, since that's the only piece worth having available from here.
  */
 export function UploadContentDialog({ app, onClose }: UploadContentDialogProps) {
-  const { addImage, addVideo, addPdf, showToast } = app;
+  const { addImage, addVideo, addPdf, addPptx, showToast } = app;
   const dropzoneInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
+  const pptxInputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<InFlightUpload[]>([]);
 
   const trackUpload = async <T,>(file: File, upload: (file: File, onProgress: (pct: number) => void) => Promise<T>): Promise<T | undefined> => {
@@ -76,6 +77,17 @@ export function UploadContentDialog({ app, onClose }: UploadContentDialogProps) 
           e.target.value = '';
         }}
       />
+      <input
+        ref={pptxInputRef}
+        type="file"
+        accept=".ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void trackUpload(file, addPptx);
+          e.target.value = '';
+        }}
+      />
       <div
         className="card"
         style={{ border: '2px dashed var(--color-divider)', padding: '22px 12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer' }}
@@ -91,6 +103,9 @@ export function UploadContentDialog({ app, onClose }: UploadContentDialogProps) 
       </div>
       <button type="button" className="btn btn-secondary btn-block" onClick={() => pdfInputRef.current?.click()}>
         <Icon name="fileText" size={14} /> Upload a PDF
+      </button>
+      <button type="button" className="btn btn-secondary btn-block" onClick={() => pptxInputRef.current?.click()}>
+        <Icon name="fileText" size={14} /> Upload a PowerPoint
       </button>
       {uploads.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
