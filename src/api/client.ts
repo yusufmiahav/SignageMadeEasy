@@ -122,8 +122,18 @@ export interface SignageApiClient {
    * or a hub with more than one network interface where the screen and the
    * browser doing the pairing sit on different ones).
    */
-  /** outputIndex 2 pairs the second output of a dual-output Pi/PC at the same `ip` as an existing output-1 device — see Device.outputIndex. Omitted/1 for every normal pairing. */
-  pairDevice(input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus; hubUrl?: string; outputIndex?: 1 | 2 }): Promise<Device>;
+  /**
+   * outputIndex 2 pairs the second output of a dual-output Pi/PC at the same `ip` as
+   * an existing output-1 device — see Device.outputIndex. Omitted/1 for every normal
+   * pairing. `relinked: true` means this wasn't actually a new screen — the hub
+   * recognized the Pi's MAC as an EXISTING device that had lost its own local pairing
+   * (re-flashed, factory reset, or just never got its stale IP fixed up via Settings)
+   * and re-pointed that existing row at wherever this Pi is now instead of creating a
+   * duplicate. The returned device is that pre-existing one — its name/group/schedule
+   * are untouched, so `name`/`groupId`/`locationId` from this call are ignored in that
+   * case (not silently applied to a different device than the one shown).
+   */
+  pairDevice(input: { name: string; ip: string; groupId: string | null; locationId?: string | null; status?: DeviceStatus; hubUrl?: string; outputIndex?: 1 | 2 }): Promise<Device & { relinked?: boolean }>;
   renameDevice(id: string, name: string): Promise<void>;
   /** Persists a reorder of screens shown under one group (or the standalone/no-group list) on Settings/Home/Schedule — the complete new display order for that one scope, not a global list. */
   reorderDevices(ids: string[]): Promise<void>;

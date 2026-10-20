@@ -87,12 +87,6 @@ devicesRouter.post('/pair', async (req, res) => {
     return res.status(400).json({ error: 'outputIndex must be 1 or 2' });
   }
   const resolvedOutput: 1 | 2 = outputIndex === 2 ? 2 : 1;
-  // Two Device rows CAN share an ip now — a dual-output Pi/PC's two outputs — but
-  // never the same ip AND the same output: that would be re-pairing the one screen
-  // the hub already knows about, not adding a new one.
-  if (store.listDevices().some((d) => d.ip === ip && d.outputIndex === resolvedOutput)) {
-    return res.status(409).json({ error: resolvedOutput === 2 ? `Output 2 at ${ip} is already paired` : `A screen is already paired at ${ip}` });
-  }
 
   let resolvedName = typeof name === 'string' && name.trim() ? name.trim() : 'Display';
   let status: 'online' | 'offline' = 'offline';
@@ -100,6 +94,8 @@ devicesRouter.post('/pair', async (req, res) => {
 
   // Real Pis run the tiny local agent this hands off to; skipHandshake lets tests /
   // manual entries that don't have a real agent running still create a device record.
+  // Done BEFORE the conflict checks below (rather than after, like the old flow) so
+  // the MAC-based relink check right after this has something to match against.
   if (!skipHandshake) {
     try {
       const identity = await piAgent.identify(ip, undefined, resolvedOutput);
@@ -110,6 +106,43 @@ devicesRouter.post('/pair', async (req, res) => {
       // Pi unreachable right now — still pair it (matches the frontend's existing
       // manual-IP flow, which doesn't require the display to be live to save the pairing).
     }
+  }
+
+  // A Pi that lost its own local pairing (its config.json went away — a re-flash, a
+  // factory reset, or it was simply offline long enough that nobody ran Settings' IP
+  // -repoint field for it — see setDeviceIp's comment) shows its unpaired screen and
+  // reports identify().paired === false, which makes it look to a human exactly like
+  // a brand-new screen worth pairing. But its MAC (stable across all of that, unlike
+  // its IP) usually still matches a Device row the hub already has. Without this
+  // check, pairing it again either 409s on the old row's now-stale ip (a dead end —
+  // nothing in that error tells you to go edit the EXISTING device's IP in Settings
+  // instead) or, if its ip happens to differ from the stale one too, silently creates
+  // a DUPLICATE row for the same physical screen. Finding it by MAC first and
+  // re-pointing that existing row — same two calls Settings' own IP field already
+  // makes (setDeviceIp + piAgent.configure) — turns "stuck on the unpaired screen,
+  // hub won't let me re-add it" into exactly the same self-service fix a DHCP-caused
+  // IP change already gets via the heartbeat path, with nothing to type by hand.
+  const existingByMac = mac ? store.listDevices().find((d) => d.mac === mac && d.outputIndex === resolvedOutput) : undefined;
+  if (existingByMac) {
+    if (existingByMac.ip !== ip && store.listDevices().some((d) => d.id !== existingByMac.id && d.ip === ip)) {
+      return res.status(409).json({ error: `A screen is already paired at ${ip}` });
+    }
+    if (existingByMac.ip !== ip) store.setDeviceIp(existingByMac.id, ip);
+    if (status === 'online') {
+      try {
+        await piAgent.configure(ip, existingByMac.id, hubUrl || publicHubUrl(req), resolvedOutput);
+      } catch {
+        // Non-fatal — same reasoning as the fresh-pair path below.
+      }
+    }
+    return res.status(200).json({ ...store.getDevice(existingByMac.id), relinked: true });
+  }
+
+  // Two Device rows CAN share an ip now — a dual-output Pi/PC's two outputs — but
+  // never the same ip AND the same output: that would be re-pairing the one screen
+  // the hub already knows about, not adding a new one.
+  if (store.listDevices().some((d) => d.ip === ip && d.outputIndex === resolvedOutput)) {
+    return res.status(409).json({ error: resolvedOutput === 2 ? `Output 2 at ${ip} is already paired` : `A screen is already paired at ${ip}` });
   }
 
   const device = store.pairDevice({ name: resolvedName, ip, mac, groupId, locationId: locationId ?? null, status, outputIndex: resolvedOutput });

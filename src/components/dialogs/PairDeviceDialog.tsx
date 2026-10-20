@@ -132,8 +132,12 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     setPairingIp(found.ip);
     try {
       const gid = await resolveGroupId();
-      await pairDevice({ name: found.name, ip: found.ip, groupId: gid, locationId: locationId || null, hubUrl: hubUrl.trim() || undefined });
-      showToast(`Paired ${found.name}`);
+      const device = await pairDevice({ name: found.name, ip: found.ip, groupId: gid, locationId: locationId || null, hubUrl: hubUrl.trim() || undefined });
+      // This screen's MAC matched one the hub already had (it lost its own local
+      // pairing — a re-flash, factory reset, or a stale IP nobody fixed up yet) —
+      // the hub re-pointed that EXISTING device at it instead of creating a
+      // duplicate, so the group/name picked above were never applied here.
+      showToast(device.relinked ? `${device.name} reconnected — kept its existing group and schedule` : `Paired ${found.name}`);
       onClose();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not pair that display');
@@ -155,8 +159,9 @@ export function PairDeviceDialog({ app, onClose }: PairDeviceDialogProps) {
     setPairingIp(manualIp);
     try {
       const gid = await resolveGroupId();
-      await pairDevice({ name: 'Display', ip: manualIp, groupId: gid, locationId: locationId || null, hubUrl: hubUrl.trim() || undefined });
-      showToast(`Connected to ${manualIp}`);
+      const device = await pairDevice({ name: 'Display', ip: manualIp, groupId: gid, locationId: locationId || null, hubUrl: hubUrl.trim() || undefined });
+      // See the scan-mode branch above for what `relinked` means.
+      showToast(device.relinked ? `${device.name} reconnected — kept its existing group and schedule` : `Connected to ${manualIp}`);
       onClose();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not pair that display');
