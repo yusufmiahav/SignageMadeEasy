@@ -38,6 +38,15 @@ export function AppShell({ tab, onTabChange, deviceCount, onlineCount, onAddScre
     <div className="app-shell">
       <div className="app-mobile-topbar nav">
         <span className="nav-brand">SignageMadeEasy</span>
+        {/* Mirrors the desktop nav's own "+" below — without this, the global Add
+            chooser (screen/location/group/content) was only reachable on desktop;
+            on mobile, "Add content" specifically (UploadContentDialog) had no path
+            to it at all, since the Library tab's own Add button only covers content,
+            not screens/locations/groups, and Home's own "Add a screen" buttons skip
+            the chooser and go straight to pairing. */}
+        <button type="button" className="btn btn-ghost btn-icon" aria-label="Add a screen" onClick={onAddScreen}>
+          <Icon name="plus" size={18} />
+        </button>
         <button type="button" className="btn btn-ghost btn-icon" aria-label="Help" onClick={() => setShowHelp(true)}>
           <Icon name="helpCircle" size={18} />
         </button>
@@ -92,7 +101,12 @@ export function AppShell({ tab, onTabChange, deviceCount, onlineCount, onAddScre
             onClick={() => onTabChange(t.id)}
           >
             <Icon name={t.icon} size={18} />
-            {t.label}
+            {/* A bare text node here can't be truncated — the longest label
+                ("Announcements") was overflowing its own flex cell at narrow phone
+                widths and visually running into "Schedule" next to it, with no gap,
+                instead of wrapping or clipping. Wrapping it so .app-tabbar-btn span's
+                ellipsis rule (app.css) has something to apply to. */}
+            <span>{t.label}</span>
           </button>
         ))}
       </nav>

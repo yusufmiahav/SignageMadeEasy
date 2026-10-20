@@ -32,8 +32,23 @@ body {
   box-sizing: border-box;
 }
 
+/* modernist.css's h1 is a fixed 42px regardless of viewport — fine for every
+   screen title except the longest one ("Announcements"), which got clipped past
+   the right edge on a narrow phone (confirmed at 360px) since a single long word
+   has nowhere to wrap to. Scaling fluidly with viewport width (rather than a
+   fixed breakpoint) keeps every other, shorter title visually unchanged while
+   giving the longest one room on any screen width, down to the smallest phones. */
+h1 {
+  font-size: clamp(26px, 8vw, 42px);
+}
+
 .app-tabbar {
   display: flex;
+  /* Without this, two adjacent labels could still touch with zero visual
+     separation at the narrowest phone widths (confirmed at 320px) even with the
+     ellipsis rule below — min-width: 0 lets each cell shrink arbitrarily small,
+     so nothing enforced a gap between cells on its own. */
+  gap: 4px;
   border-top: 2px solid var(--color-divider);
   padding: 8px 4px;
   background: var(--color-bg);
@@ -43,6 +58,11 @@ body {
 
 .app-tabbar-btn {
   flex: 1;
+  /* Without this, a flex item won't shrink below its content's natural width no
+     matter what flex: 1 says — "Announcements" (the longest label) was forcing its
+     own cell wider than an equal 1/6th share at narrow phone widths, pushing into
+     "Schedule" next to it with zero gap instead of letting its own label truncate. */
+  min-width: 0;
   background: none;
   border: none;
   display: flex;
@@ -53,6 +73,13 @@ body {
   cursor: pointer;
   font-family: var(--font-body);
   font-size: 11px;
+}
+
+.app-tabbar-btn span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-tabbar-btn.is-active {

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { DialogShell } from './DialogShell';
 import { Icon } from '../icons/Icon';
+import { classifyMediaFile } from '../../utils/mediaFile';
 import type { AppState } from '../../hooks/useAppState';
 
 interface UploadContentDialogProps {
@@ -42,11 +43,17 @@ export function UploadContentDialog({ app, onClose }: UploadContentDialogProps) 
     }
   };
 
+  // Classifies by MIME, falling back to the file extension — see classifyMediaFile's
+  // own comment. Without the fallback, a video whose container the browser doesn't
+  // recognize (e.g. .mkv/.ts/.3gp on some OS/browser combos) matched neither branch
+  // and silently vanished instead of uploading.
   const handleDropped = async (files: FileList | null) => {
     if (!files) return;
     for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) await trackUpload(file, addImage);
-      else if (file.type.startsWith('video/')) await trackUpload(file, addVideo);
+      const kind = classifyMediaFile(file);
+      if (kind === 'image') await trackUpload(file, addImage);
+      else if (kind === 'video') await trackUpload(file, addVideo);
+      else showToast(`${file.name} isn't a supported image or video file`);
     }
   };
 
@@ -58,7 +65,9 @@ export function UploadContentDialog({ app, onClose }: UploadContentDialogProps) 
       <input
         ref={dropzoneInputRef}
         type="file"
-        accept="image/*,video/*"
+        // Explicit video extensions alongside the wildcards — see LibraryScreen.tsx's
+        // own dropzone input for why some containers need this to even be selectable.
+        accept="image/*,video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm,.wmv,.flv,.3gp,.mpeg,.mpg,.ts,.ogv"
         multiple
         hidden
         onChange={(e) => {

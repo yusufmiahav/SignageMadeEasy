@@ -1,4 +1,5 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { classifyMediaFile } from '../utils/mediaFile';
 import { Icon } from '../components/icons/Icon';
 import { LibraryCard } from '../components/LibraryCard';
 import { FolderCard } from '../components/FolderCard';
@@ -156,13 +157,19 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   // Tracks the raw upload transfer for each in-flight file (not the hub's own
   // post-upload processing, e.g. video capping — that shows up as a "Decoding…"
   // badge on the card itself once the item lands, via LibraryCard's transcodeStatus).
-  const trackUpload = async <T,>(file: File, upload: (file: File, onProgress: (pct: number) => void) => Promise<T>): Promise<T | undefined> => {
+  // Also files the new item into whichever folder is currently open — uploading
+  // while browsing a folder should land there, the same way dropping a file into an
+  // open folder in a normal file manager does, rather than always dumping it at the
+  // library root regardless of where you were looking when you added it.
+  const trackUpload = async <T extends LibraryItem,>(file: File, upload: (file: File, onProgress: (pct: number) => void) => Promise<T>): Promise<T | undefined> => {
     const key = `${file.name}-${file.size}-${Date.now()}`;
     setUploads((prev) => [...prev, { key, name: file.name, pct: 0 }]);
     try {
-      return await upload(file, (pct) => {
+      const item = await upload(file, (pct) => {
         setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, pct } : u)));
       });
+      if (currentFolderId) await setLibraryItemFolder(item.id, currentFolderId);
+      return item;
     } catch (err) {
       showToast(err instanceof Error ? err.message : `${file.name} failed to upload`);
       return undefined;
@@ -172,14 +179,18 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
   };
 
   // Shared by both the dropzone's own drag-and-drop and its click-to-browse input
-  // (accept="image/*,video/*") — one file list, routed per file by MIME type, so
-  // "click to upload" actually offers the same two types the dropzone's own label
-  // promises instead of silently restricting to images.
+  // (accept="image/*,video/*") — one file list, routed per file by its real media
+  // type (MIME, falling back to extension — see classifyMediaFile) rather than MIME
+  // alone, so a video whose container the browser doesn't recognize (common for
+  // .mkv/.ts/.3gp in particular) still uploads as a video instead of silently
+  // vanishing because it matched neither the image nor the video branch.
   const handleDropped = async (files: FileList | null) => {
     if (!files) return;
     for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) await trackUpload(file, addImage);
-      else if (file.type.startsWith('video/')) await trackUpload(file, addVideo);
+      const kind = classifyMediaFile(file);
+      if (kind === 'image') await trackUpload(file, addImage);
+      else if (kind === 'video') await trackUpload(file, addVideo);
+      else showToast(`${file.name} isn't a supported image or video file`);
     }
   };
 
@@ -298,7 +309,12 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
       <input
         ref={dropzoneInputRef}
         type="file"
-        accept="image/*,video/*"
+        // Explicit video extensions alongside the wildcards — some containers
+        // (.mkv, .ts, .3gp especially) aren't registered as a recognized "video/*"
+        // MIME type on every OS/browser, which otherwise hides them entirely from
+        // this picker even though dragging the exact same file onto the dropzone
+        // works fine (drag-and-drop isn't filtered the way a file picker is).
+        accept="image/*,video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm,.wmv,.flv,.3gp,.mpeg,.mpg,.ts,.ogv"
         multiple
         style={{ display: 'none' }}
         onChange={(e) => {
@@ -320,7 +336,7 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
       <input
         ref={videoInputRef}
         type="file"
-        accept="video/*"
+        accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm,.wmv,.flv,.3gp,.mpeg,.mpg,.ts,.ogv"
         style={{ display: 'none' }}
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -351,9 +367,14 @@ export function LibraryScreen({ app, onOpenAnnounceDialog, onOpenNdiDialog, onOp
         }}
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* flexWrap on both levels — at narrow phone widths (e.g. 360px) the mobile
+          icon-button row no longer fits next to the "Library" heading and was
+          overflowing past the right edge of the screen, clipping the last ("Select")
+          button entirely instead of wrapping onto its own line. Matches HomeScreen's
+          own header, which already wraps the same way. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <h1 style={{ margin: 0 }}>Library</h1>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button type="button" className="btn btn-secondary btn-icon mobile-only" aria-label="New folder" title="New folder" onClick={() => setShowNewFolder(true)}>
             <Icon name="folderPlus" size={15} />
           </button>
