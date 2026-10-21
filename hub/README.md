@@ -51,20 +51,22 @@ Settings shows two things for keeping a fleet of screens in sync:
   Settings row, newest first, with its outcome (in progress/done/failed) and
   when. Lets you see what's been touched across every screen at a glance,
   not just whichever one you're currently looking at.
-- **Per-screen version** — each screen reports the plain version number
-  (`v1.0.1`, not a git commit hash) it last updated/re-provisioned from, read
-  from the repo's own `/VERSION` file at that time. If it differs from the
-  hub's own version — baked into its Docker image from that same file at
-  build time — the screen is flagged "Update available." A screen built
-  before this feature shipped shows no version at all until its next
-  Update/Re-provision.
+- **Per-screen version** — each screen reports a plain UTC date (e.g.
+  `v2026.10.21`, not a git commit hash) stamped automatically the moment it
+  last updated/re-provisioned. If it differs from the hub's own version —
+  stamped the same way, at Docker build time — the screen is flagged
+  "Update available." A screen built before this feature shipped shows no
+  version at all until its next Update/Re-provision.
 
-`/VERSION` is a single plain-text file at the repo root (just a number, e.g.
-`1.0.1`) — the one source of truth both the hub and every Pi read their
-version from, bumped by hand with each meaningful change shipped to this
-branch. It's unrelated to the individual `package.json` `"version"` fields
-under `hub/`/`pi-player/`/the repo root, which track each npm package on its
-own and aren't surfaced anywhere in the control app.
+Both the hub and every Pi stamp this themselves, automatically, at the
+moment they're actually built/updated — a Docker build writes the current
+UTC date into the image (`hub/Dockerfile`), and provision.sh/self-update.sh
+do the same on the Pi right after pulling the latest code. Nothing to bump
+by hand, so the version shown can't go stale the way an earlier, hand-edited
+`/VERSION` file did (it was never actually kept up to date in practice — see
+that file's own history). It's unrelated to the individual `package.json`
+`"version"` fields under `hub/`/`pi-player/`/the repo root, which track each
+npm package on its own and aren't surfaced anywhere in the control app.
 
 **Networking is not optional here**: the compose file runs the container with
 `network_mode: host` on purpose. The hub needs to reach Pi IPs directly (to finish

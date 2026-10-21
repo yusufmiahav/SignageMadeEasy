@@ -219,11 +219,16 @@ fi
 # Reported alongside every heartbeat (see pi-player/src/diagnostics.ts) so the
 # control app's Settings screen can tell which screens haven't picked up the
 # hub's current code yet (see hub/src/version.ts's matching comment). A plain
-# version number copied straight from the repo's own /VERSION file, not a git
-# commit hash — see that file's own comment. World-readable by default so the
-# signage user's player process can read it without needing any access to
-# $INSTALL_DIR/src itself, which stays root-owned.
-cp "$INSTALL_DIR/src/VERSION" "$INSTALL_DIR/version" 2>/dev/null || echo unknown > "$INSTALL_DIR/version"
+# UTC date, not a git commit hash — stamped fresh every time this script (or
+# self-update.sh) actually runs, so it's always "when was this screen last
+# updated," automatically, with nothing to remember to bump by hand. (The repo's
+# own /VERSION file used to be copied here instead — hand-edited with each
+# meaningful change — but nobody actually kept that up, so every screen compared
+# as "up to date" against the hub forever regardless of how stale it really was.
+# See hub/Dockerfile's matching comment for the hub's own side of this.) World-
+# readable by default so the signage user's player process can read it without
+# needing any access to $INSTALL_DIR/src itself, which stays root-owned.
+date -u +%Y.%m.%d > "$INSTALL_DIR/version"
 
 log "Building the player app"
 rsync -a --delete \

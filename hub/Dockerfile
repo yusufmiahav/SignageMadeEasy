@@ -41,11 +41,18 @@ WORKDIR /app
 COPY hub/package.json hub/package-lock.json* ./
 RUN npm install --omit=dev
 COPY --from=hub-build --chown=node:node /hub/dist ./dist
-# A plain version number (see /VERSION's own comment), not a git commit — this is
-# an ordinary file in the repo, not excluded by .dockerignore, so it's just a
-# normal COPY like everything else here. hub/src/version.ts reads this to report
-# the running hub's own version, compared against each screen's own.
-COPY --chown=node:node VERSION ./version.txt
+# A plain UTC date, not a git commit — stamped fresh on every image build, so it's
+# always "when was this hub last deployed," automatically, with nothing to
+# remember to bump by hand. hub/src/version.ts reads this to report the running
+# hub's own version, compared against each screen's own (see pi-player/
+# provision.sh's matching comment). The repo's own /VERSION file used to be COPYd
+# in here instead — hand-edited with each meaningful change — but nobody actually
+# kept that up, so this never changed no matter how many real updates shipped.
+# .git itself stays excluded from the build context (see .dockerignore) — this
+# is the container's own build-time clock, not a git lookup, so that's no
+# obstacle. Still world-readable by default (same `node` user reads it at
+# runtime as before), no explicit --chown needed for a RUN-created file.
+RUN date -u +%Y.%m.%d > version.txt
 COPY --from=web-build --chown=node:node /web/dist ./web-dist
 COPY hub/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

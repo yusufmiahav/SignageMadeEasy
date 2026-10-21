@@ -21,15 +21,19 @@ const execFileAsync = promisify(execFile);
 // distinct from os.uptime() above, which only resets on a full reboot.
 const PROCESS_STARTED_AT = Date.now();
 
-// A plain version number (e.g. "1.0.1"), copied from the repo's own /VERSION file
-// by provision.sh/self-update.sh right after they pull/clone it — see those
-// scripts' own comments. Not a git commit hash — this project bumps /VERSION by
-// hand with each meaningful change instead, so what shows up in the control app
-// is a normal-looking version number rather than git jargon. Overridable for
-// testing, same pattern as this project's other env-overridden paths. Read once
-// at module load (same reasoning as PROCESS_STARTED_AT above): it can't change
-// without a restart anyway, since an update that changes it always restarts this
-// process on completion.
+// A plain UTC date (e.g. "2026.10.21"), stamped by provision.sh/self-update.sh
+// right after they pull/clone the repo — see those scripts' own comments. Not a
+// git commit hash — the control app shows a normal-looking date rather than git
+// jargon — and not a hand-edited file either anymore: this used to be copied
+// straight from the repo's own /VERSION file, bumped by hand with each meaningful
+// change, but that upkeep never actually happened in practice, so the version
+// shown never changed no matter how out of date a screen really was. Stamping the
+// current date automatically at update time instead means it's always accurate
+// with nothing for anyone to remember. Overridable for testing, same pattern as
+// this project's other env-overridden paths. Read once at module load (same
+// reasoning as PROCESS_STARTED_AT above): it can't change without a restart
+// anyway, since an update that changes it always restarts this process on
+// completion.
 const VERSION_FILE = process.env.SIGNAGE_VERSION_PATH ?? '/opt/signage/version';
 const VERSION: string | null = (() => {
   try {
