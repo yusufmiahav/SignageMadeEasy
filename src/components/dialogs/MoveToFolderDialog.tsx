@@ -43,7 +43,11 @@ export function MoveToFolderDialog({ folders, title, currentFolderId, excludeSub
 
   return (
     <DialogShell title={title} onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: '50vh', overflowY: 'auto' }}>
+      {/* No max-height/overflow of its own — same reasoning as FolderTreeList.tsx:
+          DialogShell's own .dialog-body-scroll already scrolls the whole dialog, so a
+          second nested scroll region here would just trap touch scrolling instead of
+          reaching the Cancel/Move buttons below. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', cursor: 'pointer' }}>
           <input type="radio" name="move-target" checked={selected === null} onChange={() => setSelected(null)} />
           <Icon name="home" size={14} />

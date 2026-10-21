@@ -22,13 +22,24 @@ export function DialogShell({ title, onClose, children }: DialogShellProps) {
   return (
     <div className="dialog-backdrop" style={{ zIndex: 60 }} onClick={onClose}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* Kept OUTSIDE .dialog-body-scroll (not just the first thing inside a single
+            scrolling .dialog) so the title and close button stay put and reachable
+            while a long dialog's body scrolls underneath them — e.g.
+            ForceContentDialog's folder/item picker, which can run well past a short
+            mobile viewport's height on its own. See modernist.css's .dialog comment
+            for the bug this fixes: without a scroll boundary ANYWHERE in a dialog,
+            content past the viewport edge (routinely the Cancel/Apply buttons
+            standard DialogShell.tsx-styled calling code puts in dialog-actions) was
+            simply unreachable, not just visually cut off. */}
+        <div className="dialog-header">
           <span className="dialog-title">{title}</span>
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Close" onClick={onClose}>
             <Icon name="x" size={16} />
           </button>
         </div>
-        {children}
+        <div className="dialog-body-scroll">
+          {children}
+        </div>
       </div>
     </div>
   );

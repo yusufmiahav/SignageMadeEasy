@@ -77,8 +77,13 @@ export function FolderTreeList({ folders, items, renderItem, emptyMessage }: Fol
     return emptyMessage ? <p className="dialog-body">{emptyMessage}</p> : null;
   }
 
+  // No max-height/overflow of its own — the dialog it's always rendered inside
+  // (DialogShell's own .dialog-body-scroll) is now the one scrolling container, not
+  // this. A SECOND, nested scroll region here used to trap touch scrolling on a
+  // phone: once your finger landed on this list, the dialog underneath it (and its
+  // own Cancel/Apply buttons) couldn't be reached by scrolling at all.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 280, overflowY: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {rootFolders.map((folder) => (
         <FolderNode key={folder.id} folder={folder} depth={0} folders={folders} items={items} renderItem={renderItem} />
       ))}
