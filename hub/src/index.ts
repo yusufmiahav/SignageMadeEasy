@@ -1,6 +1,7 @@
 import { createApp } from './app.js';
 import { startPolling } from './tflStatus.js';
 import * as tflArrivals from './tflArrivals.js';
+import * as tapoSchedule from './tapoSchedule.js';
 import * as store from './store.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -25,3 +26,7 @@ tflArrivals.startPolling(() =>
     .flatMap((item) => item.tflStations ?? [])
     .map((station) => station.stopPointId),
 );
+
+// No circular-import concern here (unlike tflArrivals above) — tapoSchedule.ts only
+// ever calls INTO store.ts, store.ts never needs to call back into it.
+tapoSchedule.startPolling();

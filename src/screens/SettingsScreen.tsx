@@ -17,6 +17,7 @@ interface SettingsScreenProps {
   onSetHideAnnouncementRow: (value: boolean) => void;
   onOpenDevicePreview: (device: Device) => void;
   onOpenDeviceUpdate: (device: Device) => void;
+  onOpenTapoPlug: (device: Device) => void;
   onOpenUpdateResults: (results: UpdateResult[], kind: 'update' | 'reprovision' | 'restart') => void;
 }
 
@@ -37,13 +38,26 @@ export function SettingsScreen({
   onSetHideAnnouncementRow,
   onOpenDevicePreview,
   onOpenDeviceUpdate,
+  onOpenTapoPlug,
   onOpenUpdateResults,
 }: SettingsScreenProps) {
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation, setDeviceIp,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
     safetyHold, setSafetyHold, offlineAlertMinutes, setOfflineAlertMinutes, setDeviceOfflineAlertsMuted, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, reprovisionAllDevices, restartAllDevices, hubVersion, updateLog, actionLog,
+    tapoEmail, tapoConfigured, setTapoAccount, clearTapoAccount,
   } = app;
+  const [tapoEmailDraft, setTapoEmailDraft] = useState(tapoEmail ?? '');
+  useEffect(() => setTapoEmailDraft(tapoEmail ?? ''), [tapoEmail]);
+  const [tapoPasswordDraft, setTapoPasswordDraft] = useState('');
+  const saveTapoAccount = async () => {
+    if (!tapoEmailDraft.trim() || !tapoPasswordDraft) {
+      showToast('Both email and password are needed to save a Tapo account');
+      return;
+    }
+    await setTapoAccount(tapoEmailDraft.trim(), tapoPasswordDraft);
+    setTapoPasswordDraft('');
+  };
   const mutedDevices = devices.filter((d) => d.offlineAlertsMuted);
   const [offlineAlertDraft, setOfflineAlertDraft] = useState(String(offlineAlertMinutes));
   useEffect(() => setOfflineAlertDraft(String(offlineAlertMinutes)), [offlineAlertMinutes]);
@@ -372,6 +386,9 @@ export function SettingsScreen({
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Update" title="Update or re-provision this screen" onClick={() => onOpenDeviceUpdate(device)}>
               <Icon name="download" size={13} />
             </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Tapo plug" title="Attached Tapo smart plug: IP, power cycle, schedule" onClick={() => onOpenTapoPlug(device)}>
+              <Icon name="zap" size={13} />
+            </button>
             <button type="button" className="btn btn-ghost btn-icon" aria-label="Edit name or IP" title="Rename, or change this screen's saved IP address" onClick={() => startEdit(device.id, device.name, 'device', device.ip)}>
               <Icon name="pencil" size={13} />
             </button>
@@ -594,6 +611,42 @@ export function SettingsScreen({
             </div>
           </div>
         )}
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <div className="card-kicker">Tapo smart plugs</div>
+        <p className="card-body" style={{ margin: 0 }}>
+          One shared TP-Link account controls every screen's plug — set it here once, then attach each
+          screen to its own plug's IP from that screen's own "Tapo plug" button below. Needs a real Pi to
+          actually reach a plug; harmless to set up ahead of time either way.
+        </p>
+        {tapoConfigured && (
+          <div className="dialog-warning" style={{ background: 'transparent', border: '1px solid var(--color-divider)', color: 'inherit' }}>
+            <Icon name="check" size={16} />
+            <span>Configured — {tapoEmail}</span>
+          </div>
+        )}
+        <div className="field">
+          <label htmlFor="tapo-email">Account email</label>
+          <input className="input" id="tapo-email" type="email" value={tapoEmailDraft} onChange={(e) => setTapoEmailDraft(e.target.value)} />
+        </div>
+        <div className="field">
+          <label htmlFor="tapo-password">Account password</label>
+          <input
+            className="input"
+            id="tapo-password"
+            type="password"
+            placeholder={tapoConfigured ? '•••••••• (leave blank to keep the saved one)' : ''}
+            value={tapoPasswordDraft}
+            onChange={(e) => setTapoPasswordDraft(e.target.value)}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="btn btn-primary" onClick={() => void saveTapoAccount()}>Save account</button>
+          {tapoConfigured && (
+            <button type="button" className="btn btn-secondary" onClick={() => void clearTapoAccount()}>Remove account</button>
+          )}
+        </div>
       </div>
 
       <div className="card" style={{ gap: 8 }}>

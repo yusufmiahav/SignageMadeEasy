@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Router, type Request } from 'express';
 import * as store from '../store.js';
 import * as piAgent from '../piAgent.js';
+import * as tapoPower from '../tapoPower.js';
 import { requireAuth } from '../auth.js';
 import { DATA_DIR } from '../db.js';
 
@@ -161,7 +162,7 @@ devicesRouter.post('/pair', async (req, res) => {
 });
 
 devicesRouter.patch('/:id', async (req, res) => {
-  const { name, groupId, locationId, videoQuality, ip, hubUrl, offlineAlertsMuted } = req.body ?? {};
+  const { name, groupId, locationId, videoQuality, ip, hubUrl, offlineAlertsMuted, tapoPlugIp } = req.body ?? {};
   if (typeof name === 'string') store.renameDevice(req.params.id, name);
   if (typeof offlineAlertsMuted === 'boolean') store.setDeviceOfflineAlertsMuted(req.params.id, offlineAlertsMuted);
   // groupId: null moves the device to "standalone, no group" — distinct from
@@ -175,6 +176,12 @@ devicesRouter.patch('/:id', async (req, res) => {
     store.setDeviceLocation(req.params.id, locationId);
   }
   if (videoQuality === 'auto' || videoQuality === 'full') store.setDeviceVideoQuality(req.params.id, videoQuality);
+  // null clears this screen's Tapo plug (no plug attached/configured) — same
+  // omit-vs-null distinction as locationId above. See types.ts's Device.tapoPlugIp.
+  if (tapoPlugIp !== undefined) {
+    if (tapoPlugIp !== null && typeof tapoPlugIp !== 'string') return res.status(400).json({ error: 'tapoPlugIp must be a string or null' });
+    store.setDeviceTapoPlugIp(req.params.id, tapoPlugIp ? tapoPlugIp.trim() || null : null);
+  }
 
   // Repoints this device at a different IP — e.g. its DHCP lease changed (no
   // reservation), or its SD card was re-flashed/factory-reset and would
@@ -472,4 +479,38 @@ devicesRouter.post('/:id/events', (req, res) => {
 devicesRouter.delete('/:id/events/:eventId', (req, res) => {
   store.removeDeviceEvent(req.params.id, req.params.eventId);
   res.status(204).end();
+});
+
+// Mirrors the /events routes above exactly — see Device.powerSchedules' comment in
+// types.ts for why this is a separate table/endpoint rather than another event type.
+devicesRouter.post('/:id/power-schedules', (req, res) => {
+  const { onTime, offTime, daysOfWeek } = req.body ?? {};
+  if (typeof onTime !== 'string' || typeof offTime !== 'string') {
+    return res.status(400).json({ error: 'onTime and offTime are required' });
+  }
+  if (daysOfWeek !== undefined && (!Array.isArray(daysOfWeek) || daysOfWeek.some((d) => typeof d !== 'number' || d < 0 || d > 6))) {
+    return res.status(400).json({ error: 'daysOfWeek must be an array of numbers 0-6 when provided' });
+  }
+  res.status(201).json(store.addDevicePowerSchedule(req.params.id, { onTime, offTime, daysOfWeek }));
+});
+
+devicesRouter.delete('/:id/power-schedules/:scheduleId', (req, res) => {
+  store.removeDevicePowerSchedule(req.params.id, req.params.scheduleId);
+  res.status(204).end();
+});
+
+// Settings screen's manual "Power cycle" button — a hard power cut via this screen's
+// own Tapo plug (see tapoPower.ts), not just a reboot of the Pi (the existing
+// /restart route above). Needs both a plug IP on this device AND a Tapo account
+// configured hub-wide (Settings) — tapoPower.powerCycle throws a clear error for
+// either missing piece, surfaced straight to the control app's toast.
+devicesRouter.post('/:id/tapo-power-cycle', async (req, res) => {
+  const device = store.getDevice(req.params.id);
+  if (!device) return res.status(404).json({ error: 'not found' });
+  try {
+    await tapoPower.powerCycle(device);
+    res.status(204).end();
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Power cycle failed' });
+  }
 });

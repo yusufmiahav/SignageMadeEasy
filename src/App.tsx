@@ -28,6 +28,7 @@ import { UploadContentDialog } from './components/dialogs/UploadContentDialog';
 import { ContentPreviewDialog } from './components/dialogs/ContentPreviewDialog';
 import { DevicePreviewDialog } from './components/dialogs/DevicePreviewDialog';
 import { UpdateDeviceDialog } from './components/dialogs/UpdateDeviceDialog';
+import { TapoPlugDialog } from './components/dialogs/TapoPlugDialog';
 import { UpdateResultsDialog } from './components/dialogs/UpdateResultsDialog';
 import { LoginScreen } from './screens/LoginScreen';
 import { useAppState, type UpdateResult } from './hooks/useAppState';
@@ -75,6 +76,8 @@ type DialogState =
   | { type: 'previewDevice'; device: Device }
   /** Settings screen's "Update" button (download icon) — see UpdateDeviceDialog.tsx. */
   | { type: 'updateDevice'; device: Device }
+  /** Settings screen's "Tapo plug" button (zap icon) — see TapoPlugDialog.tsx. */
+  | { type: 'tapoPlug'; device: Device }
   /** Settings screen's "Update all"/"Advanced > Re-provision all"/"Advanced > Restart all" buttons — see UpdateResultsDialog.tsx. */
   | { type: 'updateResults'; results: UpdateResult[]; kind: 'update' | 'reprovision' | 'restart' }
   | null;
@@ -201,6 +204,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
             onSetHideAnnouncementRow={uiSettings.setHideAnnouncementRow}
             onOpenDevicePreview={(device) => setDialog({ type: 'previewDevice', device })}
             onOpenDeviceUpdate={(device) => setDialog({ type: 'updateDevice', device })}
+            onOpenTapoPlug={(device) => setDialog({ type: 'tapoPlug', device })}
             onOpenUpdateResults={(results, kind) => setDialog({ type: 'updateResults', results, kind })}
           />
         )}
@@ -341,6 +345,7 @@ function AuthenticatedApp({ onLogout, theme }: { onLogout: () => void; theme: Re
       {dialog?.type === 'preview' && <ContentPreviewDialog item={dialog.item} onClose={closeDialog} />}
       {dialog?.type === 'previewDevice' && <DevicePreviewDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'updateDevice' && <UpdateDeviceDialog app={app} device={dialog.device} onClose={closeDialog} />}
+      {dialog?.type === 'tapoPlug' && <TapoPlugDialog app={app} device={dialog.device} onClose={closeDialog} />}
       {dialog?.type === 'updateResults' && <UpdateResultsDialog results={dialog.results} kind={dialog.kind} onClose={closeDialog} />}
 
       <Toast message={app.toast} />

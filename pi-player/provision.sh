@@ -126,6 +126,23 @@ if [[ "$NEED_NODE" -eq 1 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+log "Installing python-kasa (controls a screen's attached TP-Link Tapo smart plug — see pi-player/src/tapo.ts)"
+# A dedicated venv, not a system-wide pip install — Raspberry Pi OS Bookworm (like
+# current Debian/Ubuntu) blocks pip from touching the system Python environment at
+# all (PEP 668) without --break-system-packages, which risks clashing with
+# apt-managed packages; pipx's --global flag would sidestep needing a venv at all,
+# but isn't available in the pipx version Bookworm ships. A venv avoids both
+# problems, and referencing its absolute binary path (see tapo.ts's KASA_BIN, not a
+# bare `kasa` relying on $PATH) means the agent finds it regardless of which
+# user/environment it ends up running under. No maintained Node equivalent exists
+# for Tapo's local control protocol — see tapo.ts's own comment.
+apt-get install -y --no-install-recommends python3-venv
+if [[ ! -x "$INSTALL_DIR/venv/bin/kasa" ]]; then
+  python3 -m venv "$INSTALL_DIR/venv"
+  "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip python-kasa
+fi
+
+# ---------------------------------------------------------------------------
 log "Creating the $SIGNAGE_USER user"
 if ! id "$SIGNAGE_USER" >/dev/null 2>&1; then
   useradd --system --create-home --shell /usr/sbin/nologin \

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DevicePreview, type DiscoveredDevice } from '../api/client';
-import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, UpdateEvent } from '../api/types';
+import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PowerSchedule, SavedHubNetwork, ScheduleEvent, TflStationConfig, UpdateEvent } from '../api/types';
 
 // One row of updateAllDevices' result breakdown — see UpdateResultsDialog.tsx.
 export interface UpdateResult {
@@ -26,6 +26,11 @@ export function useAppState() {
   // isBlackoutAllActive. Drives HomeScreen's button showing "Blackout (all screens)"
   // vs. "Restore all screens" (see blackoutAllScreens below).
   const [blackoutAllActive, setBlackoutAllActiveState] = useState(false);
+  // The configured Tapo account's email (null = none configured) and whether a full
+  // account (email + password) is set — see api/client.ts's getSettings comment for
+  // why the password itself is never fetched back at all.
+  const [tapoEmail, setTapoEmailState] = useState<string | null>(null);
+  const [tapoConfigured, setTapoConfiguredState] = useState(false);
   // Null in standalone/localStorage mode, or if the hub itself can't tell what
   // commit it's running (see hub/src/version.ts) — either way, Settings just shows
   // each screen's raw version with nothing to compare it to. Fetched once, not
@@ -98,6 +103,8 @@ export function useAppState() {
     setSavedHubNetworksState(settings.savedHubNetworks);
     setOfflineAlertMinutesState(settings.offlineAlertMinutes);
     setBlackoutAllActiveState(settings.blackoutAllActive);
+    setTapoEmailState(settings.tapoEmail);
+    setTapoConfiguredState(settings.tapoConfigured);
   }, []);
 
   const setSafetyHold = useCallback(async (enabled: boolean) => {
@@ -116,6 +123,20 @@ export function useAppState() {
     await api.setSavedHubNetworks(networks);
     setSavedHubNetworksState(networks);
   }, []);
+
+  const setTapoAccount = useCallback(async (email: string, password: string) => {
+    await api.setTapoAccount(email, password);
+    setTapoEmailState(email);
+    setTapoConfiguredState(true);
+    showToast('Tapo account saved');
+  }, [showToast]);
+
+  const clearTapoAccount = useCallback(async () => {
+    await api.clearTapoAccount();
+    setTapoEmailState(null);
+    setTapoConfiguredState(false);
+    showToast('Tapo account removed');
+  }, [showToast]);
 
   useEffect(() => {
     (async () => {
@@ -619,6 +640,34 @@ export function useAppState() {
     await refreshDevices();
   }, [refreshDevices]);
 
+  const setDeviceTapoPlugIp = useCallback(async (id: string, tapoPlugIp: string | null) => {
+    await api.setDeviceTapoPlugIp(id, tapoPlugIp);
+    await refreshDevices();
+  }, [refreshDevices]);
+
+  // Catches and toasts its own failure (same reasoning as setDeviceIp above) — a
+  // missing plug IP or Tapo account is a real, expected failure mode here (the hub
+  // rejects with a message naming which one), not worth an unhandled rejection.
+  const tapoPowerCycle = useCallback(async (device: Device) => {
+    try {
+      await api.tapoPowerCycle(device.id);
+      showToast(`${device.name}'s power cycled`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : `Could not power cycle ${device.name}`);
+    }
+  }, [showToast]);
+
+  const addDevicePowerSchedule = useCallback(async (deviceId: string, schedule: Omit<PowerSchedule, 'id'>) => {
+    const s = await api.addDevicePowerSchedule(deviceId, schedule);
+    await refreshDevices();
+    return s;
+  }, [refreshDevices]);
+
+  const removeDevicePowerSchedule = useCallback(async (deviceId: string, scheduleId: string) => {
+    await api.removeDevicePowerSchedule(deviceId, scheduleId);
+    await refreshDevices();
+  }, [refreshDevices]);
+
   // Mirrors duplicateEvent's own reasoning — no dedicated backend endpoint needed.
   const duplicateDeviceEvent = useCallback(async (deviceId: string, eventId: string) => {
     const device = devices.find((d) => d.id === deviceId);
@@ -809,6 +858,10 @@ export function useAppState() {
     setOfflineAlertMinutes,
     savedHubNetworks,
     setSavedHubNetworks,
+    tapoEmail,
+    tapoConfigured,
+    setTapoAccount,
+    clearTapoAccount,
     toast,
     showToast,
     addImage,
@@ -869,6 +922,10 @@ export function useAppState() {
     moveDevice,
     setDeviceLocation,
     setDeviceIp,
+    setDeviceTapoPlugIp,
+    tapoPowerCycle,
+    addDevicePowerSchedule,
+    removeDevicePowerSchedule,
     reorderDevices,
     removeDevice,
     restartDevice,

@@ -1,4 +1,4 @@
-import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationResult, UpdateEvent } from './types';
+import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PowerSchedule, SavedHubNetwork, ScheduleEvent, TflStationResult, UpdateEvent } from './types';
 import type { DevicePreview, DiscoveredDevice, SignageApiClient } from './client';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -141,6 +141,10 @@ export const httpClient: SignageApiClient = {
   setDeviceIp: (id, ip, hubUrl) => request<{ reconfigured: boolean }>(`/api/devices/${id}`, { method: 'PATCH', ...json({ ip, hubUrl }) }),
   removeDevice: (id) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   restartDevice: (id) => request<void>(`/api/devices/${id}/restart`, { method: 'POST' }),
+  setDeviceTapoPlugIp: (id, tapoPlugIp) => request<void>(`/api/devices/${id}`, { method: 'PATCH', ...json({ tapoPlugIp }) }),
+  tapoPowerCycle: (id) => request<void>(`/api/devices/${id}/tapo-power-cycle`, { method: 'POST' }),
+  addDevicePowerSchedule: (deviceId, schedule) => request<PowerSchedule>(`/api/devices/${deviceId}/power-schedules`, { method: 'POST', ...json(schedule) }),
+  removeDevicePowerSchedule: (deviceId, scheduleId) => request<void>(`/api/devices/${deviceId}/power-schedules/${scheduleId}`, { method: 'DELETE' }),
   flashDevice: (id) => request<void>(`/api/devices/${id}/identify-flash`, { method: 'POST' }),
   jumpDevicePdfPage: (id, page) => request<void>(`/api/devices/${id}/pdf-jump`, { method: 'POST', ...json({ page }) }),
   previewDevice: async (id): Promise<DevicePreview> => {
@@ -186,9 +190,14 @@ export const httpClient: SignageApiClient = {
   importBackup: (backup) => request<void>('/api/backup/restore', { method: 'POST', ...json(backup) }),
 
   // Settings
-  getSettings: () => request<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number; blackoutAllActive: boolean }>('/api/settings'),
+  getSettings: () => request<{
+    safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number; blackoutAllActive: boolean;
+    tapoEmail: string | null; tapoConfigured: boolean;
+  }>('/api/settings'),
   setSafetyHold: (safetyHold) => request<void>('/api/settings', { method: 'PATCH', ...json({ safetyHold }) }),
   setSavedHubNetworks: (networks) => request<void>('/api/settings/hub-networks', { method: 'PUT', ...json({ networks }) }),
+  setTapoAccount: (tapoEmail, tapoPassword) => request<void>('/api/settings', { method: 'PATCH', ...json({ tapoEmail, tapoPassword }) }),
+  clearTapoAccount: () => request<void>('/api/settings', { method: 'PATCH', ...json({ tapoEmail: null }) }),
   setOfflineAlertMinutes: (offlineAlertMinutes) => request<void>('/api/settings', { method: 'PATCH', ...json({ offlineAlertMinutes }) }),
   setBlackoutAllActive: (active) => request<void>('/api/settings/blackout-all', { method: 'PUT', ...json({ active }) }),
 };

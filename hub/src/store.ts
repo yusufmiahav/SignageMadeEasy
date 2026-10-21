@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
 import * as tflStatus from './tflStatus.js';
 import * as tflArrivals from './tflArrivals.js';
-import type { ActionEvent, AnnouncementSchedule, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PlayerState, ScheduleEvent, TflStationConfig, UpdateEvent } from './types.js';
+import type { ActionEvent, AnnouncementSchedule, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PlayerState, PowerSchedule, ScheduleEvent, TflStationConfig, UpdateEvent } from './types.js';
 
 // The Pi heartbeats every 5s (pi-player/src/poller.ts's POLL_INTERVAL_MS) — this
 // window needs to be a few multiples of that so one dropped heartbeat (WiFi jitter)
@@ -328,6 +328,17 @@ function eventsForDevice(deviceId: string): ScheduleEvent[] {
   }));
 }
 
+interface PowerScheduleRow { id: string; deviceId: string; daysOfWeek: string | null; onTime: string; offTime: string }
+
+/** See Device.powerSchedules' comment in types.ts. */
+function powerSchedulesForDevice(deviceId: string): PowerSchedule[] {
+  const rows = db.prepare('SELECT id, deviceId, daysOfWeek, onTime, offTime FROM power_schedules WHERE deviceId = ? ORDER BY onTime ASC').all(deviceId) as PowerScheduleRow[];
+  return rows.map((r) => ({
+    id: r.id, onTime: r.onTime, offTime: r.offTime,
+    daysOfWeek: r.daysOfWeek ? JSON.parse(r.daysOfWeek) : undefined,
+  }));
+}
+
 function announcementSchedulesForGroup(groupId: string): AnnouncementSchedule[] {
   const rows = db.prepare('SELECT id, groupId, announcementId, startDate, endDate, startTime, endTime FROM announcement_schedules WHERE groupId = ? ORDER BY startDate ASC').all(groupId) as AnnouncementScheduleRow[];
   return rows.map((r) => ({ id: r.id, announcementId: r.announcementId, startDate: r.startDate, endDate: r.endDate, startTime: r.startTime, endTime: r.endTime }));
@@ -499,9 +510,10 @@ interface DeviceRow {
   forcedPlaylist: string | null; forcedContentId: string | null; blackout: number; defaultPlaylist: string; usbOverrideActive: number;
   playerStartedAt: number | null; version: string | null; offlineAlertsMuted: number;
   outputIndex: 1 | 2; dualOutputCapable: number;
+  tapoPlugIp: string | null;
 }
 
-const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive, playerStartedAt, version, offlineAlertsMuted, outputIndex, dualOutputCapable';
+const DEVICE_COLUMNS = 'id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, tempC, throttled, uptimeSec, baseUptimeSec, diskFreeMb, diskTotalMb, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, usbOverrideActive, playerStartedAt, version, offlineAlertsMuted, outputIndex, dualOutputCapable, tapoPlugIp';
 
 function statusFor(lastSeenAt: number | null): DeviceStatus {
   return lastSeenAt != null && Date.now() - lastSeenAt < ONLINE_WINDOW_MS ? 'online' : 'offline';
@@ -606,7 +618,47 @@ function rowToDevice(r: DeviceRow): Device {
     usbOverrideActive: !!r.usbOverrideActive, updateStatus: currentUpdateStatus(r.id), version: r.version,
     offlineAlertsMuted: !!r.offlineAlertsMuted,
     outputIndex: r.outputIndex, dualOutputCapable: !!r.dualOutputCapable,
+    tapoPlugIp: r.tapoPlugIp, powerSchedules: powerSchedulesForDevice(r.id),
   };
+}
+
+/** Settings screen's per-device "Tapo plug IP" field — null clears it (no plug attached/configured for this screen). See types.ts's Device.tapoPlugIp. */
+export function setDeviceTapoPlugIp(id: string, tapoPlugIp: string | null): void {
+  db.prepare('UPDATE devices SET tapoPlugIp = ? WHERE id = ?').run(tapoPlugIp, id);
+}
+
+/** Mirrors addDeviceEvent/removeDeviceEvent — see Device.powerSchedules' comment in types.ts. */
+export function addDevicePowerSchedule(deviceId: string, schedule: Omit<PowerSchedule, 'id'>): PowerSchedule {
+  const id = uid('ps');
+  db.prepare('INSERT INTO power_schedules (id, deviceId, daysOfWeek, onTime, offTime) VALUES (?,?,?,?,?)').run(
+    id, deviceId, schedule.daysOfWeek && schedule.daysOfWeek.length > 0 ? JSON.stringify(schedule.daysOfWeek) : null,
+    schedule.onTime, schedule.offTime,
+  );
+  return { id, ...schedule };
+}
+
+export function removeDevicePowerSchedule(deviceId: string, scheduleId: string): void {
+  db.prepare('DELETE FROM power_schedules WHERE id = ? AND deviceId = ?').run(scheduleId, deviceId);
+}
+
+// ---- Tapo smart plugs ----
+// One shared TP-Link account for every plug across every screen (see
+// hub/src/tapoPower.ts) — stored in the generic settings table, same scope as
+// safetyHold, rather than per-device: the per-device piece is only each screen's own
+// plug IP (Device.tapoPlugIp), set separately via setDeviceTapoPlugIp above.
+
+/** Settings screen's Tapo account fields — null/null if never configured. The password is write-only from the control app's own perspective (getTapoAccount's caller decides whether to actually expose it; routes/settings.ts's GET never does), but it's stored here in plain text the same trust level as everything else in this table (a local, PIN-gated LAN tool, not multi-tenant). */
+export function getTapoAccount(): { email: string | null; password: string | null } {
+  return { email: getSetting('tapoEmail'), password: getSetting('tapoPassword') };
+}
+
+export function setTapoAccount(email: string, password: string): void {
+  setSetting('tapoEmail', email);
+  setSetting('tapoPassword', password);
+}
+
+export function clearTapoAccount(): void {
+  db.prepare('DELETE FROM settings WHERE key IN (?, ?)').run('tapoEmail', 'tapoPassword');
 }
 
 /** Settings/Home's "Mute offline alerts" action for a single screen — see types.ts's Device.offlineAlertsMuted. */
@@ -641,6 +693,7 @@ export function pairDevice(input: { name: string; ip: string; mac?: string | nul
     videoQuality: 'auto', status: statusFor(lastSeenAt), forcedPlaylist: [], forcedContentId: null, blackout: false,
     defaultPlaylist: [], events: [], offlineAlertsMuted: false,
     outputIndex, dualOutputCapable: false,
+    tapoPlugIp: null, powerSchedules: [],
   };
 }
 
@@ -985,6 +1038,28 @@ function eventMatchesNow(e: ScheduleEvent, today: string, hhmm: string, dayOfWee
   return true;
 }
 
+/**
+ * Whether a device's Tapo plug should be on right now, per its own recurring
+ * schedules — used by tapoSchedule.ts's once-a-minute sweep. `null` means "no
+ * schedule configured at all," distinct from `false` ("scheduled, and right now is
+ * an off period") — the sweep leaves a plug alone entirely on null rather than
+ * forcing it off, so a screen with no power schedule is never touched by this at
+ * all (manual "Power cycle" still works regardless either way). The off boundary is
+ * exclusive (hhmm < offTime, not <=) so the plug actually turns off AT offTime
+ * rather than one minute late; same "doesn't handle a window spanning midnight"
+ * caveat as eventMatchesNow above — split a schedule into two entries instead (e.g.
+ * 22:00-23:59 and 00:00-06:00) if you need one.
+ */
+export function shouldPlugBeOnNow(schedules: PowerSchedule[], now: Date = new Date()): boolean | null {
+  if (schedules.length === 0) return null;
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const dayOfWeek = now.getDay();
+  return schedules.some((s) => {
+    if (s.daysOfWeek && s.daysOfWeek.length > 0 && !s.daysOfWeek.includes(dayOfWeek)) return false;
+    return hhmm >= s.onTime && hhmm < s.offTime;
+  });
+}
+
 export function activeContentIds(group: Group, now: Date = new Date()): { ids: string[]; kind: 'blackout' | 'forced' | 'event' | 'default'; label: string } {
   // Highest priority, above even forced content — an emergency override meant to
   // win regardless of anything else configured for this group.
@@ -1148,6 +1223,7 @@ export function exportBackup(): Backup {
 export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'groups' | 'devices'> & { folders?: Folder[]; locations?: Location[] }): void => {
   db.prepare('DELETE FROM events').run();
   db.prepare('DELETE FROM announcement_schedules').run();
+  db.prepare('DELETE FROM power_schedules').run();
   db.prepare('DELETE FROM devices').run();
   db.prepare('DELETE FROM groups_').run();
   db.prepare('DELETE FROM library').run();
@@ -1226,8 +1302,11 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
   });
 
   const insertDevice = db.prepare(
-    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, baseUptimeSec, sortOrder, offlineAlertsMuted, outputIndex) ' +
-    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedPlaylist,@forcedContentId,@blackout,@defaultPlaylist,@baseUptimeSec,@sortOrder,@offlineAlertsMuted,@outputIndex)',
+    'INSERT INTO devices (id, name, ip, mac, groupId, locationId, announcementId, announcementOn, videoQuality, lastSeenAt, forcedPlaylist, forcedContentId, blackout, defaultPlaylist, baseUptimeSec, sortOrder, offlineAlertsMuted, outputIndex, tapoPlugIp) ' +
+    'VALUES (@id,@name,@ip,@mac,@groupId,@locationId,@announcementId,@announcementOn,@videoQuality,NULL,@forcedPlaylist,@forcedContentId,@blackout,@defaultPlaylist,@baseUptimeSec,@sortOrder,@offlineAlertsMuted,@outputIndex,@tapoPlugIp)',
+  );
+  const insertPowerSchedule = db.prepare(
+    'INSERT INTO power_schedules (id, deviceId, daysOfWeek, onTime, offTime) VALUES (@id,@deviceId,@daysOfWeek,@onTime,@offTime)',
   );
   backup.devices.forEach((device, i) => {
     // Same pre-migration fallback as the group loop above.
@@ -1243,6 +1322,8 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
       // it starts false again like any other liveness field and the next heartbeat
       // fills in the real answer, same reasoning as uptimeSec resetting to NULL below.
       outputIndex: device.outputIndex ?? 1,
+      // A backup taken before Tapo plugs existed has no such field at all.
+      tapoPlugIp: device.tapoPlugIp ?? null,
       // uptimeSec itself resets to NULL like the rest of this device's live
       // diagnostics (see this function's own doc comment) until its Pi heartbeats
       // again — but the lifetime total leading up to the backup is real history,
@@ -1259,6 +1340,13 @@ export const restoreBackup = db.transaction((backup: Pick<Backup, 'library' | 'g
         id: event.id, groupId: null, deviceId: device.id, name: event.name, start: event.start, end: event.end, libIds: JSON.stringify(event.libIds),
         startTime: event.startTime ?? null, endTime: event.endTime ?? null,
         daysOfWeek: event.daysOfWeek && event.daysOfWeek.length > 0 ? JSON.stringify(event.daysOfWeek) : null,
+      });
+    }
+    // A backup taken before Tapo power schedules existed has no such field at all.
+    for (const schedule of device.powerSchedules ?? []) {
+      insertPowerSchedule.run({
+        id: schedule.id, deviceId: device.id, onTime: schedule.onTime, offTime: schedule.offTime,
+        daysOfWeek: schedule.daysOfWeek && schedule.daysOfWeek.length > 0 ? JSON.stringify(schedule.daysOfWeek) : null,
       });
     }
   });

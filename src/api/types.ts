@@ -93,6 +93,22 @@ export interface ScheduleEvent {
   daysOfWeek?: number[];
 }
 
+/**
+ * A device's recurring "keep its Tapo smart plug powered on" window — see
+ * Device.powerSchedules/tapoPlugIp. Independent of content scheduling (applies even
+ * on a screen with no content events of its own) and, unlike ScheduleEvent, has no
+ * start/end date range: it's a standing routine, not a time-limited campaign.
+ */
+export interface PowerSchedule {
+  id: string;
+  /** 24h "HH:MM" — the plug turns on at this time. */
+  onTime: string;
+  /** 24h "HH:MM" — the plug turns off at this time. Doesn't support a window that crosses midnight (e.g. 22:00-06:00), same caveat as ScheduleEvent's startTime/endTime — use two entries instead if you need that. */
+  offTime: string;
+  /** 0=Sunday..6=Saturday (matches JS Date.getDay()) — which weekdays this routine applies to. Unset or empty: every day. */
+  daysOfWeek?: number[];
+}
+
 export interface AnnouncementSchedule {
   id: string;
   announcementId: string;
@@ -201,6 +217,10 @@ export interface Device {
   version?: string | null;
   /** Excludes this screen from OfflineAlertBanner.tsx's alerting entirely (e.g. a spare/test screen, or one intentionally powered off for a while) — unlike dismissing a banner, which only silences the current outage until this screen recovers and drops again, this persists until explicitly unmuted. False for every screen by default. */
   offlineAlertsMuted: boolean;
+  /** The IP of this screen's own TP-Link Tapo smart plug on its local LAN, if one is attached — null means no plug configured. Only the Pi itself ever actually reaches it (the hub can't, in general — same reasoning as NDI source discovery). The shared Tapo account (one for every plug across the whole deployment) lives in hub-wide settings instead, see SignageApiClient.getSettings. */
+  tapoPlugIp: string | null;
+  /** Recurring on/off windows for this screen's plug (see tapoPlugIp) — evaluated by the hub every minute, independently of content scheduling. Empty: no automatic schedule, the plug (if any) only ever changes via the manual "Power cycle" action. */
+  powerSchedules: PowerSchedule[];
 }
 
 /** One entry in the Settings screen's update log — see SignageApiClient.getUpdateLog. */

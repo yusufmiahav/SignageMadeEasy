@@ -1,4 +1,4 @@
-import type { ActionEvent, AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
+import type { ActionEvent, AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PowerSchedule, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
 import type { DevicePreview, DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -63,6 +63,8 @@ interface StoredSettings {
   offlineAlertMinutes: number;
   /** null when no "Blackout (all screens)" is currently engaged — see setBlackoutAllActive. */
   blackoutAllSnapshot: BlackoutAllSnapshot | null;
+  tapoEmail: string | null;
+  tapoPassword: string | null;
 }
 
 function loadSettings(): StoredSettings {
@@ -75,12 +77,14 @@ function loadSettings(): StoredSettings {
         savedHubNetworks: parsed.savedHubNetworks ?? [],
         offlineAlertMinutes: parsed.offlineAlertMinutes ?? 15,
         blackoutAllSnapshot: parsed.blackoutAllSnapshot ?? null,
+        tapoEmail: parsed.tapoEmail ?? null,
+        tapoPassword: parsed.tapoPassword ?? null,
       };
     }
   } catch {
     // Fall through to the default below.
   }
-  return { safetyHold: true, savedHubNetworks: [], offlineAlertMinutes: 15, blackoutAllSnapshot: null };
+  return { safetyHold: true, savedHubNetworks: [], offlineAlertMinutes: 15, blackoutAllSnapshot: null, tapoEmail: null, tapoPassword: null };
 }
 
 function saveSettings(settings: StoredSettings): void {
@@ -561,6 +565,8 @@ class LocalStoreClient implements SignageApiClient {
       // device here is permanently output 1, not dual-output-capable.
       outputIndex: 1,
       dualOutputCapable: false,
+      tapoPlugIp: null,
+      powerSchedules: [],
     };
     this.data.devices.push(device);
     this.persist();
@@ -711,6 +717,31 @@ class LocalStoreClient implements SignageApiClient {
     // No real Pi to restart yet — the future hub API will proxy this to the device.
   }
 
+  async setDeviceTapoPlugIp(id: string, tapoPlugIp: string | null): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === id);
+    if (device) device.tapoPlugIp = tapoPlugIp;
+    this.persist();
+  }
+
+  // No real Pi/plug to actually cycle in standalone mode — mirrors
+  // restartDevice/flashDevice above, just a no-op rather than throwing, so the
+  // button doesn't look broken when there's nothing real for it to do yet.
+  async tapoPowerCycle(): Promise<void> {}
+
+  async addDevicePowerSchedule(deviceId: string, schedule: Omit<PowerSchedule, 'id'>): Promise<PowerSchedule> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    const s: PowerSchedule = { id: uid('ps'), ...schedule };
+    if (device) device.powerSchedules.push(s);
+    this.persist();
+    return s;
+  }
+
+  async removeDevicePowerSchedule(deviceId: string, scheduleId: string): Promise<void> {
+    const device = this.data.devices.find((d) => d.id === deviceId);
+    if (device) device.powerSchedules = device.powerSchedules.filter((s) => s.id !== scheduleId);
+    this.persist();
+  }
+
   async flashDevice(): Promise<void> {
     // No real Pi to flash in standalone mode.
   }
@@ -795,7 +826,11 @@ class LocalStoreClient implements SignageApiClient {
     // has the old single-item forcedContentId, synthesized into a one-element array
     // (mirrors hub/src/store.ts's restoreBackup fallback).
     const groups = backup.groups.map((g) => ({ ...g, forcedPlaylist: g.forcedPlaylist ?? (g.forcedContentId ? [g.forcedContentId] : []) }));
-    const devices = backup.devices.map((d) => ({ ...d, forcedPlaylist: d.forcedPlaylist ?? (d.forcedContentId ? [d.forcedContentId] : []) }));
+    // Same fallback reasoning, for a backup taken before Tapo plugs existed.
+    const devices = backup.devices.map((d) => ({
+      ...d, forcedPlaylist: d.forcedPlaylist ?? (d.forcedContentId ? [d.forcedContentId] : []),
+      tapoPlugIp: d.tapoPlugIp ?? null, powerSchedules: d.powerSchedules ?? [],
+    }));
     this.data = {
       library: backup.library, groups, devices,
       folders: backup.folders ?? [], locations: backup.locations ?? [],
@@ -804,9 +839,15 @@ class LocalStoreClient implements SignageApiClient {
   }
 
   // ---- Settings ----
-  async getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number; blackoutAllActive: boolean }> {
+  async getSettings(): Promise<{
+    safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number; blackoutAllActive: boolean;
+    tapoEmail: string | null; tapoConfigured: boolean;
+  }> {
     const settings = loadSettings();
-    return { ...settings, blackoutAllActive: settings.blackoutAllSnapshot != null };
+    return {
+      ...settings, blackoutAllActive: settings.blackoutAllSnapshot != null,
+      tapoConfigured: !!(settings.tapoEmail && settings.tapoPassword),
+    };
   }
 
   async setSafetyHold(enabled: boolean): Promise<void> {
@@ -815,6 +856,14 @@ class LocalStoreClient implements SignageApiClient {
 
   async setSavedHubNetworks(networks: SavedHubNetwork[]): Promise<void> {
     saveSettings({ ...loadSettings(), savedHubNetworks: networks });
+  }
+
+  async setTapoAccount(email: string, password: string): Promise<void> {
+    saveSettings({ ...loadSettings(), tapoEmail: email, tapoPassword: password });
+  }
+
+  async clearTapoAccount(): Promise<void> {
+    saveSettings({ ...loadSettings(), tapoEmail: null, tapoPassword: null });
   }
 
   async setOfflineAlertMinutes(minutes: number): Promise<void> {

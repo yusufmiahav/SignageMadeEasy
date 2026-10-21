@@ -449,6 +449,32 @@ db.exec(`
   );
 `);
 
+// Same reasoning, for hubs deployed before a screen could have a TP-Link Tapo smart
+// plug attached to it (see tapoPower.ts) — null for every existing screen until
+// someone fills it in via Settings. The hub-wide Tapo account email/password live in
+// the generic `settings` table above (one shared account for every plug, same scope
+// as safetyHold) rather than here, since they're not per-device.
+const deviceColsTapo = (db.prepare("PRAGMA table_info(devices)").all() as { name: string }[]).map((c) => c.name);
+if (!deviceColsTapo.includes('tapoPlugIp')) db.exec('ALTER TABLE devices ADD COLUMN tapoPlugIp TEXT');
+
+// One device's recurring "keep its Tapo plug on during these hours" routine — plural
+// per device (not just one on/off pair) so e.g. weekday vs. weekend hours can differ,
+// same "array of recurring windows" shape events.daysOfWeek already established for
+// content scheduling. Deliberately NOT modeled as a `type: 'pdf'`-style addition to
+// the existing `events` table: a power routine isn't content, has no libIds/date
+// range, and (unlike a content event) applies even with nothing else scheduled —
+// reusing that table would mean every power-schedule query having to filter out rows
+// that don't look like real events, for no shared benefit.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS power_schedules (
+    id TEXT PRIMARY KEY,
+    deviceId TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    daysOfWeek TEXT,
+    onTime TEXT NOT NULL,
+    offTime TEXT NOT NULL
+  );
+`);
+
 // No demo/seed data — a fresh hub starts with an empty library, no groups or
 // locations, and no paired devices. Everything shown in the control app comes from
 // real use.

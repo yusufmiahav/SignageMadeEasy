@@ -8,6 +8,7 @@ import * as pdfJump from './pdfJump.js';
 import { captureScreenshot } from './preview.js';
 import * as selfUpdate from './selfUpdate.js';
 import * as underclock from './underclock.js';
+import * as tapo from './tapo.js';
 
 export const agentRouter = Router();
 
@@ -84,6 +85,24 @@ agentRouter.post('/pdf-jump', (req, res) => {
   }
   pdfJump.trigger(page, outputFrom(req));
   res.status(204).end();
+});
+
+// This screen's own TP-Link Tapo smart plug, reached on this Pi's local LAN — see
+// tapo.ts and hub/src/piAgent.ts's tapoSetPower. Not output-scoped: a physical plug
+// powers the whole unit, not one output. Credentials arrive fresh in the request
+// body every time rather than ever being persisted here — see hub/src/store.ts's
+// getTapoAccount comment for why the hub keeps them, not the Pi.
+agentRouter.post('/tapo/power', async (req, res) => {
+  const { plugIp, email, password, on } = req.body ?? {};
+  if (typeof plugIp !== 'string' || typeof email !== 'string' || typeof password !== 'string' || typeof on !== 'boolean') {
+    return res.status(400).json({ error: 'plugIp, email, password, and on are required' });
+  }
+  try {
+    await tapo.setPower(plugIp, email, password, on);
+    res.status(204).end();
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 // Settings screen's "Preview" button — see preview.ts.

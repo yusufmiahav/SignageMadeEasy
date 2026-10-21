@@ -1,4 +1,4 @@
-import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
+import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PowerSchedule, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -161,6 +161,19 @@ export interface SignageApiClient {
   setDeviceIp(id: string, ip: string, hubUrl?: string): Promise<{ reconfigured: boolean }>;
   removeDevice(id: string): Promise<void>;
   restartDevice(id: string): Promise<void>;
+  /** Sets or clears (null) this screen's own TP-Link Tapo smart plug IP — see Device.tapoPlugIp. Doesn't touch the plug itself; just where to find it next time something does. */
+  setDeviceTapoPlugIp(id: string, tapoPlugIp: string | null): Promise<void>;
+  /**
+   * A hard power cut via this screen's Tapo plug — off, a real pause, then on —
+   * unlike restartDevice above, which only reboots the Pi itself. Needs both
+   * Device.tapoPlugIp set AND a Tapo account configured hub-wide (see
+   * getSettings/setTapoAccount); rejects with a clear message naming whichever one
+   * is missing. No-op in standalone/localStorage mode (no real Pi/plug to reach).
+   */
+  tapoPowerCycle(id: string): Promise<void>;
+  /** Mirrors addDeviceEvent/removeDeviceEvent — see Device.powerSchedules' comment in types.ts. */
+  addDevicePowerSchedule(deviceId: string, schedule: Omit<PowerSchedule, 'id'>): Promise<PowerSchedule>;
+  removeDevicePowerSchedule(deviceId: string, scheduleId: string): Promise<void>;
   /** Makes this screen's physical display blink white/black twice — helps identify which real screen an entry in Settings corresponds to. No-op in standalone/localStorage mode (no real Pi to ask). */
   flashDevice(id: string): Promise<void>;
   /**
@@ -268,7 +281,12 @@ export interface SignageApiClient {
   // preference: safetyHold needs to be known by every Pi too, and offlineAlertMinutes
   // should alert the same way for everyone looking at this hub, not just whoever
   // configured it).
-  getSettings(): Promise<{ safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number; blackoutAllActive: boolean }>;
+  getSettings(): Promise<{
+    safetyHold: boolean; savedHubNetworks: SavedHubNetwork[]; offlineAlertMinutes: number; blackoutAllActive: boolean;
+    /** The configured Tapo account's email, shown so Settings can display which account is in use — null if none configured. The password itself is never sent back (write-only, same pattern as the hub's own PIN); use tapoConfigured to know whether one's set at all. */
+    tapoEmail: string | null;
+    tapoConfigured: boolean;
+  }>;
   /**
    * Defaults to true (see hub/src/store.ts's getSafetyHold): a Pi already caches its
    * last-resolved content and keeps showing it through a disconnect from the hub.
@@ -277,6 +295,10 @@ export interface SignageApiClient {
   setSafetyHold(enabled: boolean): Promise<void>;
   /** Replaces the whole saved-hub-networks list at once — see SavedHubNetwork. */
   setSavedHubNetworks(networks: SavedHubNetwork[]): Promise<void>;
+  /** One shared TP-Link account for every screen's Tapo plug across the whole deployment — see Device.tapoPlugIp for the per-screen piece. Both fields are required together: a login needs both to mean anything. */
+  setTapoAccount(email: string, password: string): Promise<void>;
+  /** Removes the configured Tapo account entirely — every screen's manual "Power cycle" and automatic power schedules stop working until a new one's set, but tapoPlugIp/powerSchedules themselves are untouched (they pick back up the moment an account is set again). */
+  clearTapoAccount(): Promise<void>;
   /**
    * How long a screen has to stay offline before OfflineAlertBanner.tsx warns about
    * it in the control app — purely a notification threshold, never read by a Pi

@@ -4,11 +4,17 @@ import * as store from '../store.js';
 export const settingsRouter = Router();
 
 settingsRouter.get('/', (_req, res) => {
+  const tapoAccount = store.getTapoAccount();
   res.json({
     safetyHold: store.getSafetyHold(),
     savedHubNetworks: store.listSavedHubNetworks(),
     offlineAlertMinutes: store.getOfflineAlertMinutes(),
     blackoutAllActive: store.isBlackoutAllActive(),
+    // The password itself is never sent back here — tapoEmail (shown so Settings can
+    // display which account is configured) plus this one boolean is all the control
+    // app ever needs to know, same write-only-secret pattern as the hub's own PIN.
+    tapoEmail: tapoAccount.email,
+    tapoConfigured: !!(tapoAccount.email && tapoAccount.password),
   });
 });
 
@@ -20,7 +26,7 @@ settingsRouter.get('/action-log', (_req, res) => {
 });
 
 settingsRouter.patch('/', (req, res) => {
-  const { safetyHold, offlineAlertMinutes } = req.body ?? {};
+  const { safetyHold, offlineAlertMinutes, tapoEmail, tapoPassword } = req.body ?? {};
   if (safetyHold !== undefined) {
     if (typeof safetyHold !== 'boolean') return res.status(400).json({ error: 'safetyHold must be a boolean' });
     store.setSafetyHold(safetyHold);
@@ -30,6 +36,17 @@ settingsRouter.patch('/', (req, res) => {
       return res.status(400).json({ error: 'offlineAlertMinutes must be a non-negative number' });
     }
     store.setOfflineAlertMinutes(offlineAlertMinutes);
+  }
+  // tapoEmail: null clears the whole account (both fields) — distinct from omitting
+  // both keys entirely, which leaves whatever's already saved untouched. Setting it
+  // requires both fields together: a Tapo login needs both to mean anything.
+  if (tapoEmail === null) {
+    store.clearTapoAccount();
+  } else if (tapoEmail !== undefined || tapoPassword !== undefined) {
+    if (typeof tapoEmail !== 'string' || !tapoEmail.trim() || typeof tapoPassword !== 'string' || !tapoPassword.trim()) {
+      return res.status(400).json({ error: 'tapoEmail and tapoPassword must both be non-empty strings' });
+    }
+    store.setTapoAccount(tapoEmail.trim(), tapoPassword);
   }
   res.status(204).end();
 });

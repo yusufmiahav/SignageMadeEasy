@@ -82,6 +82,14 @@ export interface ScheduleEvent {
   daysOfWeek?: number[];
 }
 
+/** A device's recurring "keep its Tapo smart plug powered on" window — see src/api/types.ts's copy of this interface for the full comment, and Device.powerSchedules/tapoPlugIp below. */
+export interface PowerSchedule {
+  id: string;
+  onTime: string;
+  offTime: string;
+  daysOfWeek?: number[];
+}
+
 export interface AnnouncementSchedule {
   id: string;
   announcementId: string;
@@ -202,6 +210,10 @@ export interface Device {
   version?: string | null;
   /** Excludes this screen from OfflineAlertBanner.tsx's alerting entirely (e.g. a spare/test screen, or one intentionally powered off for a while) — unlike dismissing a banner, which only silences the current outage until this screen recovers and drops again, this persists until explicitly unmuted. False for every screen by default. */
   offlineAlertsMuted: boolean;
+  /** The IP of this screen's own TP-Link Tapo smart plug on its local LAN, if one is attached — null means no plug configured. Only the Pi itself ever actually reaches it (see piAgent.ts's tapoSetPower/tapoPowerCycle) — same "only the Pi can reach its own LAN" reasoning as NDI source discovery. The shared Tapo account (one for every plug) lives in hub-wide settings, not here — see store.ts's getTapoAccount. */
+  tapoPlugIp: string | null;
+  /** Recurring on/off windows for this screen's plug (see tapoPlugIp) — evaluated every minute by tapoSchedule.ts independently of content scheduling, so a plug can be scheduled even on a screen with no content schedule of its own. Empty: no automatic schedule: the plug (if any) only ever changes via the manual "Power cycle" action. */
+  powerSchedules: PowerSchedule[];
 }
 
 /** One entry in the Settings screen's update log — see store.ts's listUpdateEvents and devices.ts's GET /update-log. */
