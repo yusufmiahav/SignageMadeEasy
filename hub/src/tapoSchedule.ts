@@ -1,4 +1,4 @@
-import * as piAgent from './piAgent.js';
+import * as tapo from './tapo.js';
 import * as store from './store.js';
 
 const POLL_INTERVAL_MS = 60 * 1000;
@@ -28,15 +28,15 @@ async function sweepOnce(): Promise<void> {
     if (desired === null) continue;
     if (lastApplied.get(device.id) === desired) continue;
     try {
-      await piAgent.tapoSetPower(device.ip, device.tapoPlugIp, email, password, desired);
+      await tapo.setPower(device.tapoPlugIp, email, password, desired);
       lastApplied.set(device.id, desired);
     } catch (err) {
       // Non-fatal, same "stale/offline beats crashing the whole sweep" reasoning as
       // every other background poll in this hub (tflArrivals, tflStatus) — logged so
       // it's visible, but NOT recorded into lastApplied, so the very next tick (a
-      // minute later) retries rather than silently giving up on a screen whose Pi
-      // happened to be rebooting, offline, or mid-DHCP-renewal at the exact minute
-      // its schedule crossed a boundary.
+      // minute later) retries rather than silently giving up on a plug that happened
+      // to be unreachable (powered off at the wall, Wi-Fi hiccup, mid-DHCP-renewal)
+      // at the exact minute its schedule crossed a boundary.
       console.error(`[tapoSchedule] couldn't set plug for device ${device.id}:`, err instanceof Error ? err.message : err);
     }
   }

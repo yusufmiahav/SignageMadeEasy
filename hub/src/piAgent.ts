@@ -96,22 +96,6 @@ export async function jumpPdfPage(ip: string, page: number, output: 1 | 2 = 1): 
   if (!res.ok) throw new Error(`Pi agent at ${ip} rejected pdf-jump: ${res.status}`);
 }
 
-// The Pi's own LAN is the only thing that can reach this screen's Tapo plug — same
-// "only the Pi can reach its own LAN" reasoning as listNdiSources above. Whole-
-// machine, not output-scoped (a physical plug powers the whole unit, not one
-// output). Credentials are passed fresh on every call rather than ever persisted to
-// the Pi's own disk — see store.ts's getTapoAccount comment. Longer timeout than a
-// plain agent call: the Pi's own local-network KLAP handshake with the plug can
-// take a couple of seconds on top of the agent's own response time.
-export async function tapoSetPower(ip: string, plugIp: string, email: string, password: string, on: boolean): Promise<void> {
-  const res = await agentFetch(ip, '/tapo/power', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ plugIp, email, password, on }),
-  }, 10000);
-  if (!res.ok) throw new Error(`Pi agent at ${ip} rejected tapo/power: ${res.status}`);
-}
-
 // Settings screen's "Preview" button — a live JPEG screenshot of exactly what's
 // currently rendering on this screen, relayed through the Pi's agent rather than the
 // hub reaching Chromium's DevTools port on the Pi directly (see

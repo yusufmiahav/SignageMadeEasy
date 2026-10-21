@@ -617,8 +617,8 @@ export function SettingsScreen({
         <div className="card-kicker">Tapo smart plugs</div>
         <p className="card-body" style={{ margin: 0 }}>
           One shared TP-Link account controls every screen's plug — set it here once, then attach each
-          screen to its own plug's IP from that screen's own "Tapo plug" button below. Needs a real Pi to
-          actually reach a plug; harmless to set up ahead of time either way.
+          screen to its own plug's IP from that screen's own "Tapo plug" button below. The hub reaches
+          each plug directly over your LAN; harmless to set up ahead of time either way.
         </p>
         {tapoConfigured && (
           <div className="dialog-warning" style={{ background: 'transparent', border: '1px solid var(--color-divider)', color: 'inherit' }}>

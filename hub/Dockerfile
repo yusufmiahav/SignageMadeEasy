@@ -32,11 +32,22 @@ FROM node:20-slim
 # PDF at upload time (see pptxConvert.ts) — --no-install-recommends keeps this to
 # just the Impress component's own dependencies rather than the full office suite,
 # though it's still a meaningfully larger image than ffmpeg alone.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libreoffice-impress curl ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libreoffice-impress python3-venv curl ca-certificates \
   && curl -fsSL -o /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/1.17/gosu-$(dpkg --print-architecture)" \
   && chmod +x /usr/local/bin/gosu \
   && gosu nobody true \
   && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+# python-kasa controls a screen's attached TP-Link Tapo smart plug (see
+# hub/src/tapo.ts) — the hub reaches a plug directly over the LAN, the same way it
+# already reaches every Pi's own agent directly (network_mode: host — see
+# docker-compose.yml), so this installs once here rather than on every single Pi
+# (an earlier version of this feature did that instead, which meant a screen that
+# hadn't been freshly re-provisioned since had no working Tapo support at all). A
+# dedicated venv, not a system-wide pip install — this image's Debian base blocks
+# that outright (PEP 668) without --break-system-packages, which risks clashing
+# with apt-managed packages. No maintained Node equivalent exists for Tapo's local
+# control protocol — see tapo.ts's own comment.
+RUN python3 -m venv /opt/kasa-venv && /opt/kasa-venv/bin/pip install --quiet --no-cache-dir python-kasa
 WORKDIR /app
 COPY hub/package.json hub/package-lock.json* ./
 RUN npm install --omit=dev

@@ -99,7 +99,7 @@ export function TapoPlugDialog({ app, device, onClose }: TapoPlugDialogProps) {
           <button type="button" className="btn btn-secondary" onClick={() => void saveIp()}>Save</button>
         </div>
         <p className="text-muted" style={{ fontSize: 11, margin: '4px 0 0' }}>
-          On this screen's own local network — only the screen itself ever reaches it, not the hub directly.
+          On the same LAN as the hub — the hub reaches it directly, the same way it reaches this screen's own Pi.
         </p>
       </div>
 

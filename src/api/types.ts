@@ -217,7 +217,7 @@ export interface Device {
   version?: string | null;
   /** Excludes this screen from OfflineAlertBanner.tsx's alerting entirely (e.g. a spare/test screen, or one intentionally powered off for a while) — unlike dismissing a banner, which only silences the current outage until this screen recovers and drops again, this persists until explicitly unmuted. False for every screen by default. */
   offlineAlertsMuted: boolean;
-  /** The IP of this screen's own TP-Link Tapo smart plug on its local LAN, if one is attached — null means no plug configured. Only the Pi itself ever actually reaches it (the hub can't, in general — same reasoning as NDI source discovery). The shared Tapo account (one for every plug across the whole deployment) lives in hub-wide settings instead, see SignageApiClient.getSettings. */
+  /** The IP of this screen's own TP-Link Tapo smart plug, if one is attached — null means no plug configured. The hub reaches it directly over the LAN (same as it reaches every Pi's own agent), not relayed through this screen's Pi. The shared Tapo account (one for every plug across the whole deployment) lives in hub-wide settings instead, see SignageApiClient.getSettings. */
   tapoPlugIp: string | null;
   /** Recurring on/off windows for this screen's plug (see tapoPlugIp) — evaluated by the hub every minute, independently of content scheduling. Empty: no automatic schedule, the plug (if any) only ever changes via the manual "Power cycle" action. */
   powerSchedules: PowerSchedule[];
