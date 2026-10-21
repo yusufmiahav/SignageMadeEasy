@@ -1,5 +1,9 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Turns a TP-Link Tapo smart plug on/off — see tapoPower.ts (manual "Power cycle")
 // and tapoSchedule.ts (the once-a-minute recurring sweep), both of which call this
@@ -36,4 +40,36 @@ export async function setPower(plugIp: string, email: string, password: string, 
     '--type', 'smart',
     on ? 'on' : 'off',
   ], { timeout: TIMEOUT_MS });
+}
+
+export interface DiscoveredPlug {
+  host: string;
+  alias?: string;
+  model?: string;
+  // False means found-on-the-LAN-but-couldn't-log-in (wrong saved password, or a
+  // device tied to a different TP-Link account) — still surfaced with its IP
+  // rather than silently dropped, see tapo-discover.py's own comment.
+  reachable: boolean;
+  error?: string;
+}
+
+const KASA_PYTHON = process.env.SIGNAGE_KASA_PYTHON ?? '/opt/kasa-venv/bin/python3';
+// hub/scripts/, not hub/src/ — see that script's own comment for why this talks to
+// python-kasa's library API directly instead of shelling out to `kasa discover`
+// itself (as setPower above does for on/off) for a result shape this hub controls.
+const DISCOVER_SCRIPT = path.resolve(__dirname, '../scripts/tapo-discover.py');
+const DISCOVER_TIMEOUT_S = 5;
+
+// There's no cloud/account-based device listing in python-kasa at all (confirmed by
+// reading its own source) — `kasa discover` is LAN UDP broadcast only, so this is
+// the closest practical equivalent of "what Tapo plugs are on my account": every
+// plug actually reachable on the hub's LAN right now, authenticated with the same
+// saved account these plugs are controlled with.
+export async function discover(email: string, password: string): Promise<DiscoveredPlug[]> {
+  const { stdout } = await execFileAsync(
+    KASA_PYTHON,
+    [DISCOVER_SCRIPT, email, password, String(DISCOVER_TIMEOUT_S)],
+    { timeout: (DISCOVER_TIMEOUT_S + 10) * 1000 },
+  );
+  return JSON.parse(stdout) as DiscoveredPlug[];
 }

@@ -52,6 +52,9 @@ WORKDIR /app
 COPY hub/package.json hub/package-lock.json* ./
 RUN npm install --omit=dev
 COPY --from=hub-build --chown=node:node /hub/dist ./dist
+# tapo.ts's discover() shells out to this with the kasa-venv's own python3, not the
+# `kasa` CLI (see that script's comment) — plain source, nothing to build.
+COPY --chown=node:node hub/scripts ./scripts
 # A plain UTC date, not a git commit — stamped fresh on every image build, so it's
 # always "when was this hub last deployed," automatically, with nothing to
 # remember to bump by hand. hub/src/version.ts reads this to report the running

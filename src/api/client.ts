@@ -1,4 +1,4 @@
-import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PowerSchedule, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
+import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PowerSchedule, SavedHubNetwork, ScheduleEvent, TapoScanResult, TflStationConfig, TflStationResult, UpdateEvent } from './types';
 import { localStoreClient } from './localStore';
 import { httpClient } from './httpClient';
 
@@ -299,6 +299,14 @@ export interface SignageApiClient {
   setTapoAccount(email: string, password: string): Promise<void>;
   /** Removes the configured Tapo account entirely — every screen's manual "Power cycle" and automatic power schedules stop working until a new one's set, but tapoPlugIp/powerSchedules themselves are untouched (they pick back up the moment an account is set again). */
   clearTapoAccount(): Promise<void>;
+  /**
+   * Broadcast-discovers Tapo plugs on the hub's own LAN, authenticated with the
+   * saved account — see TapoScanResult for why this isn't literally "list my
+   * account's devices" (no such API exists) but is the closest practical
+   * equivalent for a single-site deployment. Rejects if no account is configured
+   * yet. No-op (returns []) in standalone/localStorage mode (no real LAN to scan).
+   */
+  scanTapoDevices(): Promise<TapoScanResult[]>;
   /**
    * How long a screen has to stay offline before OfflineAlertBanner.tsx warns about
    * it in the control app — purely a notification threshold, never read by a Pi

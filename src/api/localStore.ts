@@ -1,4 +1,4 @@
-import type { ActionEvent, AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PowerSchedule, SavedHubNetwork, ScheduleEvent, TflStationConfig, TflStationResult, UpdateEvent } from './types';
+import type { ActionEvent, AnnouncementSchedule, AppData, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PowerSchedule, SavedHubNetwork, ScheduleEvent, TapoScanResult, TflStationConfig, TflStationResult, UpdateEvent } from './types';
 import type { DevicePreview, DiscoveredDevice, SignageApiClient } from './client';
 
 const STORAGE_KEY = 'signagemadeeasy.data.v1';
@@ -864,6 +864,10 @@ class LocalStoreClient implements SignageApiClient {
 
   async clearTapoAccount(): Promise<void> {
     saveSettings({ ...loadSettings(), tapoEmail: null, tapoPassword: null });
+  }
+
+  async scanTapoDevices(): Promise<TapoScanResult[]> {
+    return [];
   }
 
   async setOfflineAlertMinutes(minutes: number): Promise<void> {

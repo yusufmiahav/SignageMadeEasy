@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../components/icons/Icon';
 import type { AppState, UpdateResult } from '../hooks/useAppState';
 import type { Theme } from '../hooks/useTheme';
-import type { Backup, Device, Group, SavedHubNetwork } from '../api/types';
+import type { Backup, Device, Group, SavedHubNetwork, TapoScanResult } from '../api/types';
 import { copyText } from '../utils/clipboard';
 import { authGateEnabled, logout } from '../api/auth';
 
@@ -45,7 +45,7 @@ export function SettingsScreen({
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation, setDeviceIp,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
     safetyHold, setSafetyHold, offlineAlertMinutes, setOfflineAlertMinutes, setDeviceOfflineAlertsMuted, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, reprovisionAllDevices, restartAllDevices, hubVersion, updateLog, actionLog,
-    tapoEmail, tapoConfigured, setTapoAccount, clearTapoAccount,
+    tapoEmail, tapoConfigured, setTapoAccount, clearTapoAccount, scanTapoDevices,
   } = app;
   const [tapoEmailDraft, setTapoEmailDraft] = useState(tapoEmail ?? '');
   useEffect(() => setTapoEmailDraft(tapoEmail ?? ''), [tapoEmail]);
@@ -57,6 +57,18 @@ export function SettingsScreen({
     }
     await setTapoAccount(tapoEmailDraft.trim(), tapoPasswordDraft);
     setTapoPasswordDraft('');
+  };
+  const [tapoScanning, setTapoScanning] = useState(false);
+  const [tapoScanResults, setTapoScanResults] = useState<TapoScanResult[] | null>(null);
+  const runTapoScan = async () => {
+    setTapoScanning(true);
+    try {
+      const results = await scanTapoDevices();
+      setTapoScanResults(results);
+      if (results) showToast(results.length === 0 ? 'No Tapo plugs found on your network' : `Found ${results.length} Tapo plug${results.length === 1 ? '' : 's'}`);
+    } finally {
+      setTapoScanning(false);
+    }
   };
   const mutedDevices = devices.filter((d) => d.offlineAlertsMuted);
   const [offlineAlertDraft, setOfflineAlertDraft] = useState(String(offlineAlertMinutes));
@@ -614,42 +626,6 @@ export function SettingsScreen({
       </div>
 
       <div className="card" style={{ gap: 8 }}>
-        <div className="card-kicker">Tapo smart plugs</div>
-        <p className="card-body" style={{ margin: 0 }}>
-          One shared TP-Link account controls every screen's plug — set it here once, then attach each
-          screen to its own plug's IP from that screen's own "Tapo plug" button below. The hub reaches
-          each plug directly over your LAN; harmless to set up ahead of time either way.
-        </p>
-        {tapoConfigured && (
-          <div className="dialog-warning" style={{ background: 'transparent', border: '1px solid var(--color-divider)', color: 'inherit' }}>
-            <Icon name="check" size={16} />
-            <span>Configured — {tapoEmail}</span>
-          </div>
-        )}
-        <div className="field">
-          <label htmlFor="tapo-email">Account email</label>
-          <input className="input" id="tapo-email" type="email" value={tapoEmailDraft} onChange={(e) => setTapoEmailDraft(e.target.value)} />
-        </div>
-        <div className="field">
-          <label htmlFor="tapo-password">Account password</label>
-          <input
-            className="input"
-            id="tapo-password"
-            type="password"
-            placeholder={tapoConfigured ? '•••••••• (leave blank to keep the saved one)' : ''}
-            value={tapoPasswordDraft}
-            onChange={(e) => setTapoPasswordDraft(e.target.value)}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" className="btn btn-primary" onClick={() => void saveTapoAccount()}>Save account</button>
-          {tapoConfigured && (
-            <button type="button" className="btn btn-secondary" onClick={() => void clearTapoAccount()}>Remove account</button>
-          )}
-        </div>
-      </div>
-
-      <div className="card" style={{ gap: 8 }}>
         <div className="card-kicker">Locations</div>
         <p className="card-body" style={{ margin: 0 }}>
           Purely organizational areas for browsing/managing a whole site at once — e.g. "Warehouse
@@ -868,7 +844,7 @@ export function SettingsScreen({
         </div>
         {!advancedOpen && (
           <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
-            Fleet-wide update/restart/re-provision, the update log, device inventory, and saved hub networks.
+            Fleet-wide update/restart/re-provision, the update log, device inventory, saved hub networks, and Tapo smart plugs.
           </p>
         )}
         {advancedOpen && (
@@ -1074,6 +1050,86 @@ export function SettingsScreen({
                 <button type="button" className="btn btn-secondary" disabled={!newNetworkName.trim() || !newNetworkUrl.trim()} onClick={addNetwork}>
                   Add network
                 </button>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Tapo smart plugs</div>
+              <p className="card-body">
+                One shared TP-Link account controls every screen's plug — set it here once, then attach
+                each screen to its own plug's IP from that screen's own "Tapo plug" button below. The
+                hub reaches each plug directly over your LAN; harmless to set up ahead of time either way.
+              </p>
+              {tapoConfigured && (
+                <div className="dialog-warning" style={{ background: 'transparent', border: '1px solid var(--color-divider)', color: 'inherit' }}>
+                  <Icon name="check" size={16} />
+                  <span>Configured — {tapoEmail}</span>
+                </div>
+              )}
+              <div className="field">
+                <label htmlFor="tapo-email">Account email</label>
+                <input className="input" id="tapo-email" type="email" value={tapoEmailDraft} onChange={(e) => setTapoEmailDraft(e.target.value)} />
+              </div>
+              <div className="field">
+                <label htmlFor="tapo-password">Account password</label>
+                <input
+                  className="input"
+                  id="tapo-password"
+                  type="password"
+                  placeholder={tapoConfigured ? '•••••••• (leave blank to keep the saved one)' : ''}
+                  value={tapoPasswordDraft}
+                  onChange={(e) => setTapoPasswordDraft(e.target.value)}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-primary" onClick={() => void saveTapoAccount()}>Save account</button>
+                {tapoConfigured && (
+                  <button type="button" className="btn btn-secondary" onClick={() => void clearTapoAccount()}>Remove account</button>
+                )}
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--color-divider)', marginTop: 16, paddingTop: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Scan for plugs</div>
+                <p className="card-body">
+                  There's no "list my account's devices" API for Tapo — this instead broadcasts on your
+                  LAN right now, using the account above, and shows whatever plugs answer. Only finds
+                  plugs that are currently powered on and connected to Wi-Fi.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ alignSelf: 'flex-start' }}
+                  disabled={!tapoConfigured || tapoScanning}
+                  title={tapoConfigured ? undefined : 'Save a Tapo account above first'}
+                  onClick={() => void runTapoScan()}
+                >
+                  <Icon name="zap" size={14} />
+                  {tapoScanning ? 'Scanning…' : 'Scan for Tapo plugs'}
+                </button>
+                {tapoScanResults && (
+                  <div style={{ display: 'flex', flexDirection: 'column', marginTop: 10 }}>
+                    {tapoScanResults.length === 0 ? (
+                      <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>No plugs answered on this network.</p>
+                    ) : (
+                      tapoScanResults.map((r) => (
+                        <div key={r.host} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: '1px solid var(--color-divider)' }}>
+                          <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
+                            <strong>{r.host}</strong>
+                            {r.reachable ? (
+                              <span className="text-muted"> — {r.alias || r.model || 'Tapo plug'}</span>
+                            ) : (
+                              <span style={{ color: 'var(--color-danger, #c0392b)' }}> — found, but couldn't log in with the saved account</span>
+                            )}
+                          </div>
+                          <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => void copyText(r.host).then((ok) => showToast(ok ? 'IP copied' : 'Could not copy — clipboard access denied'))}>
+                            <Icon name="copy" size={13} />
+                            Copy IP
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

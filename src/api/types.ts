@@ -109,6 +109,22 @@ export interface PowerSchedule {
   daysOfWeek?: number[];
 }
 
+/**
+ * One Tapo plug found by SignageApiClient.scanTapoDevices — a LAN broadcast scan,
+ * not a lookup against the TP-Link account (no such API exists), so this is every
+ * plug actually reachable on the hub's network right now, authenticated with the
+ * saved account. See Settings' "Tapo smart plugs" (under Advanced) for where
+ * results are shown.
+ */
+export interface TapoScanResult {
+  host: string;
+  alias?: string;
+  model?: string;
+  /** False: found on the LAN but the saved account's password didn't work on it — still shown (with its IP) rather than dropped, since that's still useful to know. */
+  reachable: boolean;
+  error?: string;
+}
+
 export interface AnnouncementSchedule {
   id: string;
   announcementId: string;

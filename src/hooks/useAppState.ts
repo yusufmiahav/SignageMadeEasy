@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DevicePreview, type DiscoveredDevice } from '../api/client';
-import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PowerSchedule, SavedHubNetwork, ScheduleEvent, TflStationConfig, UpdateEvent } from '../api/types';
+import type { ActionEvent, AnnouncementSchedule, Backup, Device, DeviceStatus, Folder, Group, LibraryItem, Location, PowerSchedule, SavedHubNetwork, ScheduleEvent, TapoScanResult, TflStationConfig, UpdateEvent } from '../api/types';
 
 // One row of updateAllDevices' result breakdown — see UpdateResultsDialog.tsx.
 export interface UpdateResult {
@@ -136,6 +136,18 @@ export function useAppState() {
     setTapoEmailState(null);
     setTapoConfiguredState(false);
     showToast('Tapo account removed');
+  }, [showToast]);
+
+  // Same null-on-handled-failure pattern as updateAllDevices below — the hub
+  // rejects with a clear message when no account is configured yet, which is a
+  // real, expected outcome here, not worth an unhandled rejection.
+  const scanTapoDevices = useCallback(async (): Promise<TapoScanResult[] | null> => {
+    try {
+      return await api.scanTapoDevices();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Tapo scan failed');
+      return null;
+    }
   }, [showToast]);
 
   useEffect(() => {
@@ -862,6 +874,7 @@ export function useAppState() {
     tapoConfigured,
     setTapoAccount,
     clearTapoAccount,
+    scanTapoDevices,
     toast,
     showToast,
     addImage,

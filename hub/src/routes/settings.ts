@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as store from '../store.js';
+import * as tapo from '../tapo.js';
 
 export const settingsRouter = Router();
 
@@ -49,6 +50,20 @@ settingsRouter.patch('/', (req, res) => {
     store.setTapoAccount(tapoEmail.trim(), tapoPassword);
   }
   res.status(204).end();
+});
+
+// Broadcast-discovers Tapo plugs reachable on the hub's own LAN right now, using
+// the saved account above — see tapo.ts's own comment on why this is the closest
+// practical equivalent of "list my account's devices" that actually exists.
+settingsRouter.post('/tapo-scan', async (_req, res) => {
+  const { email, password } = store.getTapoAccount();
+  if (!email || !password) return res.status(400).json({ error: 'No Tapo account configured yet — save one above first' });
+  try {
+    const found = await tapo.discover(email, password);
+    res.json(found);
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : 'Scan failed' });
+  }
 });
 
 // "Blackout (all screens)" as a toggle — see store.ts's engageBlackoutAll/
