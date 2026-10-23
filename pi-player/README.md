@@ -12,6 +12,75 @@ ARM build environment and 30–90+ minutes; this ships a provisioning script for
 Raspberry Pi OS / Debian instead, which Raspberry Pi Imager's own customisation
 options (or Debian's own installer, on x86) already cover most of the setup for.
 
+## Pi features
+
+Quick reference for what a fully provisioned, up-to-date screen should have —
+useful for sanity-checking a screen after a Re-provision, or for working out
+whether a given one just needs an **Update** vs. a full **Re-provision** (see
+[Updating from the control app](#updating-from-the-control-app-no-ssh-needed-after-this-first-provision)
+below — only Re-provision installs new system-level pieces like USB override or
+NDI). Everything here lives on the Pi itself; Tapo smart plug control is a
+**hub** feature, not a Pi one — see `../hub/README.md`.
+
+**Playback**
+- Images, video, multi-page PDFs (PowerPoint/PPTX arrives here already converted
+  to PDF by the hub), a live clock, and a live TfL status board, looped through a
+  scheduled playlist — see [How it works](#how-it-works).
+- Seamless in-place looping (no reload) when the active playlist is just one
+  video or one PDF.
+- An optional ticker-style announcement overlay on top of whatever's playing.
+- Manual PDF page control from a USB keyboard plugged into the Pi, or remotely
+  via the control app's Preview dialog.
+- Media caching to local disk, so steady-state playback survives a brief
+  hub/Wi-Fi outage without re-fetching anything.
+- Live NDI source playback (Pi 4/5 or an x86 stick only, not a 3B+) as one item
+  in the normal rotation — see [NDI live sources](#ndi-live-sources-raspberry-pi-45-or-an-x86-mini-pcstick).
+- Two independent outputs on one physical unit (Pi 4/5 or a 2-monitor PC),
+  each paired and scheduled separately — see
+  [Dual-output screens](#dual-output-screens-pi-45-or-a-pc-with-two-displays).
+
+**Fail-safes (keep showing something with no hub, or override it deliberately)**
+- **Local content** — one image/video/PDF uploaded straight to the Pi, plays on
+  loop whenever the hub is unreachable or this screen was never paired.
+- **USB override** — a USB stick with a top-level `signage` folder forces its
+  contents on, regardless of what the hub says, until explicitly cleared.
+- **Wi-Fi fallback hotspot** — if this Pi loses all network connectivity, it
+  broadcasts its own Wi-Fi network with the display itself showing the name,
+  password, and setup URL, so a technician can get it back online from a phone.
+
+**Remote control (from the control app, no SSH)**
+- Pairing via Scan network, Scan QR, or Enter IP, from the first-boot IP/QR screen.
+- **Restart** (real reboot), **Update** (fast app-only redeploy), and
+  **Re-provision** (full system re-setup) buttons per screen.
+- **Identify** — blinks the physical display white/black to find it in a room.
+- Live preview screenshot, plus remote PDF page-jump from that same dialog.
+- Auto-relinks itself if DHCP hands it a new IP (matched by MAC address), so it
+  doesn't need re-pairing after a router reboot.
+- Diagnostics heartbeat on every poll: temperature, throttling state, uptime,
+  disk space, USB-override status, dual-output capability, and this build's
+  stamped version (a real date — see `src/diagnostics.ts`) — the control app's
+  "advanced device info" shows these per screen.
+
+**Local self-service setup page** (`http://<pi-ip>:8088/network-setup.html`,
+reachable without SSH or even pairing)
+- Wi-Fi configuration (also reachable via the fallback hotspot above).
+- Static IP or DHCP — see [Static IP or DHCP](#static-ip-or-dhcp).
+- Screen orientation (0/90/180/270°), applied live and to the boot splash — see
+  [Screen orientation](#screen-orientation-portrait-mounted-panels).
+- Forced 1920x1080 display resolution, for TVs that otherwise scale the picture
+  into a small centered box — see
+  [Display resolution](#display-resolution-fixes-a-tv-showing-the-wrong-aspect-ratio).
+- Performance/underclock toggle for a Raspberry Pi 3B+ running without a
+  heatsink — see [Performance](#performance-running-without-a-heatsink).
+- Local content and USB override management (upload/clear).
+
+**System**
+- Branded Plymouth boot splash in place of raw kernel/systemd boot text — see
+  [Boot splash](#boot-splash).
+- No visible cursor in kiosk mode.
+- Idempotent provisioning (`provision.sh`) — safe to re-run, same command on
+  Raspberry Pi and x86 hardware.
+
 ## Flashing
 
 **Raspberry Pi:**
