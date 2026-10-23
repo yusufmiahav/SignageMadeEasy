@@ -318,7 +318,7 @@ fi
 rm -f "$SUDOERS_TMP"
 
 # ---------------------------------------------------------------------------
-log "Installing USB-override detection (plug in a USB stick with a top-level 'signage' folder of images/videos to force content onto this screen — see pi-player/src/usbOverride.ts)"
+log "Installing USB-override detection (plug in a USB stick with images/videos loose at its top level to force content onto this screen — see pi-player/src/usbOverride.ts)"
 # Unconditional on both platforms — plain udev/systemd, no Pi-specific hardware
 # involved. Same "deliberately NOT under $APP_DIR" reasoning as the other root-run
 # scripts above: this one is invoked by udev/systemd directly (as root), never via

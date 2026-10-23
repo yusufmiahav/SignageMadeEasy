@@ -42,8 +42,9 @@ NDI). Everything here lives on the Pi itself; Tapo smart plug control is a
 **Fail-safes (keep showing something with no hub, or override it deliberately)**
 - **Local content** — one image/video/PDF uploaded straight to the Pi, plays on
   loop whenever the hub is unreachable or this screen was never paired.
-- **USB override** — a USB stick with a top-level `signage` folder forces its
-  contents on, regardless of what the hub says, until explicitly cleared.
+- **USB override** — a USB stick with images/videos loose at its top level
+  forces them on (6s/image default), regardless of what the hub says, until
+  explicitly cleared.
 - **Wi-Fi fallback hotspot** — if this Pi loses all network connectivity, it
   broadcasts its own Wi-Fi network with the display itself showing the name,
   password, and setup URL, so a technician can get it back online from a phone.
@@ -388,22 +389,28 @@ automatically; local content never needs to be manually turned off.
 
 ## USB override (manual force, no network needed)
 
-Plug a USB stick into the screen itself with a folder named **`signage`** at
-its top level, containing images/videos, and this player forces them on —
-in order by filename (prefix with `1-`, `2-`, etc. to control playback order),
-looping. Unlike the local-content fail-safe above, this wins even while the
-hub is reachable and has its own valid content: it's a deliberate manual
-override for "show this, right now, regardless of what the network says,"
-not a disconnection fallback.
+Plug a USB stick into the screen itself with images/videos loose at its **top
+level** (not inside any folder), and this player forces them on — in order by
+filename (prefix with `1-`, `2-`, etc. to control playback order), looping,
+images showing **6 seconds each by default** (videos play through their
+natural length instead — this default is specific to USB override, not the
+hub's own normal 8s image default). Unlike the local-content fail-safe above,
+this wins even while the hub is reachable and has its own valid content: it's
+a deliberate manual override for "show this, right now, regardless of what
+the network says," not a disconnection fallback.
 
 A udev rule (`udev/99-signage-usb-override.rules`) and a root-owned script
 (`bin/usb-override-mount.sh`, installed by `provision.sh`) detect the stick,
-mount it read-only, copy the matching files onto this Pi's own disk, and
-unmount immediately — the USB stick itself can be pulled straight back out
-the moment the copy finishes, the override keeps playing either way. Only a
-top-level `signage` folder is recognized specifically so a technician's
-personal USB stick (backup photos, an unrelated job's files) plugged in for
-any other reason doesn't silently take over the screen.
+mount it read-only, copy every recognized file sitting loose at its root onto
+this Pi's own disk, and unmount immediately — the USB stick itself can be
+pulled straight back out the moment the copy finishes, the override keeps
+playing either way. Only the top level is scanned, not a recursive walk — a
+subfolder's contents (e.g. a technician's own unrelated photos, kept in their
+own folder rather than loose at the root) are left alone. **There's no longer
+a marker folder to opt in with** (this used to require a top-level `signage`
+folder specifically) — any USB stick with recognized media files loose at its
+root will now force them onto the screen the moment it's inserted, so treat
+every stick plugged into a paired screen as live, not just ones meant for it.
 
 It stays forced until explicitly cleared — pulling the USB stick out does
 **not** undo it — either from this Pi's own local setup page (same
@@ -413,9 +420,10 @@ override active" badge with its own "Clear" button on any screen currently
 overridden this way (relayed to the Pi the same way Restart/Update are).
 
 Supported files: images (jpg, jpeg, png, gif, webp, bmp) and videos (mp4,
-mov, mkv, webm, avi, m4v) — anything else in the `signage` folder is ignored.
-Inserting a different USB stick replaces whatever override was active before,
-rather than merging with it.
+mov, mkv, webm, avi, m4v) — anything else at the stick's root, and anything
+inside a subfolder regardless of type, is ignored. Inserting a different USB
+stick replaces whatever override was active before, rather than merging
+with it.
 
 **Needs Re-provision, not just Update, on a screen set up before this
 feature shipped.** The udev rule, the systemd unit, and the root-owned mount
@@ -430,20 +438,21 @@ already includes one). To confirm: `systemctl list-unit-files | grep
 signage-usb-override` and `ls /etc/udev/rules.d/99-signage-usb-override.rules`
 over SSH — empty/missing means it needs re-provisioning.
 
-**Confirmed working on real hardware**, trigger path included: a real USB
-stick with a top-level `signage` folder, inserted into an already
-re-provisioned Pi, fires the udev rule and forces the content as designed.
-(The copy/activate/serve logic in `src/usbOverride.ts` was also exercised
-end-to-end in this project's own sandbox against a loopback-mounted disk
-image standing in for a USB stick — mount, folder/extension filtering, copy,
-unmount, and activating the override over HTTP all matched what the real
-hardware test then confirmed.) If a stick still doesn't seem to trigger
-anything, double check it has a folder literally named `signage` at its top
-level (anything else is deliberately ignored — see above) and that the
-screen has been Re-provisioned, not just Updated, since this feature
-shipped (see the Re-provision note above); `journalctl -u
-signage-usb-override@*` and `udevadm monitor` (while inserting the stick)
-are the first things to check beyond that.
+**Confirmed working on real hardware** (trigger path, multi-file, and video
+support included) under the original top-level-`signage`-folder mechanism: a
+real USB stick inserted into an already re-provisioned Pi fired the udev
+rule and forced the content as designed. The root-level scan above is the
+same mount/copy/activate code path, just pointed at the stick's root
+directory instead of a `signage` subfolder inside it — **not yet re-confirmed
+against real hardware since that change**, though the underlying mount/copy
+logic itself (`src/usbOverride.ts` and `bin/usb-override-mount.sh`) was
+re-exercised end-to-end in this project's own sandbox against a
+loopback-mounted disk image standing in for a USB stick. If a stick doesn't
+seem to trigger anything, double check its media files are loose at the
+root, not inside a folder, and that the screen has been Re-provisioned, not
+just Updated, since this feature shipped (see the Re-provision note above);
+`journalctl -u signage-usb-override@*` and `udevadm monitor` (while
+inserting the stick) are the first things to check beyond that.
 
 ## Static IP or DHCP
 

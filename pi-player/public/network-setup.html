@@ -99,12 +99,13 @@
     <hr />
 
     <h2>USB override</h2>
-    <p>Plug a USB stick with a top-level folder named <code>signage</code> containing
-      images/videos into this display to force them on — no network needed for this
-      part either. Unlike the fail-safe above, this overrides the hub's own content
-      too, not just when the hub is unreachable, and stays forced until cleared here
-      or from the control app — pulling the stick back out doesn't undo it, since the
-      files are already copied onto this display.</p>
+    <p>Plug a USB stick with images/videos loose at its top level (not inside a
+      folder) into this display to force them on, in order by filename, images
+      showing 6s each by default — no network needed for this part either. Unlike
+      the fail-safe above, this overrides the hub's own content too, not just when
+      the hub is unreachable, and stays forced until cleared here or from the
+      control app — pulling the stick back out doesn't undo it, since the files
+      are already copied onto this display.</p>
     <p id="usb-override-current"></p>
     <button type="button" id="usb-override-clear">Clear USB override</button>
     <p id="usb-override-status"></p>
@@ -583,7 +584,7 @@
         const n = data.usbOverride ? data.usbOverride.items.length : 0;
         usbCurrent.textContent = n > 0
           ? `Active — forcing ${n} item${n === 1 ? '' : 's'} from a USB stick.`
-          : 'Not active — insert a USB stick with a top-level "signage" folder to force content.';
+          : 'Not active — insert a USB stick with images/videos loose at its top level to force content.';
         usbClear.disabled = n === 0;
       } catch {
         usbCurrent.textContent = '';

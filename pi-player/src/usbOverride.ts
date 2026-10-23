@@ -3,10 +3,11 @@ import path from 'node:path';
 import type { LibraryItemType, PlayerItem } from './types.js';
 
 // A multi-item, network-independent "force this onto the screen" override —
-// activated by plugging in a USB stick with a top-level "signage" folder of
-// images/videos (see bin/usb-override-mount.sh and udev/ for the actual USB
-// detection/mounting/copying — this module only manages what's already been
-// copied onto this Pi's own disk by the time activate() runs).
+// activated by plugging in a USB stick with images/videos loose at its top
+// level (anything inside a subfolder is ignored — see bin/usb-override-mount.sh
+// and udev/ for the actual USB detection/mounting/copying — this module only
+// manages what's already been copied onto this Pi's own disk by the time
+// activate() runs).
 //
 // Unlike localContent.ts's single-file hub-unreachable fallback, this wins even
 // while the hub is reachable and has its own valid state (see player.js's pollOnce,
@@ -68,9 +69,10 @@ export function get(): { items: PlayerItem[] } | null {
       id: `usb-${f.name}`,
       type: f.type,
       url: `/usb-override/file/${encodeURIComponent(f.name)}`,
-      // Matches the hub's own default image duration (hub/src/store.ts's
-      // getPlayerState) — videos play through their natural length instead.
-      duration: f.type === 'video' ? null : 8,
+      // Deliberately shorter than the hub's own default image duration (8s, see
+      // hub/src/store.ts's getPlayerState) — USB override's own default, not
+      // inherited from there. Videos play through their natural length regardless.
+      duration: f.type === 'video' ? null : 6,
     })),
   };
 }
