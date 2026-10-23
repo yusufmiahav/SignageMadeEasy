@@ -1,0 +1,165 @@
+import { spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
+import { waitForWaylandDisplay, XDG_RUNTIME_DIR } from './waylandDisplay.js';
+
+// Pi 4/5 or an x86 device only (see provision.sh's SUPPORTS_NDI) — not a Pi 3B+. NDI
+// has no browser decoder, so a live NDI source is rendered by a native GStreamer
+// process (gst-launch-1.0 + the community gst-plugin-ndi) spawned as
+// a second fullscreen Wayland client alongside sway/Chromium — the same architectural
+// shape as the mpv-hwdecode branch's native video player, but a wholly separate
+// implementation: no IPC socket (ndisrc has its own internal reconnect logic and there's
+// no confirmed "frozen but alive" failure mode yet to watch for — see the project plan
+// for why v1 sticks to process-alive checking only), and gst-launch-1.0 instead of mpv
+// (which has no NDI protocol support at all).
+
+const GST_LAUNCH_BIN = process.env.SIGNAGE_GST_LAUNCH_BIN ?? 'gst-launch-1.0';
+const NDI_FIND_BIN = process.env.SIGNAGE_NDI_FIND_BIN ?? '/opt/signage/bin/ndi-find';
+const WAYLAND_WAIT_MS = 10_000;
+const NDI_FIND_TIMEOUT_MS = 4_000;
+// gst-launch-1.0's own stderr (where every GStreamer ERROR/WARNING line we've ever
+// needed to diagnose a real NDI failure actually shows up) — truncated fresh on each
+// spawn, so this always holds just the most recent attempt rather than growing
+// unbounded. Previously silenced entirely (stdio: 'ignore'), which meant every real
+// NDI failure could only ever be diagnosed by reproducing it manually over SSH with
+// the right Wayland env vars — exactly what made the "video decoder not found" /
+// not-linked audio-pad / autoaudiosink-PipeWire / alsasink-device-busy failures each
+// take a live debugging session to even see, instead of a log read.
+const NDI_GST_STDERR_LOG = process.env.SIGNAGE_NDI_GST_STDERR_LOG ?? '/opt/signage/ndi-gst-stderr.log';
+
+interface CurrentPlayback {
+  token: number;
+  ndiSourceName: string;
+  proc: ChildProcess | null;
+  alive: boolean;
+  respawned: boolean;
+}
+
+// Deliberately NOT output-scoped (unlike config.ts/poller.ts/identifyFlash.ts/
+// preview.ts) — a single global playback slot, same as before dual-output existed.
+// Getting two independent GStreamer waylandsink surfaces each reliably routed to
+// their own physical connector (the same for_window-by-app_id trick provision.sh
+// uses for the two Chromium windows) isn't something that could be verified without
+// real dual-output hardware, so this is an explicit v1 scope cut: if both outputs
+// try to play a native NDI source, the second call's play() below stops the
+// first's via the same single-slot behavior this already had — only one output can
+// show live NDI at a time. Every other content type (image/video/pdf/etc., each
+// rendered inside its own output's independent Chromium page) has no such limit.
+let current: CurrentPlayback | null = null;
+let nextToken = 1;
+
+function pipelineArgs(ndiSourceName: string): string[] {
+  return [
+    '-e',
+    'ndisrc', `ndi-name=${ndiSourceName}`, '!',
+    'ndisrcdemux', 'name=d',
+    // sync=false — confirmed on real Pi 5 hardware: waylandsink's default clock-synced
+    // rendering drops most incoming frames ("A lot of buffers are being dropped") since
+    // ndisrc's buffer timestamps don't line up with the pipeline clock the way a
+    // demuxed file's would. Rendering each frame as it arrives instead of pacing to a
+    // clock is the standard fix for this class of live network source.
+    'd.video', '!', 'queue', '!', 'videoconvert', '!', 'waylandsink', 'fullscreen=true', 'sync=false',
+    // The audio branch itself is not optional — confirmed on real hardware (a Canon
+    // CR-N500 NDI|HX2 source) that ndisrcdemux creating an audio pad with nothing
+    // downstream to consume it fails the WHOLE pipeline with a "not-linked" Internal
+    // data stream error within milliseconds, well before a single video frame
+    // arrives — so a source with no audio track never hit this (nothing to leave
+    // dangling), but any source WITH one went instantly black.
+    //
+    // fakesink, not a real audio sink, for now — tried autoaudiosink (crashed: this
+    // kiosk image has no working PipeWire session, "pw.conf: can't load config
+    // client.conf") and alsasink directly (installed via gstreamer1.0-alsa, but
+    // failed to open the 'default' ALSA device at all: "Unknown error 524",
+    // something else already holding it). Getting NDI audio actually audible needs
+    // a real look at what owns this Pi's audio device first, which is a separate
+    // problem from keeping the video pipeline alive — tracked as a known gap rather
+    // than let it keep blocking video. player.js's own <video> elements still play
+    // with audio on by default (muted = false); this is NDI specifically.
+    'd.audio', '!', 'queue', '!', 'fakesink',
+  ];
+}
+
+async function spawnProcess(playback: CurrentPlayback): Promise<void> {
+  const waylandDisplay = await waitForWaylandDisplay(WAYLAND_WAIT_MS);
+  // Still the active playback for this token? An intervening stop()/play() while we
+  // were waiting for the compositor socket means this spawn is now stale — bail out
+  // without touching whatever's current now.
+  if (current?.token !== playback.token) return;
+  if (!waylandDisplay) {
+    playback.alive = false;
+    return;
+  }
+
+  // 'w' (not 'a') — each spawn attempt starts this log fresh, so it always shows
+  // exactly what the most recent attempt did, not an ever-growing history. Opened
+  // fresh per spawn (not reused across the bounded respawn) for the same reason.
+  const stderrFd = fs.openSync(NDI_GST_STDERR_LOG, 'w');
+  const proc = spawn(GST_LAUNCH_BIN, pipelineArgs(playback.ndiSourceName), {
+    env: { ...process.env, XDG_RUNTIME_DIR, WAYLAND_DISPLAY: waylandDisplay },
+    stdio: ['ignore', 'ignore', stderrFd],
+  });
+  fs.closeSync(stderrFd); // the child has its own fd table entry now; this one's done
+  playback.proc = proc;
+  playback.alive = true;
+
+  proc.on('exit', () => {
+    if (current?.token !== playback.token) return; // already superseded by stop()/play()
+    playback.alive = false;
+    // One bounded respawn attempt for a crash mid-rotation — mirrors the mpv branch's
+    // own bounded-retry-then-give-up behavior. Rotation timing itself (see player.js)
+    // doesn't wait on this; it just advances early if isPlaying() goes false first.
+    if (!playback.respawned) {
+      playback.respawned = true;
+      void spawnProcess(playback);
+    }
+  });
+  proc.on('error', () => {
+    // Covers ENOENT (gst-launch-1.0 not installed) — same "not built/installed yet"
+    // class of failure findSources() surfaces for the discovery helper below.
+    if (current?.token === playback.token) playback.alive = false;
+  });
+}
+
+/** Starts (or replaces) native NDI playback. Returns a generation token — see isPlaying(). */
+export function play(ndiSourceName: string): number {
+  stop();
+  const token = nextToken++;
+  const playback: CurrentPlayback = { token, ndiSourceName, proc: null, alive: true, respawned: false };
+  current = playback;
+  void spawnProcess(playback);
+  return token;
+}
+
+/** False once this token's process has exited (and any bounded respawn also failed) or been superseded by a newer play()/stop() call. */
+export function isPlaying(token: number): boolean {
+  return current?.token === token && current.alive;
+}
+
+export function stop(): void {
+  if (current?.proc && !current.proc.killed) current.proc.kill();
+  current = null;
+}
+
+/**
+ * Runs the small NDI discovery helper (built manually from the NDI SDK — see
+ * pi-player/README.md) for its fixed discovery window and returns the source names it
+ * printed, one per line. Throws a clear, distinguishable error if the helper hasn't
+ * been built/installed yet, so callers (app.ts's /native-ndi/sources route) can
+ * surface "discovery helper missing" rather than a bare spawn failure.
+ */
+export function findSources(): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(NDI_FIND_BIN, []);
+    let stdout = '';
+    proc.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8'); });
+    proc.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') reject(new Error(`NDI discovery helper not found at ${NDI_FIND_BIN} — see pi-player/README.md for building it`));
+      else reject(err);
+    });
+    proc.on('exit', () => {
+      resolve(stdout.split('\n').map((line) => line.trim()).filter(Boolean));
+    });
+    // The helper waits ~4s internally for NDI's own discovery to settle then exits on
+    // its own; this is just a safety net in case it hangs for some other reason.
+    setTimeout(() => { if (!proc.killed) proc.kill(); }, NDI_FIND_TIMEOUT_MS + 4000);
+  });
+}

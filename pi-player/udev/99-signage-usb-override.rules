@@ -1,0 +1,12 @@
+# Installed by provision.sh. Fires the instant a USB partition with a recognized
+# filesystem shows up — ID_BUS=="usb" already excludes the Pi's own SD card/eMMC
+# (a different bus) without needing to match specific kernel device names, so this
+# works the same whether the stick enumerates as sda1, sdb2, or anything else.
+#
+# Hands off to systemd (TAG+="systemd", SYSTEMD_WANTS=) rather than running the
+# mount script directly via RUN+= — udev's own RUN+= has a short timeout meant for
+# quick housekeeping, not a mount-plus-copy of a few video files, so the real work
+# happens in signage-usb-override@.service's own process instead, outside udev's
+# event-handling window. See that service file and bin/usb-override-mount.sh for
+# what actually happens once this fires.
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_USAGE}=="filesystem", TAG+="systemd", ENV{SYSTEMD_WANTS}+="signage-usb-override@%k.service"

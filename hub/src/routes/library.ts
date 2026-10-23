@@ -8,6 +8,9 @@ import * as store from '../store.js';
 import { countPdfPages } from '../pdfPages.js';
 import { getVideoDuration } from '../videoDuration.js';
 import { needsCapping, transcodeToCapped } from '../videoTranscode.js';
+import { extractPosterFrame } from '../videoPoster.js';
+import { convertPptxToPdf } from '../pptxConvert.js';
+import * as tflArrivals from '../tflArrivals.js';
 
 export const libraryRouter = Router();
 
@@ -70,6 +73,11 @@ libraryRouter.post('/video', upload.single('file'), async (req, res) => {
   const duration = await getVideoDuration(req.file.path);
   const fullUrl = `/uploads/${req.file.filename}`;
   const shouldCap = await needsCapping(req.file.path);
+  // A fast single-frame grab (unlike the potentially multi-minute full capping
+  // below) — worth awaiting inline so the item never has a moment of "video with no
+  // thumbnail at all" the way a backgrounded job would leave it for.
+  const posterPath = path.join(UPLOADS_DIR, `${path.basename(req.file.filename, path.extname(req.file.filename))}.poster.jpg`);
+  const posterUrl = (await extractPosterFrame(req.file.path, posterPath)) ? `/uploads/${path.basename(posterPath)}` : undefined;
   const item = store.addLibraryItem({
     name: req.file.originalname,
     type: 'video',
@@ -77,6 +85,7 @@ libraryRouter.post('/video', upload.single('file'), async (req, res) => {
     duration,
     thumb: fullUrl, // fallback until (if) a capped copy lands, and the permanent value if capping is skipped/fails
     fullUrl,
+    posterUrl,
     transcodeStatus: shouldCap ? 'processing' : 'skipped',
   });
   res.status(201).json(item);
@@ -102,6 +111,33 @@ libraryRouter.post('/pdf', upload.single('file'), (req, res) => {
   res.status(201).json(item);
 });
 
+// Converts the upload to PDF via LibreOffice headless (see pptxConvert.ts) and
+// stores it as a plain 'pdf' item — the Pi-side player, page navigation, and
+// countPdfPages below already handle a PDF generically, so a converted deck needs
+// no new item type or player code at all. Done inline (not backgrounded like
+// video's capping) since a typical presentation converts in a few seconds; the
+// upload progress bar's 100% simply holds a little longer while this runs. The
+// original .pptx/.ppt is discarded either way — only the converted PDF is ever
+// served, same as the raw source of an uploaded PDF isn't kept separately from itself.
+libraryRouter.post('/pptx', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'file is required' });
+  const pdfFilename = `${path.basename(req.file.filename, path.extname(req.file.filename))}.pdf`;
+  const pdfPath = path.join(UPLOADS_DIR, pdfFilename);
+  const ok = await convertPptxToPdf(req.file.path, pdfPath);
+  fs.rmSync(req.file.path, { force: true });
+  if (!ok) return res.status(422).json({ error: 'Could not convert this PowerPoint file to PDF' });
+  const buffer = fs.readFileSync(pdfPath);
+  const pageCount = countPdfPages(buffer);
+  const item = store.addLibraryItem({
+    name: req.file.originalname,
+    type: 'pdf',
+    size: formatBytes(fs.statSync(pdfPath).size),
+    thumb: `/uploads/${pdfFilename}`,
+    pageCount,
+  });
+  res.status(201).json(item);
+});
+
 libraryRouter.post('/announcement', (req, res) => {
   const { name, text } = req.body ?? {};
   if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'text is required' });
@@ -117,8 +153,70 @@ libraryRouter.post('/clock', (req, res) => {
   res.status(201).json(item);
 });
 
+// No file either — the hub only ever stores the NDI source name a Pi 4/5 or x86
+// device resolves directly over the LAN at playback time (see pi-player/src/ndiPlayer.ts).
+libraryRouter.post('/ndi', (req, res) => {
+  const { name, ndiSourceName } = req.body ?? {};
+  if (typeof ndiSourceName !== 'string' || !ndiSourceName.trim()) {
+    return res.status(400).json({ error: 'ndiSourceName is required' });
+  }
+  const item = store.addLibraryItem({
+    name: (name ?? '').trim() || ndiSourceName.trim(),
+    type: 'ndi',
+    ndiSourceName: ndiSourceName.trim(),
+  });
+  res.status(201).json(item);
+});
+
+// No file, no live data stored here either — just which TfL modes to show; the
+// actual line status is resolved fresh from tflStatus.ts's cache every time this
+// item is served (see store.ts's getPlayerState).
+const VALID_TFL_MODES = ['tube', 'overground', 'dlr', 'elizabeth-line'];
+libraryRouter.post('/tfl-status', (req, res) => {
+  const { name, tflModes } = req.body ?? {};
+  if (!Array.isArray(tflModes) || tflModes.length === 0 || !tflModes.every((m) => VALID_TFL_MODES.includes(m))) {
+    return res.status(400).json({ error: `tflModes must be a non-empty array from: ${VALID_TFL_MODES.join(', ')}` });
+  }
+  const item = store.addLibraryItem({ name: (name ?? '').trim() || 'TfL status', type: 'tfl-status', tflModes });
+  res.status(201).json(item);
+});
+
+// One or more stations shown together on the same board — see types.ts's
+// LibraryItem.tflStations. No live data stored here either; the actual
+// countdowns are resolved fresh from tflArrivals.ts's per-station cache every
+// time this item is served (see store.ts's getPlayerState). Each stopPointId
+// must already be the real, queryable StopPoint id (e.g. "940GZZLUWSM"), not a
+// hub/interchange id — see GET /api/tfl/stations/search, which does that
+// resolution for the dialog.
+function isValidTflStations(value: unknown): value is { stopPointId: string; stopPointName?: string; lines?: string[] }[] {
+  return Array.isArray(value) && value.length > 0 && value.every((s) =>
+    s && typeof s === 'object' &&
+    typeof (s as Record<string, unknown>).stopPointId === 'string' && (s as Record<string, unknown>).stopPointId !== '' &&
+    ((s as Record<string, unknown>).stopPointName === undefined || typeof (s as Record<string, unknown>).stopPointName === 'string') &&
+    ((s as Record<string, unknown>).lines === undefined || (Array.isArray((s as Record<string, unknown>).lines) && ((s as Record<string, unknown>).lines as unknown[]).every((l) => typeof l === 'string'))),
+  );
+}
+
+libraryRouter.post('/tfl-arrivals', (req, res) => {
+  const { name, tflStations } = req.body ?? {};
+  if (!isValidTflStations(tflStations)) {
+    return res.status(400).json({ error: 'tflStations must be a non-empty array of { stopPointId, stopPointName?, lines? }' });
+  }
+  const stations = tflStations.map((s) => ({ stopPointId: s.stopPointId, stopPointName: s.stopPointName || s.stopPointId, ...(s.lines && s.lines.length > 0 && { lines: s.lines }) }));
+  const item = store.addLibraryItem({
+    name: (name ?? '').trim() || stations.map((s) => s.stopPointName).join(', ') || 'TfL arrivals',
+    type: 'tfl-arrivals',
+    tflStations: stations,
+  });
+  // A head start on the next poll cycle (see tflArrivals.ts's pollNow) — without
+  // this, a freshly added station's board sits empty until whatever's left of the
+  // current up-to-30s cycle runs out.
+  tflArrivals.pollNow(stations.map((s) => s.stopPointId));
+  res.status(201).json(item);
+});
+
 libraryRouter.patch('/:id', (req, res) => {
-  const { durationSec, name } = req.body ?? {};
+  const { durationSec, name, tags, folderId, ndiSourceName, tflModes, tflStations } = req.body ?? {};
   if (durationSec !== undefined) {
     if (typeof durationSec !== 'number' || !Number.isFinite(durationSec) || durationSec < 1) {
       return res.status(400).json({ error: 'durationSec must be a positive number' });
@@ -128,6 +226,47 @@ libraryRouter.patch('/:id', (req, res) => {
   if (typeof name === 'string') {
     if (!name.trim()) return res.status(400).json({ error: 'name cannot be empty' });
     store.renameLibraryItem(req.params.id, name.trim());
+  }
+  if (tags !== undefined) {
+    if (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string')) {
+      return res.status(400).json({ error: 'tags must be an array of strings' });
+    }
+    store.setLibraryItemTags(req.params.id, tags);
+  }
+  // Files this item under a folder (or back to the root, for folderId: null) — see
+  // LibraryScreen.tsx's drag-and-drop and "Move to folder" action.
+  if (folderId !== undefined) {
+    if (folderId !== null && typeof folderId !== 'string') return res.status(400).json({ error: 'folderId must be a string or null' });
+    store.setLibraryItemFolder(req.params.id, folderId);
+  }
+  // Reconfigures an existing 'ndi' item's source name — see AddNdiSourceDialog.tsx's
+  // edit mode. Same no-op-if-wrong-type guard as the two TfL branches below.
+  if (typeof ndiSourceName === 'string') {
+    if (!ndiSourceName.trim()) return res.status(400).json({ error: 'ndiSourceName cannot be empty' });
+    store.setLibraryItemNdiSourceName(req.params.id, ndiSourceName.trim());
+  }
+  // Reconfigures an existing 'tfl-status' item's modes — see AddTflStatusDialog.tsx's
+  // edit mode. A no-op (WHERE ... AND type = 'tfl-status' in store.ts) if this id
+  // isn't actually a tfl-status item, same defensive posture as the durationSec
+  // type-IN clause above.
+  if (tflModes !== undefined) {
+    if (!Array.isArray(tflModes) || tflModes.length === 0 || !tflModes.every((m) => VALID_TFL_MODES.includes(m))) {
+      return res.status(400).json({ error: `tflModes must be a non-empty array from: ${VALID_TFL_MODES.join(', ')}` });
+    }
+    store.setLibraryItemTflModes(req.params.id, tflModes);
+  }
+  // Same reasoning, for an existing 'tfl-arrivals' item's whole station list —
+  // see AddTflArrivalsDialog.tsx's edit mode. A full replace (can add/remove a
+  // station, or change one's line filter), same as at creation time.
+  if (tflStations !== undefined) {
+    if (!isValidTflStations(tflStations)) {
+      return res.status(400).json({ error: 'tflStations must be a non-empty array of { stopPointId, stopPointName?, lines? }' });
+    }
+    const resolvedStations = tflStations.map((s) => ({ stopPointId: s.stopPointId, stopPointName: s.stopPointName || s.stopPointId, ...(s.lines && s.lines.length > 0 && { lines: s.lines }) }));
+    store.setLibraryItemTflStations(req.params.id, resolvedStations);
+    // Same head start as the POST /tfl-arrivals route above — covers a newly
+    // added station on an existing board, not just a brand-new one.
+    tflArrivals.pollNow(resolvedStations.map((s) => s.stopPointId));
   }
   res.status(204).end();
 });

@@ -1,8 +1,18 @@
 import { useState } from 'react';
 import { DialogShell } from './DialogShell';
+import { FolderTreeList } from '../FolderTreeList';
 import type { AppState } from '../../hooks/useAppState';
+import type { LibraryItem, ScheduleEvent } from '../../api/types';
 
 const TYPE_LABEL: Record<string, string> = { image: 'Image', video: 'Video', pdf: 'PDF', announcement: 'Announcement' };
+
+// 0=Sunday..6=Saturday, matching ScheduleEvent.daysOfWeek/JS Date.getDay() — shown
+// Mon-first since that's the more natural reading order for a work-week pattern
+// like "every weekday," but the stored values stay Sun=0-based.
+const WEEKDAYS: { value: number; label: string }[] = [
+  { value: 1, label: 'Mon' }, { value: 2, label: 'Tue' }, { value: 3, label: 'Wed' }, { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' }, { value: 6, label: 'Sat' }, { value: 0, label: 'Sun' },
+];
 
 function todayISO(): string {
   const d = new Date();
@@ -11,16 +21,23 @@ function todayISO(): string {
 
 interface AddEventDialogProps {
   app: AppState;
-  groupId: string;
+  onConfirm: (event: Omit<ScheduleEvent, 'id'>) => Promise<unknown>;
   onClose: () => void;
 }
 
-export function AddEventDialog({ app, groupId, onClose }: AddEventDialogProps) {
-  const { library, addEvent } = app;
+export function AddEventDialog({ app, onConfirm, onClose }: AddEventDialogProps) {
+  const { library, folders } = app;
   const [name, setName] = useState('');
   const [start, setStart] = useState(todayISO());
   const [end, setEnd] = useState(todayISO());
+  const [allDay, setAllDay] = useState(true);
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('17:00');
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [recurring, setRecurring] = useState(false);
+  // Pre-checked to the most common recurring case ("every weekday") the moment
+  // recurring is turned on, rather than starting empty and forcing a pick of all 7.
+  const [days, setDays] = useState<Set<number>>(new Set([1, 2, 3, 4, 5]));
 
   const toggle = (id: string) => {
     setChecked((prev) => {
@@ -30,9 +47,24 @@ export function AddEventDialog({ app, groupId, onClose }: AddEventDialogProps) {
     });
   };
 
+  const toggleDay = (value: number) => {
+    setDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value); else next.add(value);
+      return next;
+    });
+  };
+
   const confirm = async () => {
     if (!name.trim() || !start || !end) return;
-    await addEvent(groupId, { name: name.trim(), start, end, libIds: Array.from(checked) });
+    if (!allDay && (!startTime || !endTime)) return;
+    if (recurring && days.size === 0) return;
+    await onConfirm({
+      name: name.trim(), start, end, libIds: Array.from(checked),
+      startTime: allDay ? undefined : startTime,
+      endTime: allDay ? undefined : endTime,
+      daysOfWeek: recurring ? Array.from(days) : undefined,
+    });
     onClose();
   };
 
@@ -52,17 +84,70 @@ export function AddEventDialog({ app, groupId, onClose }: AddEventDialogProps) {
           <input className="input" id="ev-end" type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
         </div>
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 13 }}>Only on certain days of the week</span>
+        <label className="toggle">
+          <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
+          <span className="toggle-track">
+            <span className="toggle-dot" />
+          </span>
+        </label>
+      </div>
+      {recurring && (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {WEEKDAYS.map((d) => (
+            <button
+              key={d.value}
+              type="button"
+              className={days.has(d.value) ? 'btn btn-primary' : 'btn btn-secondary'}
+              style={{ fontSize: 12, padding: '4px 10px' }}
+              onClick={() => toggleDay(d.value)}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 13 }}>All day</span>
+        <label className="toggle">
+          <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+          <span className="toggle-track">
+            <span className="toggle-dot" />
+          </span>
+        </label>
+      </div>
+      {!allDay && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="field">
+              <label htmlFor="ev-start-time">Starts at</label>
+              <input className="input" id="ev-start-time" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="ev-end-time">Ends at</label>
+              <input className="input" id="ev-end-time" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            </div>
+          </div>
+          <p className="dialog-body text-muted" style={{ fontSize: 12, margin: 0 }}>
+            Only replaces the default playlist during this daily window within the date range above — outside it, the
+            default playlist plays as usual. Doesn't support a window that crosses midnight (e.g. 10pm–2am).
+          </p>
+        </>
+      )}
       <div className="field">
         <label>Replaces the default playlist with</label>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
-          {library.filter((item) => item.type !== 'announcement').map((item) => (
-            <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
+        <FolderTreeList
+          folders={folders}
+          items={library.filter((item) => item.type !== 'announcement')}
+          renderItem={(item: LibraryItem) => (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--color-divider)', cursor: 'pointer' }}>
               <input type="checkbox" checked={checked.has(item.id)} onChange={() => toggle(item.id)} />
               <span style={{ flex: 1, fontSize: 13 }}>{item.name}</span>
               <span className="tag tag-neutral">{TYPE_LABEL[item.type]}</span>
             </label>
-          ))}
-        </div>
+          )}
+        />
       </div>
       <div className="dialog-actions">
         <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>

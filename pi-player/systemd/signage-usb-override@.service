@@ -1,0 +1,13 @@
+[Unit]
+Description=SignageMadeEasy USB override mount (%i)
+# Instantiated per device by udev/99-signage-usb-override.rules the moment a USB
+# partition with a filesystem shows up (%i is the kernel device name, e.g. sda1) —
+# never started any other way. Doing the real work here instead of directly in the
+# udev rule's own RUN+= means it runs under systemd's normal service lifecycle,
+# not udev's own short RUN+= timeout, which a mount-plus-copy of a few video files
+# could easily exceed.
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/signage/bin/usb-override-mount.sh %i

@@ -12,8 +12,10 @@ Environment=SIGNAGE_CONFIG_PATH=/opt/signage/config.json
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=2
-# Also how "restart this device" from the control app takes effect — the agent's
-# POST /restart handler just exits; this unit brings it straight back up.
+# Brings this process straight back up after a genuine crash/OOM kill — NOT how
+# the control app's "Restart" button takes effect any more; that's a real
+# `sudo reboot` now (see agent.ts's /restart handler), which naturally restarts
+# this service too as one part of the whole machine coming back up.
 
 [Install]
 WantedBy=multi-user.target

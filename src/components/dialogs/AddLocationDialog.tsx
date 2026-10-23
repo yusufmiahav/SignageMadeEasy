@@ -7,21 +7,26 @@ interface AddLocationDialogProps {
   onClose: () => void;
 }
 
+// Purely organizational — see api/types.ts's Location. Creates an empty area you can
+// then file groups and/or standalone screens under, for browsing/managing a whole
+// site at once; it has no content/schedule of its own.
 export function AddLocationDialog({ app, onClose }: AddLocationDialogProps) {
-  const { addGroup, showToast } = app;
+  const { addLocation, showToast } = app;
   const [name, setName] = useState('');
 
   const confirm = async () => {
     if (!name.trim()) return;
-    const group = await addGroup(name);
-    showToast(`Added ${group.name}`);
+    const location = await addLocation(name);
+    showToast(`Added ${location.name}`);
     onClose();
   };
 
   return (
     <DialogShell title="Add a location" onClose={onClose}>
       <p className="dialog-body" style={{ margin: 0 }}>
-        Creates an empty location with no screens yet — pair a screen to it later, or move an existing one here.
+        An area for organizing screens — e.g. "Warehouse Building" or "Reception". A
+        location has no content of its own: file a group (screens showing the same
+        content) and/or standalone screens under it later, or move existing ones here.
       </p>
       <div className="field">
         <label htmlFor="new-location-name">Location name</label>
