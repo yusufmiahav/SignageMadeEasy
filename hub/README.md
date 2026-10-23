@@ -43,6 +43,56 @@ overwrite (rare — nothing in this repo expects to be hand-edited on the NAS),
 check `git status` before doing anything destructive; `git stash` is usually
 the safe way to get `pull` moving again without losing whatever changed.
 
+## Auto-update (weekly schedule, and/or an on-demand button)
+
+`hub/self-update.sh` scripts the exact two commands above (`git pull` +
+`docker compose ... up -d --build`), so a scheduled job on the NAS can run them
+unattended instead of you doing it by hand. **Runs on the NAS host itself, not
+inside any container** — the hub container deliberately has no Docker access
+of its own (mounting the Docker socket into it would hand that container
+root-equivalent control of every container on the NAS, not just this one, just
+to save running one cron job on the host instead), so it can rebuild/restart
+itself from outside, the same way you would over SSH.
+
+**One-time setup**, as root (or whatever user owns the `docker compose`
+invocation you already use to run the hub) — `crontab -e`, then add:
+
+```cron
+# Weekly auto-update — Sunday 3am UTC; edit the schedule to taste. Logs to
+# hub/data/self-update.log.
+0 3 * * 0 /path/to/SignageMadeEasy/hub/self-update.sh
+
+# Picks up Settings → Advanced → "Update hub" within a couple of minutes of
+# being clicked. Cheap/silent on every run that isn't acting on a real click —
+# see self-update.sh's own comment.
+*/2 * * * * /path/to/SignageMadeEasy/hub/self-update.sh --check-marker
+```
+
+Replace `/path/to/SignageMadeEasy` with your actual checkout path (the
+directory you ran `git clone` into above). Keep both lines if you want both
+the weekly schedule and the button; drop whichever one you don't want — they
+don't depend on each other. `cron`'s schedule times are in whatever timezone
+the NAS's own clock is set to, not necessarily yours.
+
+**Needs `flock`** (from `util-linux`) on the `$PATH` the cron job runs with —
+already present on essentially every Debian-based NAS/Linux box; it's what
+stops the weekly schedule and a manual button click from overlapping if they
+land in the same poll window. If a NAS's shell is missing it,
+`self-update.sh` will fail immediately and visibly in its own log rather than
+running two updates at once.
+
+Settings → Advanced → **Update hub** writes a marker file
+(`hub/data/.update-requested`) rather than running `docker compose` itself —
+same reasoning as above, the hub container has no Docker access to do that
+directly. Clicking it doesn't update anything *instantly*; it just asks
+whichever of the two cron lines above includes `--check-marker` to act on it
+on its next run (so set that one up if you want the button to actually do
+anything — without it, the button writes a marker nothing ever reads). The
+hub restarts partway through either path, so the control app may briefly stop
+responding while that happens — refresh after a minute or two. Check
+`hub/data/self-update.log` (over SSH) to confirm a run actually happened and
+see its output, including any `git pull`/build failure.
+
 ## Update log and screen versions
 
 Settings shows two things for keeping a fleet of screens in sync:

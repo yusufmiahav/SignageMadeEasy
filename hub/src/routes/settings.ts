@@ -1,6 +1,9 @@
 import { Router } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
 import * as store from '../store.js';
 import * as tapo from '../tapo.js';
+import { DATA_DIR } from '../db.js';
 
 export const settingsRouter = Router();
 
@@ -64,6 +67,18 @@ settingsRouter.post('/tapo-scan', async (_req, res) => {
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : 'Scan failed' });
   }
+});
+
+// Settings' "Update hub" button (Advanced). The hub container itself has no
+// Docker access (by design — see hub/README.md's "Auto-update" section on why
+// that stays outside any container), so this can't run `docker compose ...
+// --build` directly; it only drops a marker file a host-side cron job
+// (hub/self-update.sh, polling with --check-marker) picks up within a few
+// minutes and acts on. Always 202, never a promise of done — see that script's
+// own log (hub/data/self-update.log) to confirm it actually ran.
+settingsRouter.post('/update-hub', (_req, res) => {
+  fs.writeFileSync(path.join(DATA_DIR, '.update-requested'), String(Date.now()));
+  res.status(202).end();
 });
 
 // "Blackout (all screens)" as a toggle — see store.ts's engageBlackoutAll/

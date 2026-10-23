@@ -870,6 +870,8 @@ class LocalStoreClient implements SignageApiClient {
     return [];
   }
 
+  async updateHub(): Promise<void> {}
+
   async setOfflineAlertMinutes(minutes: number): Promise<void> {
     saveSettings({ ...loadSettings(), offlineAlertMinutes: Math.max(0, Math.round(minutes)) });
   }

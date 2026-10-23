@@ -199,6 +199,7 @@ export const httpClient: SignageApiClient = {
   setTapoAccount: (tapoEmail, tapoPassword) => request<void>('/api/settings', { method: 'PATCH', ...json({ tapoEmail, tapoPassword }) }),
   clearTapoAccount: () => request<void>('/api/settings', { method: 'PATCH', ...json({ tapoEmail: null }) }),
   scanTapoDevices: () => request<TapoScanResult[]>('/api/settings/tapo-scan', { method: 'POST' }),
+  updateHub: () => request<void>('/api/settings/update-hub', { method: 'POST' }),
   setOfflineAlertMinutes: (offlineAlertMinutes) => request<void>('/api/settings', { method: 'PATCH', ...json({ offlineAlertMinutes }) }),
   setBlackoutAllActive: (active) => request<void>('/api/settings/blackout-all', { method: 'PUT', ...json({ active }) }),
 };

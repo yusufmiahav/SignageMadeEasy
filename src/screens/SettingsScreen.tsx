@@ -44,7 +44,7 @@ export function SettingsScreen({
   const {
     groups, devices, locations, renameGroup, deleteGroup, setGroupLocation, renameDevice, removeDevice, setDeviceLocation, setDeviceIp,
     reorderDevices, moveDevice, addGroup, addLocation, renameLocation, deleteLocation, reorderLocations, showToast, exportBackup, importBackup,
-    safetyHold, setSafetyHold, offlineAlertMinutes, setOfflineAlertMinutes, setDeviceOfflineAlertsMuted, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, reprovisionAllDevices, restartAllDevices, hubVersion, updateLog, actionLog,
+    safetyHold, setSafetyHold, offlineAlertMinutes, setOfflineAlertMinutes, setDeviceOfflineAlertsMuted, flashDevice, restartDevice, savedHubNetworks, setSavedHubNetworks, updateAllDevices, reprovisionAllDevices, restartAllDevices, updateHub, hubVersion, updateLog, actionLog,
     tapoEmail, tapoConfigured, setTapoAccount, clearTapoAccount, scanTapoDevices,
   } = app;
   const [tapoEmailDraft, setTapoEmailDraft] = useState(tapoEmail ?? '');
@@ -920,6 +920,34 @@ export function SettingsScreen({
               >
                 <Icon name="restart" size={14} />
                 Re-provision all
+              </button>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 20 }}>
+              <div className="card-title">Update hub</div>
+              <p className="card-body">
+                Pulls the latest hub code and rebuilds/restarts the hub itself —
+                the same <code>git pull</code> + rebuild you'd otherwise run by
+                hand on the NAS. The hub has no direct Docker access of its own,
+                so this doesn't happen instantly: it asks a scheduled job on the
+                NAS to pick it up, usually within a few minutes (see
+                hub/README.md's "Auto-update" section for the one-time setup this
+                needs, and for running it automatically on a weekly schedule
+                instead of only on demand). The hub restarts partway through, so
+                this page may briefly stop responding while that happens — nothing
+                to worry about, just refresh after a minute or two.
+              </p>
+              <button
+                type="button"
+                className="btn btn-warning"
+                style={{ alignSelf: 'flex-start' }}
+                onClick={async () => {
+                  if (!window.confirm("Update the hub? It'll git-pull and rebuild within a few minutes, going briefly offline partway through — this affects every screen's connection to it, not just this browser tab.")) return;
+                  await updateHub();
+                }}
+              >
+                <Icon name="download" size={14} />
+                Update hub
               </button>
             </div>
 

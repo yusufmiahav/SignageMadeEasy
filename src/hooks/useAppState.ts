@@ -150,6 +150,19 @@ export function useAppState() {
     }
   }, [showToast]);
 
+  // Same accepted-not-done reasoning as the toast text itself — see
+  // api/client.ts's updateHub comment for why this can't just await completion.
+  const updateHub = useCallback(async (): Promise<boolean> => {
+    try {
+      await api.updateHub();
+      showToast('Hub update requested — it\'ll run within a few minutes and the hub may briefly go offline then.');
+      return true;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not request a hub update');
+      return false;
+    }
+  }, [showToast]);
+
   useEffect(() => {
     (async () => {
       await Promise.all([refreshLibrary(), refreshGroups(), refreshDevices(), refreshSettings(), refreshFolders(), refreshLocations(), refreshUpdateLog(), refreshActionLog()]);
@@ -875,6 +888,7 @@ export function useAppState() {
     setTapoAccount,
     clearTapoAccount,
     scanTapoDevices,
+    updateHub,
     toast,
     showToast,
     addImage,

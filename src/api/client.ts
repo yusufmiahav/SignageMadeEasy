@@ -308,6 +308,16 @@ export interface SignageApiClient {
    */
   scanTapoDevices(): Promise<TapoScanResult[]>;
   /**
+   * Asks the hub to git-pull and rebuild/restart itself — see hub/README.md's
+   * "Auto-update" section. The hub container has no Docker access of its own, so
+   * this only drops a marker a host-side cron job picks up within a few minutes
+   * (not immediately, and not a promise it succeeded — resolving just means the
+   * hub accepted the request). The hub itself restarts partway through, so this
+   * screen may briefly go unreachable once it actually runs. No-op in
+   * standalone/localStorage mode (no real hub to ask).
+   */
+  updateHub(): Promise<void>;
+  /**
    * How long a screen has to stay offline before OfflineAlertBanner.tsx warns about
    * it in the control app — purely a notification threshold, never read by a Pi
    * (unlike safetyHold above). 0 turns alerting off entirely.
