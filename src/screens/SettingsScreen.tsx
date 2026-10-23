@@ -60,10 +60,11 @@ export function SettingsScreen({
   };
   const [tapoScanning, setTapoScanning] = useState(false);
   const [tapoScanResults, setTapoScanResults] = useState<TapoScanResult[] | null>(null);
+  const [tapoSubnetHint, setTapoSubnetHint] = useState('');
   const runTapoScan = async () => {
     setTapoScanning(true);
     try {
-      const results = await scanTapoDevices();
+      const results = await scanTapoDevices(tapoSubnetHint.trim() || undefined);
       setTapoScanResults(results);
       if (results) showToast(results.length === 0 ? 'No Tapo plugs found on your network' : `Found ${results.length} Tapo plug${results.length === 1 ? '' : 's'}`);
     } finally {
@@ -1119,10 +1120,27 @@ export function SettingsScreen({
               <div style={{ borderTop: '1px solid var(--color-divider)', marginTop: 16, paddingTop: 16 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Scan for plugs</div>
                 <p className="card-body">
-                  There's no "list my account's devices" API for Tapo — this instead broadcasts on your
-                  LAN right now, using the account above, and shows whatever plugs answer. Only finds
-                  plugs that are currently powered on and connected to Wi-Fi.
+                  There's no "list my account's devices" API for Tapo — this instead sweeps your LAN
+                  right now, using the account above, and shows whatever plugs answer. Only finds plugs
+                  that are currently powered on and connected to Wi-Fi.
                 </p>
+                <p className="card-body">
+                  Automatically covers the hub's own network, but a broadcast-based scan can never reach
+                  a plug on a separate network/VLAN from the hub — a guest Wi-Fi network, most
+                  commonly. If a plug you know is on and connected still doesn't show up, enter the first
+                  three numbers of <em>its</em> network below (check the Tapo app's Device Info for its IP,
+                  e.g. "10.21.137.43" → enter "10.21.137") to sweep that network directly instead.
+                </p>
+                <div className="field">
+                  <label htmlFor="tapo-subnet-hint">Subnet to scan (optional)</label>
+                  <input
+                    className="input"
+                    id="tapo-subnet-hint"
+                    placeholder="e.g. 10.21.137"
+                    value={tapoSubnetHint}
+                    onChange={(e) => setTapoSubnetHint(e.target.value)}
+                  />
+                </div>
                 <button
                   type="button"
                   className="btn btn-secondary"

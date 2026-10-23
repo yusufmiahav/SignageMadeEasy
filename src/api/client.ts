@@ -300,13 +300,18 @@ export interface SignageApiClient {
   /** Removes the configured Tapo account entirely — every screen's manual "Power cycle" and automatic power schedules stop working until a new one's set, but tapoPlugIp/powerSchedules themselves are untouched (they pick back up the moment an account is set again). */
   clearTapoAccount(): Promise<void>;
   /**
-   * Broadcast-discovers Tapo plugs on the hub's own LAN, authenticated with the
-   * saved account — see TapoScanResult for why this isn't literally "list my
-   * account's devices" (no such API exists) but is the closest practical
-   * equivalent for a single-site deployment. Rejects if no account is configured
-   * yet. No-op (returns []) in standalone/localStorage mode (no real LAN to scan).
+   * Discovers Tapo plugs reachable from the hub, authenticated with the saved
+   * account — see TapoScanResult for why this isn't literally "list my account's
+   * devices" (no such API exists) but is the closest practical equivalent for a
+   * single-site deployment. Sweeps a LAN broadcast plus the hub's own subnets
+   * automatically; `subnetHint` additionally sweeps one more "a.b.c" prefix (or a
+   * full address/URL to derive one from, same as Pi pairing's "Scan network") —
+   * needed for a plug on a subnet/VLAN the hub has no interface on itself, e.g. a
+   * separate guest Wi-Fi network, which a broadcast-only scan can never reach.
+   * Rejects if no account is configured yet. No-op (returns []) in
+   * standalone/localStorage mode (no real LAN to scan).
    */
-  scanTapoDevices(): Promise<TapoScanResult[]>;
+  scanTapoDevices(subnetHint?: string): Promise<TapoScanResult[]>;
   /**
    * Asks the hub to git-pull and rebuild/restart itself — see hub/README.md's
    * "Auto-update" section. The hub container has no Docker access of its own, so

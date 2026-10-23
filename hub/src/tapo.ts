@@ -58,18 +58,34 @@ const KASA_PYTHON = process.env.SIGNAGE_KASA_PYTHON ?? '/opt/kasa-venv/bin/pytho
 // python-kasa's library API directly instead of shelling out to `kasa discover`
 // itself (as setPower above does for on/off) for a result shape this hub controls.
 const DISCOVER_SCRIPT = path.resolve(__dirname, '../scripts/tapo-discover.py');
-const DISCOVER_TIMEOUT_S = 5;
+const BROADCAST_TIMEOUT_S = 5;
+// Per-host, for the subnet sweep below — short because most of a /24 is empty and
+// each miss costs this in full (UDP has no quick "connection refused" the way TCP
+// does). Confirmed via real deployment: 254 hosts at this timeout, 32 at once
+// (tapo-discover.py's own SWEEP_CONCURRENCY), finishes well inside this function's
+// own execFile timeout below even with more than one subnet to sweep.
+const PROBE_TIMEOUT_S = 1.2;
 
 // There's no cloud/account-based device listing in python-kasa at all (confirmed by
-// reading its own source) — `kasa discover` is LAN UDP broadcast only, so this is
-// the closest practical equivalent of "what Tapo plugs are on my account": every
-// plug actually reachable on the hub's LAN right now, authenticated with the same
-// saved account these plugs are controlled with.
-export async function discover(email: string, password: string): Promise<DiscoveredPlug[]> {
+// reading its own source) — `kasa discover` is LAN UDP broadcast only, which only
+// ever finds devices on the hub's own L2 segment. Confirmed against a real
+// deployment that this misses anything on a separate subnet/VLAN entirely — a
+// guest Wi-Fi network in that case, which a router deliberately doesn't forward
+// broadcast traffic across even though it still routes ordinary unicast there (see
+// tapo-discover.py's own comment). `subnets` sweeps each given "a.b.c" /24 prefix
+// directly by IP to cover that case — pass the hub's own detected subnets
+// (hub/src/routes/scan.ts's localSubnets()) plus any manual hint the person gives
+// (same subnetHintFromHost() Pi pairing's own "Scan network" already uses) for a
+// subnet that isn't one of those.
+export async function discover(email: string, password: string, subnets: string[] = []): Promise<DiscoveredPlug[]> {
+  const uniqueSubnets = [...new Set(subnets)];
+  // Generous but still bounded — worst case is every subnet being a fully empty
+  // /24, costing PROBE_TIMEOUT_S per host through the sweep's own concurrency.
+  const timeoutMs = (BROADCAST_TIMEOUT_S + uniqueSubnets.length * 15 + 10) * 1000;
   const { stdout } = await execFileAsync(
     KASA_PYTHON,
-    [DISCOVER_SCRIPT, email, password, String(DISCOVER_TIMEOUT_S)],
-    { timeout: (DISCOVER_TIMEOUT_S + 10) * 1000 },
+    [DISCOVER_SCRIPT, email, password, String(BROADCAST_TIMEOUT_S), String(PROBE_TIMEOUT_S), ...uniqueSubnets],
+    { timeout: timeoutMs },
   );
   return JSON.parse(stdout) as DiscoveredPlug[];
 }

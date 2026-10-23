@@ -6,7 +6,11 @@ import type { DiscoveredDevice } from '../types.js';
 
 export const scanRouter = Router();
 
-function localSubnets(): string[] {
+// Exported for tapo.ts's discover()'s own subnet sweep, which hits the exact
+// same "only the hub's own directly-attached subnets, automatically" problem
+// this was built for, plus the same need for a manual hint when the target
+// isn't one of those (see that function's own comment for why).
+export function localSubnets(): string[] {
   const nets = os.networkInterfaces();
   const subnets = new Set<string>();
   for (const iface of Object.values(nets)) {

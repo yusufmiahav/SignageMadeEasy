@@ -141,9 +141,9 @@ export function useAppState() {
   // Same null-on-handled-failure pattern as updateAllDevices below — the hub
   // rejects with a clear message when no account is configured yet, which is a
   // real, expected outcome here, not worth an unhandled rejection.
-  const scanTapoDevices = useCallback(async (): Promise<TapoScanResult[] | null> => {
+  const scanTapoDevices = useCallback(async (subnetHint?: string): Promise<TapoScanResult[] | null> => {
     try {
-      return await api.scanTapoDevices();
+      return await api.scanTapoDevices(subnetHint);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Tapo scan failed');
       return null;

@@ -198,7 +198,7 @@ export const httpClient: SignageApiClient = {
   setSavedHubNetworks: (networks) => request<void>('/api/settings/hub-networks', { method: 'PUT', ...json({ networks }) }),
   setTapoAccount: (tapoEmail, tapoPassword) => request<void>('/api/settings', { method: 'PATCH', ...json({ tapoEmail, tapoPassword }) }),
   clearTapoAccount: () => request<void>('/api/settings', { method: 'PATCH', ...json({ tapoEmail: null }) }),
-  scanTapoDevices: () => request<TapoScanResult[]>('/api/settings/tapo-scan', { method: 'POST' }),
+  scanTapoDevices: (subnetHint) => request<TapoScanResult[]>(`/api/settings/tapo-scan${subnetHint ? `?subnet=${encodeURIComponent(subnetHint)}` : ''}`, { method: 'POST' }),
   updateHub: () => request<void>('/api/settings/update-hub', { method: 'POST' }),
   setOfflineAlertMinutes: (offlineAlertMinutes) => request<void>('/api/settings', { method: 'PATCH', ...json({ offlineAlertMinutes }) }),
   setBlackoutAllActive: (active) => request<void>('/api/settings/blackout-all', { method: 'PUT', ...json({ active }) }),

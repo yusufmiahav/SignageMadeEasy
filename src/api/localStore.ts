@@ -866,7 +866,9 @@ class LocalStoreClient implements SignageApiClient {
     saveSettings({ ...loadSettings(), tapoEmail: null, tapoPassword: null });
   }
 
-  async scanTapoDevices(): Promise<TapoScanResult[]> {
+  // _subnetHint: no real LAN to scan here either, only accepted so this stays
+  // call-compatible with httpClient's scanTapoDevices.
+  async scanTapoDevices(_subnetHint?: string): Promise<TapoScanResult[]> {
     return [];
   }
 
