@@ -80,11 +80,14 @@ settingsRouter.post('/tapo-scan', async (req, res) => {
 // that stays outside any container), so this can't run `docker compose ...
 // --build` directly; it only drops a marker file a host-side cron job
 // (hub/self-update.sh, polling with --check-marker) picks up within a few
-// minutes and acts on. Always 202, never a promise of done — see that script's
-// own log (hub/data/self-update.log) to confirm it actually ran.
+// minutes and acts on. 204, not a promise of done — see that script's own log
+// (hub/data/self-update.log) to confirm it actually ran. (Not 202: the control
+// app's request() helper only skips parsing a JSON body for 204 — every other
+// fire-and-forget action route in this file/devices.ts already follows that,
+// this one just missed it originally.)
 settingsRouter.post('/update-hub', (_req, res) => {
   fs.writeFileSync(path.join(DATA_DIR, '.update-requested'), String(Date.now()));
-  res.status(202).end();
+  res.status(204).end();
 });
 
 // "Blackout (all screens)" as a toggle — see store.ts's engageBlackoutAll/
