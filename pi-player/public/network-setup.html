@@ -36,6 +36,10 @@
   <div class="card">
     <h1>Set up this display</h1>
 
+    <!-- Hidden on Windows (see the platform-detection script below) — nmcli-driven
+         Wi-Fi/IP management has no equivalent here yet; a Windows kiosk uses whatever
+         network setup Windows itself was already given. -->
+    <div id="pi-network-section">
     <h2>Wi-Fi</h2>
     <p>Pick your network below and enter its password. The display will try to connect immediately.</p>
     <div>
@@ -80,6 +84,7 @@
     </div>
     <button type="button" id="ip-apply">Apply</button>
     <p id="ip-status"></p>
+    </div>
 
     <hr />
 
@@ -98,6 +103,11 @@
 
     <hr />
 
+    <!-- Hidden on Windows (see the platform-detection script below) — USB override
+         has no trigger mechanism there yet (no udev equivalent wired up), and
+         orientation/resolution/underclock below are all Linux-boot-parameter or
+         Pi-hardware specific with nothing to apply on a Windows machine. -->
+    <div id="pi-hardware-section">
     <h2>USB override</h2>
     <p>Plug a USB stick with images/videos loose at its top level (not inside a
       folder) into this display to force them on, in order by filename, images
@@ -168,6 +178,7 @@
       <p style="color: #ffcf6e;">Reboot required for this to take effect.</p>
       <button type="button" id="underclock-reboot">Reboot now</button>
     </div>
+    </div>
 
     <hr />
 
@@ -179,6 +190,25 @@
     <p id="device-reboot-status"></p>
   </div>
   <script>
+    // Hides the Wi-Fi/IP and USB-override/orientation/resolution/underclock
+    // sections on a Windows player — see pi-player/src/app.ts's /state route for
+    // where `platform` comes from, and those sections' own HTML comments for why
+    // each doesn't apply there yet.
+    let isWindowsPlayer = false;
+    async function hideUnsupportedSections() {
+      try {
+        const res = await fetch('/state');
+        const data = await res.json();
+        isWindowsPlayer = data.platform === 'win32';
+      } catch {
+        return;
+      }
+      if (!isWindowsPlayer) return;
+      document.getElementById('pi-network-section').hidden = true;
+      document.getElementById('pi-hardware-section').hidden = true;
+    }
+    const platformReady = hideUnsupportedSections();
+
     const select = document.getElementById('ssid-select');
     const manual = document.getElementById('ssid-manual');
     const password = document.getElementById('password');
@@ -198,7 +228,10 @@
     }
 
     document.getElementById('rescan').addEventListener('click', loadNetworks);
-    void loadNetworks();
+    // Waits on the platform check above rather than firing unconditionally — a
+    // Windows player has no nmcli to scan with, so this would otherwise be a
+    // guaranteed-failing request against a section the check above already hides.
+    void platformReady.then(() => { if (!isWindowsPlayer) void loadNetworks(); });
 
     connectBtn.addEventListener('click', async () => {
       const ssid = manual.value.trim() || select.value;

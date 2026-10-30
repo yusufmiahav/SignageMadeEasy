@@ -65,6 +65,10 @@ export function createApp() {
       : null;
     res.json({
       paired: config != null, ip: getLocalIp(), state: resolved, error, networkSetup, localContent: localContent.get(),
+      // Lets network-setup.html hide Wi-Fi/IP and USB-override/orientation/
+      // resolution/underclock sections on a Windows player, where none of those
+      // have an equivalent yet — see that page's own platform-detection script.
+      platform: process.platform,
       // Checked ahead of everything else above in player.js's pollOnce — a manual
       // override wins even over a live, working hub connection. See usbOverride.ts.
       usbOverride: usbOverride.get(),

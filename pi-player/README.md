@@ -1,11 +1,13 @@
 # SignageMadeEasy — Player
 
 Turns a Raspberry Pi 3B+ (or a generic x86_64 mini PC / HDMI compute stick — see
-below) into a signage display: boots straight into fullscreen kiosk playback,
-shows its IP + a pairing QR code until paired, and polls the hub (`../hub`) for
-what to play. The player app itself is plain Node.js with no architecture-specific
-code — the same `provision.sh` sets up either platform, detecting which one it's
-running on.
+below), **or a Windows PC** (see [Windows](#windows) below), into a signage
+display: boots straight into fullscreen kiosk playback, shows its IP + a pairing
+QR code until paired, and polls the hub (`../hub`) for what to play. The player
+app itself is plain Node.js with no architecture-specific code — the same
+`provision.sh` sets up either Linux platform, detecting which one it's running on;
+Windows gets its own setup script (`windows/install.ps1`) since it needs a
+different kiosk/autostart mechanism, not a different app.
 
 No custom flashable `.img` here — building one properly (via `pi-gen`) needs a real
 ARM build environment and 30–90+ minutes; this ships a provisioning script for stock
@@ -20,7 +22,10 @@ whether a given one just needs an **Update** vs. a full **Re-provision** (see
 [Updating from the control app](#updating-from-the-control-app-no-ssh-needed-after-this-first-provision)
 below — only Re-provision installs new system-level pieces like USB override or
 NDI). Everything here lives on the Pi itself; Tapo smart plug control is a
-**hub** feature, not a Pi one — see `../hub/README.md`.
+**hub** feature, not a Pi one — see `../hub/README.md`. Written with a Pi in
+mind, but applies to the x86 build too except where a section says otherwise; a
+**Windows** screen has a smaller version of this list — see
+[Windows](#windows) for exactly which of these it does and doesn't have.
 
 **Playback**
 - Images, video, multi-page PDFs (PowerPoint/PPTX arrives here already converted
@@ -160,6 +165,99 @@ Until a screen has been through this manual provisioning step at least once sinc
 these buttons shipped, clicking either one reports a clear "hasn't been set up for
 remote updates yet" error rather than doing nothing silently — re-run the command
 above once and they'll work from then on.
+
+## Windows
+
+A Windows PC (a mini PC, an old office machine, a dedicated kiosk box) can run the
+exact same player — the app itself is plain Node.js, nothing Linux-specific about
+it (confirmed directly: none of its core modules shell out to any OS tool at all —
+see `src/preview.ts`'s own comment on capturing a screenshot via the Chrome
+DevTools Protocol instead of a Wayland tool, for instance). What's different on
+Windows is only the kiosk wrapper (Edge in `--kiosk` mode instead of `sway` +
+Chromium) and autostart (a Scheduled Task instead of `systemd`), both handled by
+`windows/install.ps1` — the Windows equivalent of `provision.sh`.
+
+**Not supported yet on Windows** — these stay Pi/Linux-only for now, and their
+sections are hidden on this screen's own local setup page when running on
+Windows rather than shown broken: the Wi-Fi fallback hotspot, static IP/DHCP
+toggle, screen orientation, forced display resolution, the "Performance"
+underclock toggle (ARM-specific anyway), USB override (no Windows equivalent of
+the udev trigger yet), NDI live sources, and dual-output. Everything else —
+pairing, playlists, scheduling, forced content/announcements/blackout, media
+caching, the local-content fail-safe, PDF playback (including remote page-jump),
+the live clock and TfL boards, Identify, live Preview, and remote
+Restart/Update/Re-provision — works the same as on a Pi.
+
+### One-time setup
+
+From an **elevated** PowerShell (right-click Start → "Terminal (Admin)", or
+search "PowerShell", right-click → "Run as administrator"):
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/yusufmiahav/SignageMadeEasy/claude/signage-made-easy-dev-r00fl6/pi-player/windows/install.ps1 | iex"
+```
+
+**Same branch warning as the Linux command above — do not swap in `main`.** This
+installs Node.js and git if they're missing (via `winget` — built into Windows 10
+2004+/Windows 11; an older or locked-down machine without it needs both installed
+by hand first), clones the repo to `C:\SignageMadeEasy`, builds the player app,
+and registers a Scheduled Task ("SignageMadeEasyKiosk") that starts it at logon.
+Re-running it later is safe — same idempotent intent as `provision.sh`, though it
+always does a full clone/pull + rebuild rather than distinguishing a fast path the
+way Update does.
+
+It finishes by telling you to do two things:
+
+1. **Set the account up to log in automatically** (`netplwiz` → untick "Users must
+   enter a user name and password..." for that account) — without this, the kiosk
+   can start once someone's signed in, but not on its own after a reboot or power
+   cut. The account needs to be an **administrator** account for the scheduled
+   task's "run with highest privileges" setting to apply silently, with no UAC
+   prompt blocking an unattended boot.
+2. **Reboot** — the screen comes up showing its IP and a QR code, exactly like a
+   Pi does after the [Provisioning](#provisioning-once-over-ssh) steps above.
+   Pair it from the control app ("Add a screen", via Scan network, Scan QR, or
+   Enter IP) the same way on either platform.
+
+To test immediately without rebooting or setting up auto-logon, run the path the
+installer prints at the end directly:
+`C:\SignageMadeEasy\pi-player\windows\start-kiosk.ps1`.
+
+### How it works (Windows side)
+
+`windows\start-kiosk.ps1` is the Scheduled Task's whole job — the Windows
+equivalent of `signage-player.service` + `signage-kiosk.service` together,
+pointing the same `SIGNAGE_*` environment variables every `pi-player/src` module
+already reads (`config.ts`, `mediaCache.ts`, `localContent.ts`, ...) at
+`C:\ProgramData\SignageMadeEasy\` instead of `/opt/signage/`:
+
+1. Starts `node dist/index.js`, waits for it to actually respond.
+2. Launches Edge in kiosk mode, pointed at `http://localhost:8088`, with its own
+   dedicated browser profile (so it never touches whatever Edge profile the
+   logged-in account might otherwise have) and `--remote-debugging-port=9222` —
+   exactly what `src/preview.ts` already expects, no Windows-specific change
+   needed there either.
+3. Watches both processes; if either exits for any reason (a crash, someone
+   closing the kiosk window, `windows\self-update.ps1` restarting the player),
+   it stops the other and restarts both from step 1 — the same
+   restart-everything-together behavior `systemd`'s `Restart=always` gives the
+   Linux build.
+
+`windows\self-update.ps1` and `windows\reprovision.ps1` back the Settings
+screen's Update/Re-provision buttons exactly like `bin/self-update.sh` and
+`bin/reprovision.sh` do on Linux — `git pull` + rebuild + restart the player for
+the fast path, a fresh `install.ps1` + reboot for the full path. Logs land in
+`C:\ProgramData\SignageMadeEasy\logs\`.
+
+**Known limitations beyond the feature list above:** the Scheduled Task is tied
+to whichever account ran `install.ps1` (re-run `Register-ScheduledTask` by hand,
+or edit the task in Task Scheduler, for a separate dedicated kiosk account); a
+Windows Update-triggered reboot brings the kiosk back via the same logon trigger
+but isn't otherwise coordinated around; and unlike Linux's separate root-owned
+`/opt/signage/src` vs. `/opt/signage/app`, Windows updates run directly against
+the same `C:\SignageMadeEasy` checkout the app runs from — self-update.ps1 only
+restarts the player after `git pull`/`npm run build` both finish, so this is safe
+in practice, just a simpler layout than the Linux build's.
 
 ## How it works
 

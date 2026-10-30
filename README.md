@@ -10,7 +10,7 @@ Three parts, each in its own top-level folder:
 |---|---|
 | `src/` (repo root) | The control app — a React/Vite web UI, one responsive codebase from phone to desktop. |
 | `hub/` | The central server: a Node/Express/SQLite backend every Pi polls and the control app talks to. Docker-deployable, meant to run on an always-on box (e.g. a NAS) on the same LAN. |
-| `pi-player/` | What runs on each Raspberry Pi: a local agent/poller service plus the kiosk player page, provisioning script, and systemd units. |
+| `pi-player/` | What runs on each screen: a local agent/poller service plus the kiosk player page — provisioning scripts and systemd units for a Raspberry Pi or x86 Linux box, or `windows/` for a Windows PC. |
 | `companion-module-signagemadeeasy/` | Optional: a [Bitfocus Companion](https://bitfocus.io/companion) module for triggering force-content/flash/blackout/announcements from a Stream Deck or button box — talks to the hub's REST API directly. See its own README. |
 
 ## Deploying the whole system

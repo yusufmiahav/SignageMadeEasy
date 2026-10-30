@@ -15,11 +15,17 @@ mediaCache.init();
 // ever has output 1's file, so this is exactly the original behavior for it.
 if (loadConfig(1)) startPolling(1);
 if (loadConfig(2)) startPolling(2);
-wifiManager.startWatching();
-// Unconditional — regardless of pairing state, so the first-boot IP/QR screen
-// itself (not just content shown after pairing) renders in the right orientation.
-// See displayOrientation.ts's own comment for why this retries instead of a single attempt.
-void displayOrientation.applyOrientationAtBoot(orientationConfig.loadOrientation());
+// Both nmcli- and sway-driven — neither exists on a Windows player (see
+// windows/start-kiosk.ps1), and would otherwise spend the next 2 minutes (the
+// orientation retry loop) and every 20s after that (the Wi-Fi watcher) failing
+// against commands that were never going to be there.
+if (process.platform !== 'win32') {
+  wifiManager.startWatching();
+  // Unconditional — regardless of pairing state, so the first-boot IP/QR screen
+  // itself (not just content shown after pairing) renders in the right orientation.
+  // See displayOrientation.ts's own comment for why this retries instead of a single attempt.
+  void displayOrientation.applyOrientationAtBoot(orientationConfig.loadOrientation());
+}
 
 const app = createApp();
 app.listen(PORT, () => {
