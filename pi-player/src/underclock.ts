@@ -45,6 +45,10 @@ async function appliedArmFreq(): Promise<number | null> {
 }
 
 export async function getStatus(): Promise<{ enabled: boolean; rebootRequired: boolean }> {
+  // No arm_freq, no config.txt — this whole toggle is ARM/Pi-specific, not just
+  // Linux-specific (an x86 Linux stick has nothing to underclock either, but gets
+  // here the same way: configFile() finds nothing, same as Windows).
+  if (process.platform === 'win32') return { enabled: false, rebootRequired: false };
   const enabled = isEnabledInConfig();
   const applied = await appliedArmFreq();
   // Only compares against our own known target, not "any arm_freq at all" — an
@@ -55,10 +59,21 @@ export async function getStatus(): Promise<{ enabled: boolean; rebootRequired: b
 }
 
 export async function setEnabled(enabled: boolean): Promise<void> {
+  if (process.platform === 'win32') throw new Error('Underclocking only applies to a Raspberry Pi');
   await execFileAsync('sudo', [SCRIPT_PATH, enabled ? 'on' : 'off']);
 }
 
-/** Real hardware reboot (not the player agent's own /restart, which only restarts the Node process) — only ever triggered from the local device-setup page, never remotely from the hub. */
+/**
+ * Real hardware reboot — triggered from the local device-setup page's own "Reboot
+ * this display" button, and from the hub-facing agent's own /restart (see
+ * agent.ts), which reuses this exact function rather than duplicating the
+ * per-platform reboot command. Unlike the rest of this module, this one has a
+ * real Windows equivalent — a kiosk PC needs remote restart to work same as a Pi.
+ */
 export async function reboot(): Promise<void> {
+  if (process.platform === 'win32') {
+    await execFileAsync('shutdown', ['/r', '/t', '0']);
+    return;
+  }
   await execFileAsync('sudo', ['reboot']);
 }

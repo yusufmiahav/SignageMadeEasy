@@ -238,15 +238,39 @@ textarea.input { min-height: 90px; resize: vertical; }
   padding: var(--space-4);
   background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
 }
+/* No max-height/overflow at all here until this was found — a dialog whose content
+   (e.g. ForceContentDialog's folder/item picker) was taller than the viewport had no
+   way to scroll: .dialog-backdrop is position:fixed/inset:0 with no overflow of its
+   own either, so the excess (routinely the dialog's own Cancel/Apply buttons) was
+   simply clipped off-screen and unreachable — confirmed on a real narrow/short
+   mobile viewport, not just in theory. Fixed by capping .dialog itself to the
+   backdrop's available height and letting ONE wrapper (.dialog-body-scroll below,
+   not .dialog itself) scroll — see DialogShell.tsx's own comment for why the title
+   row is kept outside that wrapper instead of just making .dialog scroll directly. */
 .dialog {
-  width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
+  width: min(440px, 100%); display: flex; flex-direction: column;
   padding: var(--space-4); border-radius: var(--radius-lg);
   background: var(--color-surface); box-shadow: var(--shadow-lg);
+  max-height: calc(100vh - 2 * var(--space-4));
+  overflow: hidden;
+}
+.dialog-header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+  margin-bottom: var(--space-3);
+}
+/* min-height: 0 is load-bearing, not decorative — without it a flex child never
+   shrinks below its own content's natural height no matter what its parent's
+   max-height says, which would silently defeat the scrolling this exists for. */
+.dialog-body-scroll {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  overflow-y: auto;
+  min-height: 0;
 }
 .dialog-title {
   font-family: var(--font-heading); font-weight: var(--font-heading-weight);
   font-size: 20px;
 }
 .dialog-body { font-size: 14px; opacity: 0.85; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); flex-shrink: 0; }
 

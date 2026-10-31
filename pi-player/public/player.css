@@ -25,6 +25,110 @@ body { font-family: system-ui, sans-serif; color: #fff; }
    Regular sans-serif digits are tabular-width by default in virtually every UI font,
    so the colon/digits don't jitter as the time ticks even without forcing monospace. */
 #stage .clock { font-family: system-ui, sans-serif; font-size: min(24vw, 34vh); font-weight: 700; letter-spacing: 0.03em; color: #fff; }
+/* This formula assumes width is the long axis (true in landscape, where 34vh —
+   34% of the short dimension — is what actually governs; 24vw is a non-binding
+   ceiling). On a portrait-rotated screen the axes swap: vw becomes the short
+   (narrow) dimension, so 24vw governs instead and is far too large a fraction of
+   it — confirmed on a real portrait panel to clip the clock text off both edges,
+   not just render it small. 20vw is sized to actually fit an 8-character
+   "HH:MM:SS" string within a typical portrait width with comfortable margin;
+   45vh is a non-binding ceiling, mirroring 24vw's role in the landscape rule
+   above. (orientation: portrait) reflects Chromium's actual post-rotation
+   viewport — see displayOrientation.ts — so this needs no JS, just this rule. */
+@media (orientation: portrait) {
+  /* 20vw (a first attempt at this value) still overflowed both edges on a real
+     rendering check — this bold system-ui font's actual digit advance width
+     (plus the 0.03em letter-spacing above) runs noticeably wider than a rough
+     per-character estimate predicted. 16vw was verified via a real headless
+     rendering pass (getBoundingClientRect) to comfortably fit an 8-character
+     "HH:MM:SS" string with margin to spare on a 1080px-wide portrait output. */
+  #stage .clock { font-size: min(16vw, 40vh); }
+}
+
+/* TfL live status board — white background + per-line brand-color badges,
+   matching TfL's own app/site look (not the dark theme every other content type
+   here uses) per explicit request. Full-bleed (100vw/100vh, no rounded card) per
+   real-hardware feedback: a white card floating on #stage's own black background
+   left visible black bars around the edges — the ask was for the whole screen to
+   go white while this is showing, not just a card on top of the usual black stage.
+   display:flex + centering: CSS multi-column content (.tfl-rows below) always
+   flows from the top of its own box and stops when it runs out — it never
+   stretches to fill unused space — confirmed on a real portrait render to leave
+   a large blank gap under a short line list even after column-count itself was
+   fixed to account for the taller screen (see computeTflColumnCount in
+   player.js). Centering the single child (.tfl-rows, or .tfl-content when an
+   arrivals header is present) means leftover height splits evenly above/below
+   instead of dumping it all at the bottom. */
+#stage .tfl-board {
+  width: 100vw; height: 100vh; overflow: hidden; /* overflow: hidden is the last-resort backstop — column-count is what actually prevents this in practice */
+  background: #fff; color: #111;
+  padding: 28px 32px; font-family: system-ui, sans-serif;
+  display: flex; align-items: center; justify-content: center;
+}
+/* The actual multi-column rows block — column-count is set inline by player.js's
+   renderTflBoard/renderTflArrivalsBoard, not here — it depends on how many
+   lines/platforms are actually shown, so a fixed CSS value can't get it right for
+   both a 3-line and a 25-line board. A separate element from .tfl-board itself
+   (which is now the flex-centering container, not the multi-column one — see
+   comment above) so centering and column-flow don't have to be the same box. */
+#stage .tfl-rows { width: 100%; column-gap: 28px; }
+/* 'tfl-arrivals' boards only — wraps the station-name header together with its
+   .tfl-rows so .tfl-board's centering treats them as one labeled unit, rather
+   than a header pinned at the very top with an awkward gap before centered rows
+   below it (see .tfl-board's own comment on why centering exists at all). Used
+   both as a single-station board's sole content and as one panel of a multi-
+   station board — see .tfl-multi-content below. */
+#stage .tfl-content { display: flex; flex-direction: column; width: 100%; min-width: 0; }
+/* Multiple stations shown together on one board (see types.ts's
+   LibraryItem.tflStations and player.js's renderTflArrivalsBoard) — side by side
+   in landscape (row), stacked in portrait (column), same orientation-driven
+   pattern as the clock's font-size rule above: Chromium's own viewport dimensions
+   already reflect the real post-rotation shape (see displayOrientation.ts), so
+   this needs no JS, just a media query. A vertical divider between panels in the
+   row layout (a horizontal one in the column layout) makes each station read as
+   its own section rather than an ambiguous run-on list. */
+#stage .tfl-multi-content { display: flex; flex-direction: row; gap: 32px; width: 100%; height: 100%; align-items: center; }
+#stage .tfl-multi-content > .tfl-content { flex: 1 1 0; height: 100%; justify-content: center; border-left: 1px solid #ddd; padding-left: 32px; }
+#stage .tfl-multi-content > .tfl-content:first-child { border-left: none; padding-left: 0; }
+@media (orientation: portrait) {
+  #stage .tfl-multi-content { flex-direction: column; gap: 24px; }
+  #stage .tfl-multi-content > .tfl-content { flex: 1 1 0; width: 100%; height: auto; border-left: none; padding-left: 0; border-top: 1px solid #ddd; padding-top: 24px; }
+  #stage .tfl-multi-content > .tfl-content:first-child { border-top: none; padding-top: 0; }
+}
+/* Names the station this board's countdowns are for, since every row already
+   shows a train's *destination*, not the station the board itself is sitting at;
+   confirmed on a real render that this was genuinely ambiguous without a header. */
+#stage .tfl-arrivals-header {
+  font-size: min(2.6vw, 32px); font-weight: 800;
+  padding-bottom: 16px; margin-bottom: 8px; border-bottom: 2px solid #111;
+}
+#stage .tfl-row {
+  display: flex; align-items: center; gap: 18px; padding: 14px 0;
+  border-bottom: 1px solid #e5e5e5;
+  break-inside: avoid; /* keeps one line's badge+status from splitting across two columns */
+  max-width: 100%; overflow: hidden; /* absolute backstop — a long line name (e.g. "Hammersmith & City") must wrap inside its own column, never bleed into the next one */
+}
+#stage .tfl-line-badge {
+  /* flex-shrink 0 (the flex default's "auto" also disables shrinking below
+     content size) confirmed on a real render to let a long name like
+     "Hammersmith & City" grow wider than its column and overlap the next one.
+     A fixed flex-basis instead (tried first) fixed that but then clipped
+     single-word names with no space to wrap on ("Metropolitan" -> "Metro") —
+     max-width as a *percentage* of the row scales with however many columns
+     actually end up in play, and overflow-wrap covers a name that still can't
+     fit even wrapped (better a readable mid-word break than invisible clipped text). */
+  flex: 0 1 auto; max-width: 58%; min-width: 0; padding: 12px 18px; border-radius: 8px;
+  font-size: min(2vw, 26px); font-weight: 700; text-align: center; line-height: 1.15;
+  overflow-wrap: break-word; /* prefers breaking at the space in e.g. "Hammersmith & City" — word-break: break-word (tried first) broke mid-word instead ("Hammersmit-h") even though a space was available */
+}
+#stage .tfl-status-col { display: flex; flex: 1 1 0; flex-direction: column; gap: 3px; min-width: 0; justify-content: center; }
+#stage .tfl-status-text { font-size: min(2vw, 26px); font-weight: 700; color: #222; }
+#stage .tfl-status-text.disrupted { color: #b30000; }
+/* TfL's own explanation of a disruption (which stations, etc.) — see player.js's
+   line.reason handling. Smaller and lighter than the status line above it, same
+   visual hierarchy as tfl.gov.uk's own status page. */
+#stage .tfl-reason { font-size: min(1.3vw, 16px); color: #555; }
+#stage .tfl-empty { color: #333; opacity: 0.6; font-size: min(2.5vw, 20px); text-align: center; padding: 20px; }
 
 /* Opaque background, not translucent: a semi-transparent bar forces the
    browser to re-blend the actively-changing video frame underneath it on

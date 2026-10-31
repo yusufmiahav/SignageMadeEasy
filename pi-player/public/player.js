@@ -4,6 +4,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.mjs';
 
 const POLL_INTERVAL_MS = 2000;
 
+// Dual-output unit's second Chromium kiosk window is launched against this exact URL
+// (see provision.sh's dual-output sway-kiosk.config addendum) — a single-output screen
+// never has this param, so STATE_URL is just '/state' there, unchanged from before
+// dual-output existed. The window's own distinguishing title (for sway's output
+// targeting) is set server-side instead of here — see app.ts's '/' route — since a
+// title only set by this script after load could lose the race against sway's
+// once-at-map-time for_window matching.
+const STATE_URL = new URLSearchParams(window.location.search).get('output') === '2' ? '/state?output=2' : '/state';
+
 const screens = {
   networkSetup: document.getElementById('network-setup-screen'),
   unpaired: document.getElementById('unpaired-screen'),
@@ -33,16 +42,48 @@ function showScreen(name) {
 // instead of restarting it from scratch on every tick.
 let playlistKey = null;
 let activeItems = [];
+let activeKind = 'default'; // 'blackout' | 'forced' | 'event' | 'default' | 'usb-override' — see playItem's !item branch
 let currentIndex = 0;
 let advanceTimer = null;
 let clockTimer = null; // the 'clock' item's setInterval — not a <video>/<canvas>, so teardownStage's generic child.remove() wouldn't stop it on its own.
+let ndiPollTimer = null; // the 'ndi' item's status-polling setInterval — see playNativeNdi.
 let generation = 0; // bumped whenever rotation is torn down, so late async work (a PDF page render, a video's `ended`) from a previous item can no-op instead of racing the new one.
+let tflBoardEl = null; // the currently-mounted 'tfl-status' board, if any — see syncTflLines.
+let tflBoardItemId = null;
+let tflArrivalsBoardEl = null; // the currently-mounted 'tfl-arrivals' board, if any — see syncTflArrivals.
+let tflArrivalsBoardItemId = null;
+// The currently-showing PDF's loaded document + page position, or null whenever a
+// PDF isn't the item on screen — see playPdf/showPdfPage. Lets the keyboard
+// listener and the control app's remote page picker (jumpToPdfPage) both act on
+// "whatever PDF is up right now" without threading item/generation state through
+// to them directly.
+let pdfState = null;
+// Set the moment a physical keyboard press or a remote "jump to page" command
+// moves a PDF off its automatic rotation — from then on this item's own per-page
+// timer stays paused (pages only change on another manual command) until the hub
+// actually pushes a real change (a playlistKey change — see renderPlayerState),
+// not merely by the existing rotation continuing on its own. A deliberate human at
+// the keyboard (or an admin using the remote picker) stays in control until the
+// hub has something genuinely new to show, rather than snapping back to automatic
+// mid-read.
+let pdfManualMode = false;
 
 function teardownStage() {
   clearTimeout(advanceTimer);
   advanceTimer = null;
   clearInterval(clockTimer);
   clockTimer = null;
+  clearInterval(ndiPollTimer);
+  ndiPollTimer = null;
+  tflBoardEl = null;
+  tflBoardItemId = null;
+  tflArrivalsBoardEl = null;
+  tflArrivalsBoardItemId = null;
+  pdfState = null;
+  // Unconditional and fire-and-forget: a no-op on the Pi if nothing native is playing,
+  // but guarantees switching away from an NDI item always kills the GStreamer process
+  // rather than leaving it running underneath whatever plays next.
+  void fetch('/native-ndi/stop', { method: 'POST' }).catch(() => {});
   for (const child of [...stage.children]) {
     if (child instanceof HTMLVideoElement) {
       child.pause();
@@ -82,40 +123,408 @@ function scheduleAdvance(seconds, myGeneration) {
   }, seconds * 1000);
 }
 
+// Renders one page and swaps it onto the visible stage, then schedules the next
+// automatic page turn — unless pdfManualMode is in effect, in which case this page
+// just stays up until the next keyboard press / remote jump (see jumpToPdfPage).
+// Shared by playPdf's own startup, its automatic rotation, and both manual-override
+// paths, so "render before swap" and the sole-item loop only need writing once.
+async function showPdfPage(pageNum, myGeneration) {
+  if (myGeneration !== generation || !pdfState) return;
+  const page = await pdfState.doc.getPage(Math.min(pageNum, pdfState.doc.numPages));
+  if (myGeneration !== generation || !pdfState) return;
+
+  const viewport = page.getViewport({ scale: 1 });
+  const scale = Math.min(window.innerWidth / viewport.width, window.innerHeight / viewport.height);
+  const scaledViewport = page.getViewport({ scale });
+
+  // Rendered fully BEFORE it ever touches the visible stage, not after — a complex
+  // page can take a visible moment to paint, and the old order (append a blank
+  // canvas, then render into it) showed that gap as a flash of the stage's black
+  // background through the still-empty canvas on every single page turn. Same
+  // "don't show it until it's ready" principle preloadUpcoming() already applies to
+  // image items, just applied per-page here instead of per-item.
+  const canvas = document.createElement('canvas');
+  canvas.width = scaledViewport.width;
+  canvas.height = scaledViewport.height;
+  canvas.dataset.pdfPage = String(pageNum); // not read by this file — just makes the currently-shown page inspectable (DevTools, automated tests) without guessing from pixels
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledViewport }).promise;
+  if (myGeneration !== generation || !pdfState) return;
+
+  // Just the stage's own children here, not the full teardownStage() — that also
+  // nulls out pdfState (see its own comment), which has to survive a page-to-page
+  // transition within this same document.
+  for (const child of [...stage.children]) {
+    if (child instanceof HTMLVideoElement) { child.pause(); child.removeAttribute('src'); child.load(); }
+    child.remove();
+  }
+  stage.appendChild(canvas);
+  pdfState.currentPage = pageNum;
+
+  if (pdfManualMode) return; // paused here until the next manual command or a real hub change — see renderPlayerState.
+
+  advanceTimer = setTimeout(() => {
+    if (myGeneration !== generation || !pdfState) return;
+    const next = pdfState.currentPage + 1;
+    if (next > pdfState.pageCount) {
+      if (pdfState.soleItem) {
+        // Nothing else in rotation to hand off to — loop back to page 1 in place
+        // (same loaded document, no reload) instead of going through playItem()
+        // again, which would tear the stage down and re-fetch/re-parse the whole
+        // PDF from scratch just to show the page it's already on — confirmed on
+        // real hardware as a visible black flash every time a sole PDF item
+        // wrapped around, the same class of problem video's own sole-item restart-
+        // in-place path exists to avoid.
+        void showPdfPage(1, myGeneration);
+      } else {
+        // Finished this item's pages in a multi-item rotation — hand off to the
+        // next DIFFERENT item, same as every other content type's own end-of-item
+        // advance. Only a sole item loops in place; a playlist keeps cycling
+        // through everything in it exactly as before.
+        currentIndex = (currentIndex + 1) % activeItems.length;
+        playItem(currentIndex);
+      }
+      return;
+    }
+    void showPdfPage(next, myGeneration);
+  }, pdfState.perPageSeconds * 1000);
+}
+
 async function playPdf(item, myGeneration) {
   const doc = await pdfjsLib.getDocument({ url: item.url }).promise;
+  if (myGeneration !== generation) return;
   const pageCount = Math.max(1, item.pageCount ?? doc.numPages);
   const perPageSeconds = item.duration ?? 8;
+  pdfState = { doc, pageCount, currentPage: 0, perPageSeconds, soleItem: activeItems.length === 1 };
+  void showPdfPage(1, myGeneration);
+}
 
-  for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
-    if (myGeneration !== generation) return;
-    const page = await doc.getPage(Math.min(pageNum, doc.numPages));
-    if (myGeneration !== generation) return;
+// --- PDF manual page navigation (USB keyboard + control app's remote page picker) --
+// Both inputs converge on this one function — a deliberate human override either
+// way, so they share the same manual-mode takeover. See pdfManualMode's own comment
+// for when control reverts to the automatic timer.
+function jumpToPdfPage(pageNum) {
+  if (!pdfState) return; // no PDF currently showing — nothing to act on
+  const myGeneration = generation;
+  clearTimeout(advanceTimer);
+  pdfManualMode = true;
+  // Wraps rather than clamps — consistent with this player's default "PDFs loop"
+  // behavior, and means holding the forward key past the last page just keeps
+  // cycling instead of getting stuck at the end.
+  const wrapped = (((pageNum - 1) % pdfState.pageCount) + pdfState.pageCount) % pdfState.pageCount + 1;
+  void showPdfPage(wrapped, myGeneration);
+}
 
-    const viewport = page.getViewport({ scale: 1 });
-    const scale = Math.min(window.innerWidth / viewport.width, window.innerHeight / viewport.height);
-    const scaledViewport = page.getViewport({ scale });
-
-    const canvas = document.createElement('canvas');
-    canvas.width = scaledViewport.width;
-    canvas.height = scaledViewport.height;
-    teardownStage();
-    if (myGeneration !== generation) return;
-    stage.appendChild(canvas);
-
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledViewport }).promise;
-    if (myGeneration !== generation) return;
-
-    await new Promise((resolve) => {
-      advanceTimer = setTimeout(resolve, perPageSeconds * 1000);
-    });
-    if (myGeneration !== generation) return;
+// A real USB keyboard plugged into the Pi — only acts while a PDF is the item
+// currently on screen (pdfState is null otherwise); every other key, and every
+// other content type, is left alone. preventDefault on the keys handled here stops
+// PageUp/PageDown's default browser-scroll behavior (which would otherwise do
+// nothing visible — nothing on #stage scrolls — but is still worth suppressing).
+document.addEventListener('keydown', (e) => {
+  if (!pdfState) return;
+  if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+    e.preventDefault();
+    jumpToPdfPage(pdfState.currentPage + 1);
+  } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+    e.preventDefault();
+    jumpToPdfPage(pdfState.currentPage - 1);
   }
+});
 
-  if (myGeneration === generation) {
+// Pi 4/5 or an x86 device only. NDI has no browser decoder, so there's nothing to mount on #stage —
+// the native GStreamer process this starts (see ndiPlayer.ts) renders its own
+// fullscreen Wayland surface on top of this page, the same architectural pattern the
+// mpv-hwdecode branch uses for regular video. Rotation timing races a fixed duration
+// (like image/clock) against polling /native-ndi/status for an early "process died" —
+// whichever comes first advances rotation; see the project plan for why v1 has no
+// richer health signal than process-alive.
+//
+// Sole-item case mirrors video's own restart-in-place special case (see playItem's
+// video branch below): confirmed on real hardware that without this, a lone NDI item
+// would tear down and respawn the GStreamer process every time its duration timer
+// elapsed — "advancing" to the next item just means itself again — causing a
+// periodic black flash purely from the pointless restart, not anything wrong with
+// the feed itself. A live NDI source has no natural end the way a demuxed video's
+// `ended` event does, so the fix is simpler than video's: just never schedule a
+// duration-based restart at all when this is the only thing in rotation, and rely
+// solely on crash detection (a real process death still restarts it).
+function playNativeNdi(item, myGeneration) {
+  const duration = item.duration ?? 8;
+  const isSoleItem = activeItems.length === 1;
+  const advanceOnce = () => {
+    if (myGeneration !== generation) return;
     currentIndex = (currentIndex + 1) % activeItems.length;
     playItem(currentIndex);
+  };
+
+  fetch('/native-ndi/play', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ndiSourceName: item.ndiSourceName }),
+  })
+    .then((res) => res.json())
+    .then(({ token }) => {
+      if (myGeneration !== generation) return;
+      if (!isSoleItem) advanceTimer = setTimeout(advanceOnce, duration * 1000);
+      ndiPollTimer = setInterval(() => {
+        fetch(`/native-ndi/status/${token}`)
+          .then((res) => res.json())
+          .then(({ playing }) => {
+            if (myGeneration !== generation || playing) return;
+            clearTimeout(advanceTimer);
+            clearInterval(ndiPollTimer);
+            advanceOnce();
+          })
+          .catch(() => {}); // transient poll failure — self-heals on the next tick a second later regardless
+      }, 1000);
+    })
+    .catch((err) => {
+      console.log('[signage ndi]', 'failed to start playback', err);
+      if (myGeneration === generation) scheduleAdvance(duration, myGeneration);
+    });
+}
+
+// TfL's official per-line brand colors (the Roundel/Overground palette), keyed by
+// the line `id` the API itself returns — not the numeric statusSeverity code or a
+// generic good/amber/red bucket, per explicit request to match real TfL branding.
+// The classic Underground/DLR/Elizabeth line/Tram colors are TfL's long-published,
+// stable brand values (high confidence). The six individual Overground line colors
+// (liberty/lioness/mildmay/suffragette/weaver/windrush) are from the 2024 rebrand
+// and are this file's best-effort recollection, not independently re-verified
+// against TfL's brand guidelines PDF — if one looks off next to the real thing,
+// it's a one-line fix here, not a structural problem.
+const TFL_LINE_COLOR = {
+  bakerloo: '#B36305',
+  central: '#E32017',
+  circle: '#FFD300',
+  district: '#00782A',
+  'hammersmith-city': '#F3A9BB',
+  jubilee: '#A0A5A9',
+  metropolitan: '#9B0056',
+  northern: '#000000',
+  piccadilly: '#003688',
+  victoria: '#0098D4',
+  'waterloo-city': '#95CDBA',
+  dlr: '#00A4A7',
+  elizabeth: '#6950A1',
+  tram: '#84B817',
+  liberty: '#676767',
+  lioness: '#FFA600',
+  mildmay: '#1E90CE',
+  suffragette: '#52BFAB',
+  weaver: '#A5498D',
+  windrush: '#DA291C',
+};
+const TFL_LINE_COLOR_FALLBACK = '#666666'; // any line id TfL adds later that isn't in the map above yet
+
+// TfL's brand colors span both very light (Circle yellow, Waterloo & City teal) and
+// very dark (Northern black, Piccadilly navy) — a single fixed badge text color
+// would be unreadable on roughly half of them. Standard relative-luminance formula
+// rather than a per-line lookup, so this works correctly even for the Overground
+// colors above that are this file's own best-effort guess.
+function contrastTextColor(hex) {
+  const r = Number.parseInt(hex.slice(1, 3), 16);
+  const g = Number.parseInt(hex.slice(3, 5), 16);
+  const b = Number.parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? '#000' : '#fff';
+}
+
+// Buckets TfL's own statusSeverityDescription text to decide whether to show the
+// reason detail line, not to pick a color (colors are per-line brand colors now,
+// see TFL_LINE_COLOR above) — the exact 0-14 statusSeverity code table isn't
+// documented with enough confidence to hardcode here (see hub/src/tflStatus.ts's
+// header comment), but the description strings TfL already shows humans are stable.
+function tflIsDisrupted(description) {
+  return description !== 'Good Service';
+}
+
+// Shared by renderTflBoard and renderTflArrivalsBoard's column-count calculation.
+// A fixed "6 rows per column" constant (this project's original approach) was
+// tuned by eye against a landscape screen and turned out to badly under-fill a
+// portrait one — a portrait screen is typically much taller, so capping every
+// column at 6 rows regardless left most of the (much larger) available height
+// blank below a short block of content. TFL_ROW_HEIGHT_PX is a real measured
+// value (getBoundingClientRect on an actual rendered .tfl-row — 78px unwrapped,
+// a little more for a row whose line name wraps to 2 lines), not a guess — a
+// first attempt using a much larger guessed value technically fixed portrait but
+// still left most of the height unused, for the same reason the original "6" did.
+// TFL_BOARD_VERTICAL_PADDING_PX matches .tfl-board's own 28px top+bottom padding.
+// Deriving rows-per-column from the screen's *actual* height (not a per-
+// orientation special case) means this scales correctly for any resolution.
+const TFL_ROW_HEIGHT_PX = 85;
+const TFL_BOARD_VERTICAL_PADDING_PX = 56;
+function computeTflColumnCount(itemCount) {
+  const availableHeight = window.innerHeight - TFL_BOARD_VERTICAL_PADDING_PX;
+  const rowsPerColumn = Math.max(4, Math.floor(availableHeight / TFL_ROW_HEIGHT_PX));
+  return Math.max(1, Math.ceil(itemCount / rowsPerColumn));
+}
+
+function renderTflBoard(item) {
+  const board = document.createElement('div');
+  board.className = 'tfl-board';
+  const lines = item.tflLines ?? [];
+  if (lines.length === 0) {
+    board.innerHTML = '<div class="tfl-empty">No TfL status available right now</div>';
+    return board;
   }
+  // A separate inner element for the actual rows (column-count applies here, not
+  // on .tfl-board itself) — see .tfl-board/.tfl-rows in player.css for why: CSS
+  // multi-column content always flows from the top of its own box and simply
+  // stops when it runs out, it never stretches to fill unused space below —
+  // confirmed on a real render to leave a large blank gap under a short line
+  // list on a tall portrait screen even after fixing the column-count math above.
+  // Making .tfl-board a flex container that vertically centers this inner block
+  // means leftover space splits evenly above/below instead of dumping it all at
+  // the bottom.
+  const rows = document.createElement('div');
+  rows.className = 'tfl-rows';
+  for (const line of lines) {
+    const row = document.createElement('div');
+    row.className = 'tfl-row';
+    const badge = document.createElement('span');
+    badge.className = 'tfl-line-badge';
+    const badgeColor = TFL_LINE_COLOR[line.id] ?? TFL_LINE_COLOR_FALLBACK;
+    badge.style.background = badgeColor;
+    badge.style.color = contrastTextColor(badgeColor);
+    badge.textContent = line.name;
+    const statusCol = document.createElement('div');
+    statusCol.className = 'tfl-status-col';
+    const status = document.createElement('span');
+    status.className = `tfl-status-text${tflIsDisrupted(line.statusSeverityDescription) ? ' disrupted' : ''}`;
+    status.textContent = line.statusSeverityDescription;
+    statusCol.appendChild(status);
+    // TfL's own free-text explanation (e.g. which stations are affected) — only
+    // shown when there's actually a disruption to explain; see TflLine.reason's
+    // comment in hub/src/tflStatus.ts for why this is treated as optional.
+    if (line.reason) {
+      const reason = document.createElement('span');
+      reason.className = 'tfl-reason';
+      reason.textContent = line.reason;
+      statusCol.appendChild(reason);
+    }
+    row.appendChild(badge);
+    row.appendChild(statusCol);
+    rows.appendChild(row);
+  }
+  // Multi-column so a full line roster (e.g. every Tube + Overground + DLR +
+  // Elizabeth line mode selected at once, ~25 lines) fits the screen instead of
+  // running off the bottom — a kiosk display can't scroll, so "fits" is a hard
+  // requirement, not a nice-to-have. CSS multicol (not a JS-computed grid) lets
+  // each column's rows flow and wrap naturally even though disrupted rows are
+  // taller than "Good Service" ones (see .tfl-row's break-inside in player.css).
+  rows.style.columnCount = String(computeTflColumnCount(lines.length));
+  board.appendChild(rows);
+  return board;
+}
+
+// "3 min", or "Due" for anything already at/under a minute out — matches how a
+// real TfL platform departure board rounds (it never shows "0 min").
+function formatArrivalMinutes(sec) {
+  const min = Math.round(sec / 60);
+  return min <= 0 ? 'Due' : `${min} min`;
+}
+
+// A station with many platforms sharing a screen with 2 other stations (see
+// renderTflArrivalsBoard below) only gets a third of the width — capped rather
+// than letting it multi-column internally (computeTflColumnCount's math is
+// height-only, and would happily choose 2+ columns that don't actually fit a
+// panel this narrow). A single-station board has no such constraint and isn't
+// capped at all — see the `cap` parameter below.
+const TFL_ARRIVALS_MAX_PLATFORMS_PER_STATION = 8;
+
+// One line-badge + towards/platform + countdown row — shared by both the single-
+// and multi-station layouts below.
+function buildTflArrivalRow(b) {
+  const row = document.createElement('div');
+  row.className = 'tfl-row';
+  const badge = document.createElement('span');
+  badge.className = 'tfl-line-badge';
+  const badgeColor = TFL_LINE_COLOR[b.lineId] ?? TFL_LINE_COLOR_FALLBACK;
+  badge.style.background = badgeColor;
+  badge.style.color = contrastTextColor(badgeColor);
+  badge.textContent = b.lineName;
+  const infoCol = document.createElement('div');
+  infoCol.className = 'tfl-status-col';
+  const towards = document.createElement('span');
+  towards.className = 'tfl-status-text';
+  towards.textContent = b.platformName ? `${b.towards} · ${b.platformName}` : b.towards;
+  infoCol.appendChild(towards);
+  const countdown = document.createElement('span');
+  countdown.className = 'tfl-reason';
+  const [first, ...rest] = b.arrivalsSec;
+  countdown.textContent = rest.length > 0
+    ? `${formatArrivalMinutes(first)}, then ${rest.map(formatArrivalMinutes).join(', ')}`
+    : formatArrivalMinutes(first);
+  infoCol.appendChild(countdown);
+  row.appendChild(badge);
+  row.appendChild(infoCol);
+  return row;
+}
+
+// One station's header + rows — used both as the sole content of a single-
+// station board and as one panel of a multi-station board. `multiColumn: true`
+// (single-station only) lets a long roster spread across columns the way the
+// line-status board does; a multi-station panel always stays single-column
+// since computeTflColumnCount's math doesn't know how narrow its own panel is.
+function buildTflStationBlock(station, { multiColumn }) {
+  const block = document.createElement('div');
+  block.className = 'tfl-content';
+  // Names the station this block is for — every row already shows a train's
+  // *destination* (e.g. "Ealing Broadway"), not the station itself, which was
+  // genuinely ambiguous on a real render with no other on-screen label. Shown
+  // in both the populated and "no arrivals" states.
+  if (station.stopPointName) {
+    const header = document.createElement('div');
+    header.className = 'tfl-arrivals-header';
+    header.textContent = station.stopPointName;
+    block.appendChild(header);
+  }
+  const boards = station.boards ?? [];
+  if (boards.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'tfl-empty';
+    empty.textContent = 'No arrivals available right now';
+    block.appendChild(empty);
+    return block;
+  }
+  const shown = multiColumn ? boards : boards.slice(0, TFL_ARRIVALS_MAX_PLATFORMS_PER_STATION);
+  const rows = document.createElement('div');
+  rows.className = 'tfl-rows';
+  for (const b of shown) rows.appendChild(buildTflArrivalRow(b));
+  // Same multi-column no-scroll reasoning as renderTflBoard above — only applied
+  // for a single-station board; see this function's own comment for why a panel
+  // in a multi-station layout skips it instead.
+  if (multiColumn) rows.style.columnCount = String(computeTflColumnCount(shown.length));
+  block.appendChild(rows);
+  return block;
+}
+
+// Departure-board rendering for 'tfl-arrivals' items — one row per platform+direction
+// per station (already grouped server-side, see hub/src/tflArrivals.ts's
+// getBoardForStop), reusing the same per-line brand-color badge as the status
+// board (TFL_LINE_COLOR) for visual consistency between the two TfL content types.
+// An item can show more than one station on the same screen (see types.ts's
+// LibraryItem.tflStations) — arranged side by side in landscape, stacked in
+// portrait (see .tfl-multi-content's media query in player.css).
+function renderTflArrivalsBoard(item) {
+  const board = document.createElement('div');
+  board.className = 'tfl-board';
+  const stations = item.tflStationBoards ?? [];
+  if (stations.length <= 1) {
+    // Single station: header + rows form one centered block, same as before
+    // multi-station support existed — see .tfl-board's own comment in
+    // renderTflBoard above for why centering exists at all.
+    const block = stations[0]
+      ? buildTflStationBlock(stations[0], { multiColumn: true })
+      : (() => { const empty = document.createElement('div'); empty.className = 'tfl-empty'; empty.textContent = 'No arrivals available right now'; return empty; })();
+    board.appendChild(block);
+    return board;
+  }
+  const multi = document.createElement('div');
+  multi.className = 'tfl-multi-content';
+  for (const station of stations) multi.appendChild(buildTflStationBlock(station, { multiColumn: false }));
+  board.appendChild(multi);
+  return board;
 }
 
 function playItem(index) {
@@ -124,10 +533,17 @@ function playItem(index) {
   preloadUpcoming(index);
   const item = activeItems[index];
   if (!item) {
-    const empty = document.createElement('div');
-    empty.className = 'empty';
-    empty.textContent = 'No content scheduled';
-    stage.appendChild(empty);
+    // Both a genuinely empty default playlist and an active blackout resolve to no
+    // items, but they need to look different: blackout is a deliberate emergency
+    // "nothing shows here" state (see hub/src/store.ts's activeContentIds), so it
+    // stays plain black with no text — the "empty" message is only for the
+    // unconfigured case, where a visible hint actually helps whoever's looking at it.
+    if (activeKind !== 'blackout') {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'No content scheduled';
+      stage.appendChild(empty);
+    }
     return;
   }
 
@@ -231,10 +647,75 @@ function playItem(index) {
     clockTimer = setInterval(tick, 1000);
     stage.appendChild(el);
     scheduleAdvance(item.duration ?? 8, myGeneration);
+  } else if (item.type === 'ndi') {
+    playNativeNdi(item, myGeneration);
+  } else if (item.type === 'tfl-status') {
+    // No native process, no polling of its own — item.tflLines is already resolved
+    // fresh by the hub on every /state poll (see hub/src/store.ts's getPlayerState).
+    // Tracked in tflBoardEl/tflBoardItemId so renderPlayerState's refreshTflBoardIfShowing
+    // can update the displayed line data in place on later polls while this item stays
+    // on screen — the same item ids polling normally short-circuits on otherwise (see
+    // renderPlayerState's playlistKey check) would mean a "live" board that never
+    // actually updates until rotation happens to cycle back to it.
+    const board = renderTflBoard(item);
+    tflBoardEl = board;
+    tflBoardItemId = item.id;
+    stage.appendChild(board);
+    scheduleAdvance(item.duration ?? 8, myGeneration);
+  } else if (item.type === 'tfl-arrivals') {
+    // Same reasoning as 'tfl-status' above — item.tflStationBoards is already
+    // resolved fresh by the hub on every poll; tracked so syncTflArrivals can
+    // update it in place while this item stays on screen.
+    const board = renderTflArrivalsBoard(item);
+    tflArrivalsBoardEl = board;
+    tflArrivalsBoardItemId = item.id;
+    stage.appendChild(board);
+    scheduleAdvance(item.duration ?? 8, myGeneration);
   } else {
     // Announcements never appear in the main rotation (server-side filtered), but
     // skip defensively rather than getting stuck if one ever does.
     scheduleAdvance(0.1, myGeneration);
+  }
+}
+
+// A 'tfl-status' item's line data is resolved fresh by the hub on every poll (see
+// hub/src/store.ts's getPlayerState), but its id never changes — so the playlistKey
+// check below, which exists to leave a mid-rotation item alone across identical
+// polls, would otherwise mean a "live" board that never actually updates until
+// rotation happens to cycle back to it. Runs on every poll regardless of whether
+// the key changed, and does two things: (1) if this item is the one currently on
+// screen, updates its rendered board in place without touching rotation/generation
+// state; (2) replaces the (possibly now-stale) entry in `activeItems` so a later
+// rotation cycle back to this same item — which reuses that array, not a fresh
+// server response, since the key won't have changed either — replays current data
+// instead of whatever was first polled.
+function syncTflLines(state) {
+  if (activeItems.length === 0) return;
+  const freshById = new Map(state.items.filter((i) => i.type === 'tfl-status').map((i) => [i.id, i]));
+  if (freshById.size === 0) return;
+  for (let i = 0; i < activeItems.length; i++) {
+    const fresh = freshById.get(activeItems[i].id);
+    if (fresh) activeItems[i] = fresh;
+  }
+  if (tflBoardEl && tflBoardItemId && freshById.has(tflBoardItemId)) {
+    tflBoardEl.replaceChildren(...renderTflBoard(freshById.get(tflBoardItemId)).childNodes);
+  }
+}
+
+// Mirrors syncTflLines above, for 'tfl-arrivals' items — arrivals are minutes away
+// (not hours, like line status), so this matters even more here: without it, a
+// board left on screen across multiple polls would show the same stale countdowns
+// until rotation happened to cycle back to it.
+function syncTflArrivals(state) {
+  if (activeItems.length === 0) return;
+  const freshById = new Map(state.items.filter((i) => i.type === 'tfl-arrivals').map((i) => [i.id, i]));
+  if (freshById.size === 0) return;
+  for (let i = 0; i < activeItems.length; i++) {
+    const fresh = freshById.get(activeItems[i].id);
+    if (fresh) activeItems[i] = fresh;
+  }
+  if (tflArrivalsBoardEl && tflArrivalsBoardItemId && freshById.has(tflArrivalsBoardItemId)) {
+    tflArrivalsBoardEl.replaceChildren(...renderTflArrivalsBoard(freshById.get(tflArrivalsBoardItemId)).childNodes);
   }
 }
 
@@ -243,15 +724,62 @@ function renderPlayerState(state) {
 
   ticker.hidden = !state.announcement.on;
   tickerText.textContent = state.announcement.text ?? '';
+  syncTflLines(state);
+  syncTflArrivals(state);
 
-  const key = state.items.map((i) => i.id).join(',');
+  // Includes kind, not just item ids: an empty defaultPlaylist and an active
+  // blackout both resolve to zero items (same id-based key otherwise), but
+  // render differently — see playItem's !item branch — so a transition between
+  // the two has to be detected here too, not just a change in the item list.
+  const key = `${state.kind}:${state.items.map((i) => i.id).join(',')}`;
   if (key === playlistKey) return; // same playlist as last poll — leave the current item alone
 
   playlistKey = key;
   activeItems = state.items;
+  activeKind = state.kind;
   currentIndex = 0;
   generation++;
+  // The hub actually changed what this screen should show — any PDF manual-mode
+  // takeover (keyboard or remote jump) from before this point is now stale; see
+  // pdfManualMode's own comment for why this is the one thing that resets it,
+  // not just rotation continuing on its own.
+  pdfManualMode = false;
   playItem(0);
+}
+
+// --- Identify flash ----------------------------------------------------------
+// Settings screen's "Identify" button (bulb icon) — helps a technician standing in
+// front of a wall of screens match a physical display to its entry in the control
+// app. Drawn as an overlay on top of #stage rather than touching rotation/teardown
+// state at all, so it works regardless of what's currently playing (including the
+// unpaired/connecting screens) without interrupting it. One exception: while a
+// native NDI item is on screen, its own separate Wayland surface (see ndiPlayer.ts)
+// occludes this browser page entirely, so the flash won't be visible then — a known,
+// low-priority gap for what's still a rare content type.
+let lastFlashToken = null;
+// DevicePreviewDialog's remote page picker — see pdfJump.ts. Same "token changed
+// since last poll" pattern as lastFlashToken above, just handed off to
+// jumpToPdfPage (which already no-ops when no PDF is currently showing) instead of
+// a flash overlay.
+let lastPdfJumpToken = null;
+
+function triggerIdentifyFlash() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed; inset:0; z-index:9999; pointer-events:none; background:#fff;';
+  document.body.appendChild(overlay);
+
+  const PHASE_MS = 250;
+  const phases = ['#000', '#fff', '#000']; // starts on #fff (already applied above): white, black, white, black
+  let i = 0;
+  const tick = () => {
+    if (i >= phases.length) {
+      overlay.remove();
+      return;
+    }
+    overlay.style.background = phases[i++];
+    setTimeout(tick, PHASE_MS);
+  };
+  setTimeout(tick, PHASE_MS);
 }
 
 // --- Polling -----------------------------------------------------------------
@@ -262,14 +790,36 @@ function renderPlayerState(state) {
 // duplicate. Only shown when there's genuinely no hub content to fall back on
 // (see pollOnce below) — the moment the hub has real state again, it wins.
 function localContentState(item) {
-  return { items: [item], announcement: { on: false, text: null } };
+  return { kind: 'default', items: [item], announcement: { on: false, text: null } };
+}
+
+// Wraps the USB override's copied files (see usbOverride.ts) as a player state the
+// same way localContentState wraps the single-file fallback above — multi-item here,
+// since a USB override can be a whole playlist, but otherwise reusing the exact same
+// playItem/renderPlayerState rotation logic the hub's own default/forced playlists
+// already use (nothing special needed for a multi-item list to loop).
+function usbOverrideState(usbOverride) {
+  return { kind: 'usb-override', items: usbOverride.items, announcement: { on: false, text: null } };
 }
 
 async function pollOnce() {
   try {
-    const res = await fetch('/state');
+    const res = await fetch(STATE_URL);
     const data = await res.json();
     const localUrl = data.ip ? `http://${data.ip}:8088/network-setup.html` : null;
+
+    // Checked unconditionally, before the screen-state branching below, so identify
+    // works no matter what's currently showing. Skips the very first poll after page
+    // load (lastFlashToken starts null) so an old token from before this page loaded
+    // doesn't trigger a spurious flash.
+    if (lastFlashToken !== null && data.flashToken !== lastFlashToken) triggerIdentifyFlash();
+    lastFlashToken = data.flashToken;
+
+    // Same "skip the very first poll" reasoning as flashToken above — an old
+    // pdfJumpToken from before this page loaded shouldn't trigger a spurious jump.
+    // jumpToPdfPage itself no-ops if no PDF happens to be showing right now.
+    if (lastPdfJumpToken !== null && data.pdfJumpToken !== lastPdfJumpToken) jumpToPdfPage(data.pdfJumpPage);
+    lastPdfJumpToken = data.pdfJumpToken;
 
     if (data.networkSetup) {
       // Takes priority over everything else: while broadcasting its own fallback
@@ -281,6 +831,14 @@ async function pollOnce() {
       networkPasswordEl.textContent = data.networkSetup.password ?? '—';
       networkUrlEl.textContent = data.networkSetup.url ?? '—';
       showScreen('networkSetup');
+    } else if (data.usbOverride) {
+      // Wins even over a live, working hub connection — a deliberate manual
+      // override (see usbOverride.ts's header comment), not merely a fallback for
+      // when the hub can't be reached the way localContent below is. Stays active
+      // regardless of whether the USB stick itself is still plugged in; only loses
+      // out to the network-setup screen above (still mid-provisioning takes
+      // priority over anything this screen would otherwise show).
+      renderPlayerState(usbOverrideState(data.usbOverride));
     } else if (!data.paired && data.localContent) {
       renderPlayerState(localContentState(data.localContent));
     } else if (!data.paired) {

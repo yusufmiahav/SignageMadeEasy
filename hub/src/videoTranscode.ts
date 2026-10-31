@@ -15,26 +15,35 @@ const execFileAsync = promisify(execFile);
 // code change.
 const MAX_WIDTH = Number(process.env.SIGNAGE_MAX_VIDEO_WIDTH ?? 1280);
 
-async function getVideoWidth(filePath: string): Promise<number | null> {
+async function getVideoDimensions(filePath: string): Promise<{ width: number; height: number } | null> {
   try {
     const { stdout } = await execFileAsync('ffprobe', [
       '-v', 'error',
       '-select_streams', 'v:0',
-      '-show_entries', 'stream=width',
-      '-of', 'default=noprint_wrappers=1:nokey=1',
+      '-show_entries', 'stream=width,height',
+      '-of', 'csv=s=x:p=0',
       filePath,
     ]);
-    const width = Number.parseInt(stdout.trim(), 10);
-    return Number.isFinite(width) ? width : null;
+    const [width, height] = stdout.trim().split('x').map(Number);
+    return Number.isFinite(width) && Number.isFinite(height) ? { width, height } : null;
   } catch {
     return null;
   }
 }
 
-/** True if the source is wider than MAX_WIDTH and therefore worth capping; false if it's already small enough or its width couldn't be read (leave it alone rather than risk a bad transcode). */
+/**
+ * True if the source's longer side exceeds MAX_WIDTH and therefore worth capping;
+ * false if it's already small enough or its dimensions couldn't be read (leave it
+ * alone rather than risk a bad transcode). Checks the longer side rather than
+ * literally "width" so a portrait video (height > width) is judged by the
+ * dimension that actually drives decode cost — a 2002x3552 portrait upload has a
+ * "width" of only 2002, comfortably under a naive 1280 width check, while its real
+ * long side (3552) is nearly double a 1920x1080 source already confirmed to be too
+ * much for a Pi 3B+'s software decoder.
+ */
 export async function needsCapping(filePath: string): Promise<boolean> {
-  const width = await getVideoWidth(filePath);
-  return width != null && width > MAX_WIDTH;
+  const dims = await getVideoDimensions(filePath);
+  return dims != null && Math.max(dims.width, dims.height) > MAX_WIDTH;
 }
 
 /**
@@ -48,10 +57,20 @@ export async function needsCapping(filePath: string): Promise<boolean> {
  */
 export async function transcodeToCapped(sourcePath: string, destPath: string): Promise<boolean> {
   try {
+    const dims = await getVideoDimensions(sourcePath);
+    // Cap whichever side is actually the long one to MAX_WIDTH, letting ffmpeg
+    // compute the other side to preserve aspect ratio — `scale=WIDTH:-2` alone
+    // assumes landscape input (width is the long side); for a portrait video
+    // (height > width) that only shrinks the already-short side and leaves the
+    // real long side (height) uncapped, producing a "capped" file with MORE total
+    // pixels than the exact 1920x1080 reference this cap exists to protect
+    // against (confirmed on a real Pi 3B+: e.g. a 2002x3552 source "capped" this
+    // way came out 1280x2272 — 2.9M px/frame vs 1080p's 2.07M).
+    const scaleFilter = dims && dims.height > dims.width ? `scale=-2:${MAX_WIDTH}` : `scale=${MAX_WIDTH}:-2`;
     await execFileAsync('ffmpeg', [
       '-y',
       '-i', sourcePath,
-      '-vf', `scale=${MAX_WIDTH}:-2`,
+      '-vf', scaleFilter,
       '-c:v', 'libx264',
       '-preset', 'veryfast',
       '-crf', '23',
