@@ -49,6 +49,15 @@ function Find-Edge {
 }
 
 $edgePath = Find-Edge
+# Start-Process -FilePath 'node' (a bare name, no extension) can fail to resolve
+# via PATH even though plain `node` works fine when typed directly at a prompt -
+# confirmed on real hardware: combining -RedirectStandardOutput/-RedirectStandardError
+# (which forces UseShellExecute off) with an unresolved bare name hits a gap in
+# CreateProcess's own PATH search, which (unlike PowerShell's own command
+# resolution) doesn't try appending .exe on its own. Resolving the real path once
+# up front sidesteps it entirely.
+$nodeExe = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
+if (-not $nodeExe) { throw 'node.exe not found on PATH - re-run install.ps1 (it installs Node.js via winget), then open a fresh PowerShell window so the updated PATH is picked up.' }
 # Dedicated profile, not the logged-in user's own Edge profile - avoids any
 # first-run/sign-in prompts tied to a real Microsoft account getting in the way
 # of a kiosk that's supposed to come up to content with nobody there to dismiss
@@ -62,7 +71,7 @@ $edgeProfileDir = Join-Path $DataDir 'edge-profile'
 while ($true) {
   Write-Host "[$(Get-Date -Format o)] starting player server"
   $serverLog = Join-Path $LogDir 'player.log'
-  $serverProc = Start-Process -FilePath 'node' -ArgumentList 'dist/index.js' -WorkingDirectory $AppDir `
+  $serverProc = Start-Process -FilePath $nodeExe -ArgumentList 'dist/index.js' -WorkingDirectory $AppDir `
     -RedirectStandardOutput $serverLog -RedirectStandardError (Join-Path $LogDir 'player-error.log') -PassThru -WindowStyle Hidden
 
   if (-not (Wait-ForServer)) {
