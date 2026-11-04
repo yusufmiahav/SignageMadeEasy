@@ -14,18 +14,38 @@ import * as tflArrivals from '../tflArrivals.js';
 
 export const libraryRouter = Router();
 
-function formatBytes(bytes: number): string {
+// Exported for app.ts's error-handling middleware too, to format UPLOAD_MAX_BYTES
+// into a LIMIT_FILE_SIZE error's message the same way an item's own size shows up
+// in the library.
+export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
 }
+
+// 4GB, not multer's unbounded default — this hub exists specifically to accept
+// source video too large for a Pi to decode directly and cap it down in the
+// background (see runCapInBackground/videoTranscode.ts below), so the cap needs
+// real headroom above a typical source clip, not just "big enough for a PDF."
+// Confirmed as a real-world bug at 500MB: the browser's upload progress bar
+// tracks raw bytes sent over the wire, which reaches 100% regardless of what the
+// server does with them afterward — multer's own fileSize limit still silently
+// truncates the write and rejects the request server-side, so an oversized
+// upload looked to the uploader like it had succeeded right up until it
+// vanished. See app.ts's error-handling middleware for the now-specific message
+// this produces instead of a bare "internal error" when that limit is hit.
+// Exported so app.ts's error-handling middleware can name the actual limit in a
+// LIMIT_FILE_SIZE error's message rather than duplicating (and risking drifting
+// from) this number.
+export const UPLOAD_MAX_BYTES = 4 * 1024 * 1024 * 1024;
 
 const upload = multer({
   storage: multer.diskStorage({
     destination: UPLOADS_DIR,
     filename: (_req, file, cb) => cb(null, `${randomUUID()}${path.extname(file.originalname)}`),
   }),
-  limits: { fileSize: 500 * 1024 * 1024 },
+  limits: { fileSize: UPLOAD_MAX_BYTES },
 });
 
 libraryRouter.get('/', (_req, res) => {

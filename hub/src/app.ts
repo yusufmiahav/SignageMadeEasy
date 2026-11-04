@@ -1,9 +1,10 @@
 import express from 'express';
 import cors from 'cors';
+import multer from 'multer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UPLOADS_DIR } from './db.js';
-import { libraryRouter } from './routes/library.js';
+import { libraryRouter, UPLOAD_MAX_BYTES, formatBytes } from './routes/library.js';
 import { groupsRouter } from './routes/groups.js';
 import { devicesRouter } from './routes/devices.js';
 import { playerRouter } from './routes/player.js';
@@ -76,6 +77,15 @@ export function createApp() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(err);
+    // A plain "internal error" here is how an oversized upload used to fail
+    // silently-ish: the browser's own upload progress bar had already reached
+    // 100% (it tracks bytes sent, not server acceptance) by the time this response
+    // lands, so without a specific reason the upload just looked like it
+    // "disappeared" rather than like it was ever rejected. See library.ts's
+    // UPLOAD_MAX_BYTES for the actual limit this names.
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: `File is too large — this hub accepts up to ${formatBytes(UPLOAD_MAX_BYTES)} per upload.` });
+    }
     res.status(500).json({ error: 'internal error' });
   });
 
