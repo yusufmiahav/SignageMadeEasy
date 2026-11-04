@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Backs the Settings screen's "Re-provision" button (see
-  pi-player/src/selfUpdate.ts) — the full path: re-runs install.ps1 fresh from
+  pi-player/src/selfUpdate.ts) - the full path: re-runs install.ps1 fresh from
   GitHub (so it also picks up any change to install.ps1/start-kiosk.ps1
   themselves, not just the app) and reboots. Mirrors pi-player/bin/reprovision.sh,
   including its own reasoning for curling fresh rather than running the local
