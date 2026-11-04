@@ -104,7 +104,14 @@ Write-Log "Registering the '$TaskName' scheduled task (starts the kiosk at logon
 $startKiosk = Join-Path $AppDir 'windows\start-kiosk.ps1'
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$startKiosk`""
 $trigger = New-ScheduledTaskTrigger -AtLogOn
-$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
+# A bare $env:USERNAME fails SID lookup here on some accounts — confirmed on real
+# hardware (a fresh Windows setup with a Microsoft-account-linked local account):
+# Register-ScheduledTask refused it with "The parameter is incorrect"
+# (HRESULT 0x80070057). USERDOMAIN (not COMPUTERNAME) is the qualifier that's
+# correct either way: Windows sets it to the computer name for a local account
+# and to the real domain for a domain-joined one.
+$qualifiedUser = "$env:USERDOMAIN\$env:USERNAME"
+$principal = New-ScheduledTaskPrincipal -UserId $qualifiedUser -LogonType Interactive -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Days 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 
