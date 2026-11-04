@@ -219,9 +219,14 @@ It finishes by telling you to do two things:
    Pair it from the control app ("Add a screen", via Scan network, Scan QR, or
    Enter IP) the same way on either platform.
 
-To test immediately without rebooting or setting up auto-logon, run the path the
-installer prints at the end directly:
-`C:\SignageMadeEasy\pi-player\windows\start-kiosk.ps1`.
+To test immediately without rebooting or setting up auto-logon, run the command
+the installer prints at the end — **not** just the bare script path, which fails
+with "running scripts is disabled on this system" (Windows blocks running a
+`.ps1` directly by default; the scheduled task works around this the same way):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\SignageMadeEasy\pi-player\windows\start-kiosk.ps1"
+```
 
 ### How it works (Windows side)
 

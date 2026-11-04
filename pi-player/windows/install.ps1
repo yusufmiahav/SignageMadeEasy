@@ -127,6 +127,9 @@ Next steps:
      to pair from the control app — same as pi-player/README.md's own
      "Connecting a screen" steps.
 
-To test right now without rebooting: $startKiosk
+To test right now without rebooting (NOT just the bare path — Windows blocks
+running a .ps1 directly by default; the scheduled task above already works
+around this the same way):
+  powershell -ExecutionPolicy Bypass -File "$startKiosk"
 
 "@ -ForegroundColor Green
